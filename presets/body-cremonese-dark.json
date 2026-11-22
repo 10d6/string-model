@@ -1,0 +1,13 @@
+{
+  "synthkit": 1,
+  "synth": "string-model",
+  "patchVersion": 1,
+  "name": "Cremonese, Dark & Vocal",
+  "params": {
+    "body.voice": -4,
+    "body.a0": 3,
+    "body.nasal": -2,
+    "body.brilliance": -3,
+    "body.softness": 3
+  }
+}

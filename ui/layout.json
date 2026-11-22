@@ -34,7 +34,22 @@
           "label": "Bridge Hill"
         },
         {
+          "param": "body.brilliance"
+        },
+        {
           "param": "body.resonance"
+        },
+        {
+          "param": "body.a0"
+        },
+        {
+          "param": "body.nasal"
+        },
+        {
+          "param": "body.softness"
+        },
+        {
+          "param": "body.voice"
         },
         {
           "param": "out.width"

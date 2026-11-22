@@ -561,6 +561,47 @@ HF loss in Phase 4). For the Library Mic (Smooth):
   the measured peaks and dips and the smoothed fit. At 0, the 700 Hz dip
   fills by +8 dB and the 550 Hz region is trimmed: an even instrument.
 - **`Stereo Width`:** mid/side on the per-channel gains (0 = mono).
+- **Body character** (KB §5.8). Research on Stradivari and other fine
+  violins found no single "Strad sound". It did map which response regions
+  listeners and players care about, so these are offsets (dB) from the
+  measured violin, applied to the radiation modes by frequency. They are
+  cheap, glide, and the default is the measured response, bit for bit.
+  - `Air Resonance`: A0 (~280 Hz), a bump of σ 0.2 octave. A0 output is the
+    one measured correlate of rated quality (KB ref 109).
+  - `Nasality`: 0.8–1.5 kHz (centre 1.1 kHz, σ 0.4 octave). Factory
+    violins concentrate their energy here; the most pleasant violin in a
+    blind Cremona test was weak here (KB ref 114).
+  - `Brilliance`: the bridge hill's level, at Bridge Hill's frequency.
+  - `Softness`: a cut above ~4 kHz (4th-order shelf). Negative adds air.
+  - `Voice`: moves the modes below 3 kHz (fading out by 4.5 kHz) by ±10%,
+    shifting F1–F3 together. Tai et al. measured Stradivari formants ~8/6/4%
+    above other old Italians (KB ref 112).
+
+  `radiation_lab character` measures them per third-octave band:
+  - Air Resonance +9 gives +6 dB at 250 Hz.
+  - Nasality +9 gives +7 to +8 dB from 0.8 to 1.3 kHz.
+  - Brilliance +9 gives +6 to +9 dB from 2 to 3.2 kHz.
+  - Softness 12 gives −6 dB at 4 kHz and about −10 dB above 6 kHz.
+  - Voice ±10% moves the bands around 400–800 Hz by 5–7 dB.
+  - Boosting a mid region also lifts the band below 200 Hz by up to ~2 dB,
+    through the modes' low tails, where the 230 Hz high-pass already cuts.
+
+  Four presets are labelled approximations, not claims about any
+  instrument (KB §5.8: ≥3–6 dB or ~6% steps to be audible). On a test
+  phrase, against the default:
+
+  | Preset | 200–350 Hz | 350–700 Hz | 0.8–1.5 kHz | 1.5–2.2 kHz | 2.2–3.5 kHz | 3.5–5 kHz | 5–10 kHz |
+  |---|---|---|---|---|---|---|---|
+  | Cremonese, Dark & Vocal | +3.7 | −1.9 | −2.2 | +1.3 | −1.9 | −3.1 | −2.6 |
+  | Cremonese, Bright & Vocal | +2.4 | +0.6 | −2.7 | +3.6 | +2.8 | +0.3 | +0.4 |
+  | Modern Soloist | +1.2 | −0.1 | −0.8 | +2.7 | +4.6 | +2.4 | +2.0 |
+  | Student Factory Violin | +0.7 | +0.3 | +4.7 | −1.2 | −4.8 | −3.9 | −4.6 |
+
+  The controls act on the Modelled output only: the Library Mic outputs are
+  recordings' responses, and Pickup has no body. They change what the body
+  radiates, not how it loads the strings; a body whose stronger, less
+  damped low modes also change playability (KB §5.8's "character vs ease")
+  is left for later.
 
 **Library Mic / Library Mic (Smooth):** the CC0 library-mic IRs by
 convolution (resampled from 48 kHz in `prepare`). They have the library's
