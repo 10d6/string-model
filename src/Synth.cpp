@@ -59,27 +59,30 @@ std::vector<float> resampleIr(const float* x, int n, double from, double to) {
 }  // namespace
 
 struct StringModel : Synth {
+  Param autoChange, sustainSpeed;
   Param instrument, dynamics, velSens, pressure, atPressure, contact, bite, legato, bowChange, noise, friction;
   Param vibDepth, vibRate, vibDelay, shiftTime, intonation, output, roomMix, roomSpace;
   Param bendRange, a4;
 
   void defineParams(ParamBuilder& b) override {
     instrument = b.add("instrument").name("Instrument").choices({"Violin"}).group("Instrument");
-    dynamics = b.add("bow.dynamics").name("Dynamics").range(0, 1).def(0.55).group("Bow").cc(1).cc(11);
-    velSens = b.add("bow.velSens").name("Velocity → Dynamics").range(0, 1).def(0.7).group("Bow");
-    pressure = b.add("bow.pressure").name("Pressure").range(-1, 1).def(0).group("Bow");
-    atPressure = b.add("bow.atPressure").name("Aftertouch → Pressure").range(0, 1).def(0.5).group("Bow");
-    contact = b.add("bow.contact").name("Contact Point").range(-1, 1).def(0).group("Bow").cc(74);
-    bite = b.add("bow.bite").name("Attack Bite").range(0, 1).def(0.3).group("Bow");
+    dynamics = b.add("bow.dynamics").name("Dynamics").range(0, 1).def(0.55).smoothing(0).group("Bow").cc(1).cc(11);
+    velSens = b.add("bow.velSens").name("Velocity → Dynamics").range(0, 1).def(0.7).smoothing(0).group("Bow");
+    pressure = b.add("bow.pressure").name("Pressure").range(-1, 1).def(0).smoothing(0).group("Bow");
+    atPressure = b.add("bow.atPressure").name("Aftertouch → Pressure").range(0, 1).def(0.5).smoothing(0).group("Bow");
+    contact = b.add("bow.contact").name("Contact Point").range(-1, 1).def(0).smoothing(0).group("Bow").cc(74);
+    bite = b.add("bow.bite").name("Attack Bite").range(0, 1).def(0.3).smoothing(0).group("Bow");
     legato = b.add("bow.legato").name("Legato Slurs").toggle().def(1).group("Bow");
-    bowChange = b.add("bow.change").name("Bow Change").range(0.02, 0.2).def(0.06).unit("s").group("Bow");
-    noise = b.add("bow.noise").name("Rosin Noise").range(0, 0.5).def(0.12).group("Bow");
+    bowChange = b.add("bow.change").name("Bow Change").range(0.008, 0.2).def(0.02).unit("s").smoothing(0).group("Bow");
+    autoChange = b.add("bow.auto").name("Auto Bow Change").toggle().def(1).group("Bow");
+    sustainSpeed = b.add("bow.sustain").name("Long-Note Bow Speed").range(0.25, 1).def(0.4).smoothing(0).group("Bow");
+    noise = b.add("bow.noise").name("Rosin Noise").range(0, 0.5).def(0.12).smoothing(0).group("Bow");
     friction = b.add("bow.friction").name("Friction Model").choices({"Thermal", "Classic"}).group("Bow");
-    vibDepth = b.add("vib.depth").name("Vibrato Depth").range(0, 60).def(16).unit("ct").group("Left Hand");
-    vibRate = b.add("vib.rate").name("Vibrato Rate").range(3, 9).def(5.5).unit("Hz").group("Left Hand");
-    vibDelay = b.add("vib.delay").name("Vibrato Delay").range(0, 1).def(0.25).unit("s").group("Left Hand");
-    shiftTime = b.add("finger.shift").name("Shift Time").range(0, 0.3).def(0.04).unit("s").group("Left Hand");
-    intonation = b.add("finger.intonation").name("Intonation").range(0, 1).def(0.8).group("Left Hand");
+    vibDepth = b.add("vib.depth").name("Vibrato Depth").range(0, 60).def(16).unit("ct").smoothing(0).group("Left Hand");
+    vibRate = b.add("vib.rate").name("Vibrato Rate").range(3, 9).def(5.5).unit("Hz").smoothing(0).group("Left Hand");
+    vibDelay = b.add("vib.delay").name("Vibrato Delay").range(0, 1).def(0.25).unit("s").smoothing(0).group("Left Hand");
+    shiftTime = b.add("finger.shift").name("Shift Time").range(0, 0.3).def(0.04).unit("s").smoothing(0).group("Left Hand");
+    intonation = b.add("finger.intonation").name("Intonation").range(0, 1).def(0.8).smoothing(0).group("Left Hand");
     output = b.add("out.mode").name("Output").choices({"Library Mic", "Library Mic (Smooth)", "Pickup"}).def(1).group("Output");
     roomMix = b.add("room.mix").name("Room").range(0, 100).def(20).unit("%").group("Output");
     roomSpace = b.add("room.space").name("Space").choices({"Room", "Chamber", "Hall", "Cathedral", "Plate"}).def(2).group("Output");
@@ -151,6 +154,10 @@ struct StringModel : Synth {
   }
 
   void processGlobal(GlobalContext& ctx, Buffer& io) override {
+    // The instrument's inputs have no kit smoothing (smoothing(0)): they step
+    // at the controller's own sample, the same for any host block size, and
+    // the performer smooths them on its own fixed clock. Bowing is chaotic
+    // enough that block-dependent smoothing would change the notes.
     pc_.dynamics = ctx.get(dynamics);
     pc_.velSens = ctx.get(velSens);
     pc_.pressure = std::clamp(ctx.get(pressure) + ctx.get(atPressure) * pressureAt_, -1.f, 1.f);
@@ -158,6 +165,8 @@ struct StringModel : Synth {
     pc_.bite = ctx.get(bite);
     pc_.legato = ctx.on(legato);
     pc_.bowChange = ctx.get(bowChange);
+    pc_.autoChange = ctx.on(autoChange);
+    pc_.sustainSpeed = ctx.get(sustainSpeed);
     pc_.vibDepth = ctx.get(vibDepth);
     pc_.vibRate = ctx.get(vibRate);
     pc_.vibDelay = ctx.get(vibDelay);

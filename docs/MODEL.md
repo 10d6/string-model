@@ -144,14 +144,42 @@ What this shows:
 
 **Attacks.** The bow lands with force rising over 8 ms and accelerates at
 a = k F (the Guettler plane, KB §7.2), with k = (6 + 8 vel)(1 + 1.5 bite)
-m/s² per N. Loud notes also get an accent, a force boost decaying over 70 ms.
+m/s² per N. The acceleration is at least 2.5 m/s² [T]: below about
+2 m/s², soft notes (pp force ≈ 0.07 N) took 0.25 s to speak; from 2 m/s²
+they settle within ~50 ms. Loud notes also get an accent, a force boost
+decaying over 70 ms.
 
-**Bow changes.** The bow reverses at the acceleration that takes `Bow Change`
-for a full reversal. Force dips to 20% at zero speed (0.2 + 0.8 (v/v_t)²).
-Players lighten the bow here, and the KB reports that a deeper dip shortens
-the gap. Measured at a mid-note change at the tip: about 26 ms more than
-20 dB down, close to the KB's 16–28 ms. The bow position along the hair is
-tracked (62 cm), so long notes change bow at the tip and the frog.
+**Long notes save bow** (KB §7.3 step 2; Demoucron measured 12 cm/s on whole
+notes against 54 cm/s on quarters). From 0.25 s into a stroke, over 0.6 s,
+the bow slows to `Long-Note Bow Speed` (default 0.4) × the attack speed. β
+moves towards the bridge to keep v_b/β, the loudness, the same (β ≥ 0.02),
+and the force follows the players' line.
+
+**Bow changes.** The bow position along the hair is tracked (62 cm). A long
+note changes bow at the tip or the frog; `Auto Bow Change` off gives an
+endless bow. The bow reverses in `Bow Change` (default 20 ms) at constant
+acceleration. Force dips towards 20% at zero speed (0.2 + 0.8 (v/v_t)²):
+players lighten the bow here, and the KB reports that a deeper dip shortens
+the gap.
+
+Measured over 35 held notes (D4–A5, five velocities):
+- At the bridge, a change dips the level ~4 dB; the fundamental carries
+  through.
+- The harmonics above 1 kHz drop 14–16 dB for ~20 ms while the Helmholtz
+  corner re-forms in the new direction. The measured violin body boosts
+  exactly that band, so through the library mic a change is a ~13 dB,
+  ~40 ms dip.
+- Faster reversals hardly help (8 ms: 11 dB, 15 ms), and the shape of the
+  force dip barely matters. This matches the KB's simulations, where even a
+  halved bow change left a ~12 ms gap.
+- With 60 ms reversals and no bow saving (the first version), changes came
+  every 2.5 s as 27–31 dB, 50–70 ms cuts.
+
+**Controls are smoothed by the performer, not the kit.** The instrument's
+parameters have `smoothing(0)`, so they step at the controller's own sample
+whatever the host block size. The performer smooths dynamics, pressure and
+contact (15 ms) on its own fixed 16-sample clock. Bowing is chaotic: the kit's
+per-control-block smoothing made renders differ by 1.9 dB between block sizes.
 
 **Release.** Key up lifts the bow: the force falls over 25 ms and the string
 rings.
@@ -187,7 +215,9 @@ violin.
 ./build/string_lab tone <string 0-3> <note> <vb> <F> <beta> [classic] [out.wav]
 ./build/string_lab sweep <string 0-3> <note> <vb> [classic]          # Schelleng map
 LAB_FS=192000 LAB_HEAT=2 ./build/string_lab ...                      # rate, heat calibration
-./build/instrument_lab [legato] [intonation]                         # gesture-layer trace
+./build/instrument_lab detache [legato]                               # gesture-layer trace
+./build/instrument_lab hold <note> <seconds> [vel] [out.wav]         # bow changes, dips, attack time
+  env: LAB_HF=1 (measure above 1 kHz), LAB_DYN, LAB_CHANGE, LAB_FLOOR, LAB_WIDTH, LAB_SUSTAIN, LAB_MINACC
 python3 tools/analyze.py render.wav [out.png]                        # spectrogram, level, pitch per note
 ```
 

@@ -30,12 +30,17 @@ struct PerformerControls {
   float contact = 0.f;        // -1 tasto .. +1 ponticello
   float bite = 0.3f;          // 0..1 attack harshness
   bool legato = true;
-  float bowChange = 0.06f;    // s, nominal reversal time at mf
+  float bowChange = 0.02f;    // s, reversal time (full speed one way to the other)
   float vibDepth = 16.f;      // cents, peak-to-peak at mf
   float vibRate = 5.5f;       // Hz
   float vibDelay = 0.25f;     // s
   float shiftTime = 0.04f;    // s
   float bend = 0.f;           // semitones
+  float changeFloor = 0.2f;   // force at zero bow speed during a reversal, x target [T]
+  float changeWidth = 1.f;    // force is back to full at this fraction of the target speed [T]
+  float sustainSpeed = 0.4f;  // long notes: bow speed after the attack, x attack speed
+  bool autoChange = true;     // change bow at the tip/frog; off = an endless bow
+  float minAccel = 2.5f;      // m/s^2, floor on attack acceleration: below ~2 soft notes take 0.25 s to speak [T]
   float a4 = 440.f;
 };
 
@@ -74,6 +79,7 @@ class Performer {
       stopped_[s] = false;
     }
     str_ = 2;
+    primed_ = false;
     vibPhase_ = 0.f;
     noteAge_ = 0.f;
     accent_ = 0.f;
@@ -82,6 +88,7 @@ class Performer {
 
   // Keys ---------------------------------------------------------------
   void noteOn(int note, float vel, const PerformerControls& c) {
+    prime(c);
     removeHeld(note);
     if (nHeld_ < kMaxHeld) {
       held_[nHeld_] = note;
@@ -113,7 +120,6 @@ class Performer {
 
   // Per sample: bow kinematics and forces. Returns the bow velocity.
   float tickSample(const PerformerControls& c) {
-    (void)c;
     const float dt = 1.f / fs_;
     // Bow velocity: approach dir * vbTarget at a limited acceleration.
     const float want = bowing_ ? dir_ * vbT_ : vb_ * 0.999f;
@@ -123,7 +129,8 @@ class Performer {
     vb_ += std::clamp(dv, -step, step);
     // Bow position along the hair; change bow at the ends.
     bowPos_ += vb_ * dt / def_->bowLength;
-    if (bowing_) {
+    if (!c.autoChange) bowPos_ = std::clamp(bowPos_, 0.1f, 0.9f);  // never runs out
+    if (bowing_ && c.autoChange) {
       if (dir_ > 0 && bowPos_ > 0.97f) bowChange(c);
       else if (dir_ < 0 && bowPos_ < 0.03f) bowChange(c);
     }
@@ -132,7 +139,8 @@ class Performer {
     const float speedFrac = vbT_ > 1e-4f ? std::min(1.f, std::fabs(vb_) / vbT_) : 1.f;
     // Force dips through a reversal: players lighten the bow, which shortens the
     // gap and cleans the re-attack (KB §11.5: dip 0.6 -> 0.1 N, gap 28 -> 16 ms).
-    const float dip = 0.2f + 0.8f * speedFrac * speedFrac;
+    const float sf = std::min(1.f, speedFrac / c.changeWidth);
+    const float dip = c.changeFloor + (1.f - c.changeFloor) * sf * sf;
     accent_ *= accentDecay_;
     const float fTarget = fT_ * dip * (1.f + accent_);
     for (int s = 0; s < 4; ++s) {
@@ -180,7 +188,12 @@ class Performer {
 
   // At control rate: vibrato depth envelope.
   void controlTick(const PerformerControls& c, float dtControl) {
-    (void)dtControl;
+    // Smooth the continuous controls (~15 ms) on this fixed clock.
+    prime(c);
+    const float k = 1.f - std::exp(-dtControl / 0.015f);
+    dynIn_ += (c.dynamics - dynIn_) * k;
+    pressureIn_ += (c.pressure - pressureIn_) * k;
+    contactIn_ += (c.contact - contactIn_) * k;
     computeTargets(c);
     const float d = dyn_;
     const float age = noteAge_ - c.vibDelay;
@@ -194,6 +207,15 @@ class Performer {
 
  private:
   static constexpr int kMaxHeld = 16;
+
+  // The smoothed controls start at their first values (no glide from defaults).
+  void prime(const PerformerControls& c) {
+    if (primed_) return;
+    dynIn_ = c.dynamics;
+    pressureIn_ = c.pressure;
+    contactIn_ = c.contact;
+    primed_ = true;
+  }
 
   void removeHeld(int note) {
     int j = 0;
@@ -278,7 +300,7 @@ class Performer {
   }
 
   void computeDyn(const PerformerControls& c) {
-    dyn_ = std::clamp(c.dynamics + c.velSens * (vel_now_ - 0.6f), 0.f, 1.f);
+    dyn_ = std::clamp(dynIn_ + c.velSens * (vel_now_ - 0.6f), 0.f, 1.f);
   }
 
   void computeTargets(const PerformerControls& c) {
@@ -286,21 +308,27 @@ class Performer {
     const float d = dyn_;
     // Level law: L ≈ 7.7 ln(vb/beta) dB; pp..ff spans ~23 dB here.
     const float ratio = 0.6f * std::exp(3.0f * d);
-    const float vb = 0.10f * std::exp(1.4f * d);
+    // Long notes save bow (KB §7.3 step 2; Demoucron: 12 cm/s on whole notes,
+    // 54 on quarters): after the attack the bow slows to sustainSpeed and
+    // moves toward the bridge, keeping v_b/beta (the loudness) the same.
+    const float age = std::clamp((noteAge_ - 0.25f) / 0.6f, 0.f, 1.f);
+    const float ease = age * age * (3.f - 2.f * age);
+    float vb = 0.10f * std::exp(1.4f * d) * (1.f + (c.sustainSpeed - 1.f) * ease);
+    vb = std::max(vb, ratio * 0.02f);  // beta can't go below 0.02: keep the loudness
     float beta = vb / ratio;
-    beta *= std::pow(2.f, -1.5f * c.contact);
+    beta *= std::pow(2.f, -1.5f * contactIn_);
     beta = std::clamp(beta, 0.015f, 0.3f);
     const float z = def_->strings[str_].z0;
     float f = def_->forceRef * (vb / def_->vbRef) * std::pow(beta / def_->betaRef, -1.39f) *
               std::pow(z / def_->zRef, 1.39f);
-    f *= std::pow(2.f, 1.5f * c.pressure);
+    f *= std::pow(2.f, 1.5f * pressureIn_);
     f = std::min(f, def_->forceMax);
     vbT_ = vb;
     betaT_ = beta;
     fT_ = f;
     // Acceleration: attack (k * F) until near target speed, then gentle;
     // reversals use the bow-change acceleration.
-    const float attackA = std::clamp(attackK_ * f, 1.f, 30.f);
+    const float attackA = std::clamp(attackK_ * f, c.minAccel, 30.f);
     if (changing_) {
       accel_ = accelChange_;
       if (vb_ * dir_ > 0.9f * vbT_) changing_ = false;
@@ -320,6 +348,8 @@ class Performer {
   float vel_[kMaxHeld]{};
   int nHeld_ = 0, note_ = -1, str_ = 2;
   float vel_now_ = 0.7f;
+  float dynIn_ = 0.55f, pressureIn_ = 0.f, contactIn_ = 0.f;  // smoothed controls
+  bool primed_ = false;
   bool bowing_ = false, changing_ = false;
   float vb_ = 0.f, dir_ = -1.f, bowPos_ = 0.15f;
   float vbT_ = 0.2f, betaT_ = 0.08f, fT_ = 0.4f, dyn_ = 0.5f;
