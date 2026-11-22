@@ -20,7 +20,14 @@ permissions:
 
 env:
   SYNTH: stringmodel               # the name given to synthkit_add_synth
-  SCENARIO: tests/legato-scale.json   # rendered in the browser and natively, and compared
+  # Rendered in the browser and natively, and compared. Bowing is chaotic: the
+  # browser's and the native maths libraries differ in the last digit (pow,
+  # exp, sin...), and on some passages that difference grows (an 8 s held
+  # note with bow changes ends up -9 dB apart). The comparison is there to
+  # catch porting bugs, so it uses a passage that stays well-behaved
+  # (~-70 dB); legato-scale drifted to -34 dB once the player habits moved
+  # its slurred notes.
+  SCENARIO: tests/chord.json
 
 jobs:
   native:
