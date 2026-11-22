@@ -1,0 +1,51 @@
+{
+ "patch": "init",
+ "length": 6,
+ "params": {
+  "finger.shift": 0.25,
+  "finger.noise": 0.6
+ },
+ "events": [
+  {
+   "t": 0,
+   "on": 64,
+   "vel": 70
+  },
+  {
+   "t": 1.0,
+   "on": 69,
+   "vel": 30
+  },
+  {
+   "t": 1.05,
+   "off": 64
+  },
+  {
+   "t": 2.0,
+   "on": 64,
+   "vel": 110
+  },
+  {
+   "t": 2.05,
+   "off": 69
+  },
+  {
+   "t": 3.0,
+   "off": 64
+  }
+ ],
+ "expect": {
+  "soundBy": 0.1,
+  "silentAfter": 5.5,
+  "levelAt": [
+   {
+    "t": 1.6,
+    "above": -45
+   },
+   {
+    "t": 2.6,
+    "above": -45
+   }
+  ]
+ }
+}

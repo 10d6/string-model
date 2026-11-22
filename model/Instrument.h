@@ -20,6 +20,24 @@
 
 namespace sm {
 
+// Band-pass biquad (RBJ, constant 0 dB peak) for the winding noise.
+struct BandPass {
+  float b0 = 0, b2 = 0, a1 = 0, a2 = 0, s1 = 0, s2 = 0;
+  void setBandPass(float hz, float q, float fs) {
+    const float w0 = 6.2831853f * hz / fs, al = std::sin(w0) / (2.f * q), a0 = 1.f + al;
+    b0 = al / a0;
+    b2 = -b0;
+    a1 = -2.f * std::cos(w0) / a0;
+    a2 = (1.f - al) / a0;
+  }
+  float process(float x) {
+    const float y = b0 * x + s1;
+    s1 = -a1 * y + s2;
+    s2 = b2 * x - a2 * y;
+    return y;
+  }
+};
+
 // Linear-phase low-pass FIR decimator by an integer factor (1, 2 or 4).
 class Decimator {
  public:
@@ -73,6 +91,7 @@ struct InstrumentControls {
   float coupling = 1.f;      // bridge admittance scale (0 = rigid bridge, no sympathy)
   float hillHz = 2600.f;     // bridge hill centre (admittance; the radiation follows in the synth)
   float mute = 0.f;          // 0..1: the mute's mass on the bridge
+  float slideNoise = 0.4f;   // 0..1: winding noise under a sliding finger
 };
 
 class Instrument {
@@ -131,6 +150,7 @@ class Instrument {
 
  private:
   static constexpr int kControl = 16;  // host samples per control tick
+  static constexpr float kWindDirect = 1.f;  // winding noise straight to the bridge [T]
 
   // One internal-rate sample: every string's bow junction, then the bridge
   // they share, solved together without a delay (Bridge.h):
@@ -139,21 +159,30 @@ class Instrument {
   // A sleeping string still loads the bridge (its Z is in Zs); it wakes when
   // the bridge moves, which is how open strings ring in sympathy.
   float internalSample(float vb, const InstrumentControls& ic) {
-    float S = 0.f, zs = 0.f;
+    float S = 0.f, zs = 0.f, direct = 0.f;
     bool any = false;
     const bool coupled = bridge_.coupling() > 0.f;
     const bool bridgeMoving = coupled && std::fabs(uPrev_) > 1e-7f;
     for (int s = 0; s < 4; ++s) {
       BowedString& st = str_[s];
       const float fb = target_[s].force;
+      const float damp = target_[s].damp;
       zs += st.z0();
-      active_[s] = !st.asleep() || fb > 0.f || bridgeMoving;
+      active_[s] = !st.asleep() || fb > 0.f || bridgeMoving || damp > 0.f || windAmp_[s] > 0.f;
       if (!active_[s]) continue;
       any = true;
       st.wake();
       rng_ = rng_ * 1664525u + 1013904223u;
       const float noise = static_cast<float>(rng_ >> 8) * (1.f / 16777216.f);
-      S += 2.f * st.z0() * st.step(vb, fb, ic.friction, ic.noise, noise);
+      // Winding noise: injected at the finger (it travels the string), and,
+      // because a sticking bow reflects it back toward the finger, also
+      // straight into the bridge force (in reality it also reaches the body
+      // through the neck and the string's other wave types) [T].
+      float wn = 0.f;
+      if (windAmp_[s] > 0.f) wn = windAmp_[s] * windBp_[s].process(2.f * noise - 1.f);
+      st.setFingerNoise(wn);
+      direct += st.z0() * wn;
+      S += 2.f * st.z0() * st.step(vb, fb, ic.friction, ic.noise, noise, damp);
       // Intonation: slip onsets mark periods in Helmholtz motion.
       const bool sl = st.slipping();
       ++sinceSlip_[s];
@@ -177,7 +206,7 @@ class Instrument {
     const float force = S - zs * u;
     if (coupled) bridge_.advance(force);
     uPrev_ = u;
-    return force;
+    return force + kWindDirect * direct;
   }
 
   void controlTick(const PerformerControls& pc, const InstrumentControls& ic) {
@@ -191,7 +220,15 @@ class Instrument {
       if (!target_[s].stopped || ic.intonation <= 0.f) corr_[s] *= 0.995f;
       const float k = std::pow(2.f, corr_[s] / 1200.f);
       wantHz_[s] = target_[s].hz;
-      str_[s].setGeometry(target_[s].hz * k, target_[s].noteHz * k, beta, target_[s].stopped);
+      str_[s].setGeometry(target_[s].hz * k, target_[s].noteHz * k, beta, target_[s].stopped, target_[s].slide);
+      // Winding noise: the finger rubbing turns of winding at speed v gives a
+      // band of noise around v / pitch (KB §11.2 "Shifts") [T level].
+      const float v = target_[s].slide * def_->winding[s];
+      windAmp_[s] = ic.slideNoise * 0.3f * std::min(v, 2.f);  // ~-18 dB re the note at 1, ~-26 dB at 0.4 [T]
+      if (windAmp_[s] > 0.f) {
+        const float fc = std::clamp(v / def_->windingPitch, 300.f, 0.4f * fs_);
+        windBp_[s].setBandPass(fc, 2.f, fs_);
+      }
     }
     dcR_ = std::exp(-2.f * 3.14159265f * 5.f / host_);
   }
@@ -213,6 +250,8 @@ class Instrument {
   Bridge bridge_;
   bool active_[4]{};
   float uPrev_ = 0.f;
+  BandPass windBp_[4];
+  float windAmp_[4]{};
   StringTarget target_[4];
   float host_ = 48000.f, fs_ = 96000.f;
   int os_ = 2, tick_ = 0;

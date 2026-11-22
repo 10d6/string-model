@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <vector>
 #include "../model/Instrument.h"
 using namespace sm;
@@ -34,6 +35,7 @@ int main(int argc, char** argv) {
   PerformerControls pc; InstrumentControls ic;
   const char* mode = argc > 1 ? argv[1] : "detache";
   if (std::getenv("LAB_COUPLING")) ic.coupling = static_cast<float>(std::atof(std::getenv("LAB_COUPLING")));
+  if (std::getenv("LAB_STRING")) pc.forcedString = std::atoi(std::getenv("LAB_STRING"));
   if (std::getenv("LAB_MUTE")) ic.mute = static_cast<float>(std::atof(std::getenv("LAB_MUTE")));
   if (std::getenv("LAB_FLOOR")) pc.changeFloor = static_cast<float>(std::atof(std::getenv("LAB_FLOOR")));
   if (std::getenv("LAB_MINACC")) pc.minAccel = static_cast<float>(std::atof(std::getenv("LAB_MINACC")));
@@ -43,6 +45,44 @@ int main(int argc, char** argv) {
   if (std::getenv("LAB_BMIN")) pc.sustainBetaMin = static_cast<float>(std::atof(std::getenv("LAB_BMIN")));
   if (std::getenv("LAB_WIDTH")) pc.changeWidth = static_cast<float>(std::atof(std::getenv("LAB_WIDTH")));
   if (std::getenv("LAB_CHANGE")) pc.bowChange = static_cast<float>(std::atof(std::getenv("LAB_CHANGE")));
+  if (!std::strcmp(mode, "release")) {
+    // instrument_lab release <note> <mode 1 lift, 2 stop, 3 finger off> [relVel]:
+    // hold 1 s, let go; how fast the level falls, and the pitch that rings on.
+    const int note = argc > 2 ? std::atoi(argv[2]) : 71;
+    pc.releaseMode = argc > 3 ? std::atoi(argv[3]) : 1;
+    const float relVel = argc > 4 ? static_cast<float>(std::atof(argv[4])) : 0.5f;
+    inst.performer().noteOn(note, 0.7f, pc);
+    std::vector<float> out;
+    for (int i = 0; i < static_cast<int>(sr * 2.5f); ++i) {
+      if (i == static_cast<int>(sr * 1.0f)) inst.performer().noteOff(note, relVel, pc);
+      out.push_back(inst.process(pc, ic));
+    }
+    auto rms = [&](float t, float len) {
+      double e = 0; const int a = static_cast<int>(t * sr), n = static_cast<int>(len * sr);
+      for (int i = a; i < a + n; ++i) e += static_cast<double>(out[static_cast<std::size_t>(i)]) * out[static_cast<std::size_t>(i)];
+      return 10.0 * std::log10(e / n + 1e-30);
+    };
+    const double ref = rms(0.9f, 0.1f);
+    double t20 = -1, t40 = -1;
+    for (float t = 1.0f; t < 2.49f; t += 0.005f) {
+      const double l = rms(t, 0.005f) - ref;
+      if (t20 < 0 && l < -20) t20 = t - 1.0;
+      if (t40 < 0 && l < -40) { t40 = t - 1.0; break; }
+    }
+    // Pitch 0.15-0.45 s after release (autocorrelation over 60-2000 Hz).
+    const int a = static_cast<int>(1.15f * sr), n = static_cast<int>(0.3f * sr);
+    int best = 0; double bestC = -1e30;
+    for (int lag = static_cast<int>(sr / 2000); lag < static_cast<int>(sr / 60); ++lag) {
+      double c = 0;
+      for (int i = a; i < a + n; ++i) c += static_cast<double>(out[static_cast<std::size_t>(i)]) * out[static_cast<std::size_t>(i + lag)];
+      if (c > bestC) { bestC = c; best = lag; }
+    }
+    const double hz = sr / best, midi = 69 + 12 * std::log2(hz / 440);
+    std::printf("note %d, release %d: -20 dB after %s, -40 dB after %s; rings at %.1f Hz (MIDI %.1f)\n", note, pc.releaseMode,
+                t20 < 0 ? "> 1.5 s" : (std::to_string(static_cast<int>(t20 * 1000)) + " ms").c_str(),
+                t40 < 0 ? "> 1.5 s" : (std::to_string(static_cast<int>(t40 * 1000)) + " ms").c_str(), hz, midi);
+    return 0;
+  }
   if (!std::strcmp(mode, "bridge")) {
     // |Y| of the bridge at a few frequencies (s/kg).
     std::printf("%d modes\n", inst.bridge().modeCount());
@@ -95,7 +135,7 @@ int main(int argc, char** argv) {
         std::printf("note %d on string %d, bowing:   ", note, inst.performer().currentString());
         for (int s = 0; s < 4; ++s) std::printf("%s %6.1f  ", inst.def().strings[s].name, db(inst.string(s).level()));
         std::printf("\n");
-        inst.performer().noteOff(note, pc);
+        inst.performer().noteOff(note, 0.5f, pc);
       }
       inst.process(pc, ic);
     }
@@ -198,7 +238,7 @@ int main(int argc, char** argv) {
     const int idx = static_cast<int>(t / step);
     if (idx < 9 && !on && idx == ni) { inst.performer().noteOn(notes[idx], 0.7f, pc); on = true; }
     if (on && t >= ni * step + dur) {
-      inst.performer().noteOff(notes[ni], pc); on = false;
+      inst.performer().noteOff(notes[ni], 0.5f, pc); on = false;
       std::printf("note %d str %d  rms %.1f dB  vb %+.3f  beta %.3f  bowpos %.2f\n", notes[ni], inst.performer().currentString(),
                   10 * std::log10(e / cnt + 1e-20), inst.performer().bowVelocity(), inst.performer().beta(), inst.performer().bowPosition());
       e = 0; cnt = 0; ++ni;

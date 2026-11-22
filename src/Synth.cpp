@@ -60,7 +60,7 @@ std::vector<float> resampleIr(const float* x, int n, double from, double to) {
 }  // namespace
 
 struct StringModel : Synth {
-  Param autoChange, sustainSpeed, coupling, chordWindow, rollTime, hill, mute, resonance, width;
+  Param autoChange, sustainSpeed, coupling, chordWindow, rollTime, hill, mute, resonance, width, releaseMode, slideNoise, stringSel, keyswitches;
   Param instrument, dynamics, velSens, pressure, atPressure, contact, bite, legato, bowChange, noise, friction;
   Param vibDepth, vibRate, vibDelay, shiftTime, intonation, output, roomMix, roomSpace;
   Param bendRange, a4;
@@ -77,6 +77,7 @@ struct StringModel : Synth {
     bowChange = b.add("bow.change").name("Bow Change").range(0.008, 0.2).def(0.02).unit("s").smoothing(0).group("Bow");
     autoChange = b.add("bow.auto").name("Auto Bow Change").toggle().def(1).group("Bow");
     sustainSpeed = b.add("bow.sustain").name("Long-Note Bow Speed").range(0.25, 1).def(0.6).smoothing(0).group("Bow");
+    releaseMode = b.add("bow.release").name("Release").choices({"Auto (Key-Up Speed)", "Lift", "Stop on String", "Finger Off"}).def(0).group("Bow");
     noise = b.add("bow.noise").name("Rosin Noise").range(0, 0.5).def(0.12).smoothing(0).group("Bow");
     friction = b.add("bow.friction").name("Friction Model").choices({"Thermal", "Classic"}).group("Bow");
     chordWindow = b.add("chord.window").name("Chord Window").range(0, 0.08).def(0.035).unit("s").smoothing(0).group("Bow");
@@ -85,6 +86,9 @@ struct StringModel : Synth {
     vibRate = b.add("vib.rate").name("Vibrato Rate").range(3, 9).def(5.5).unit("Hz").smoothing(0).group("Left Hand");
     vibDelay = b.add("vib.delay").name("Vibrato Delay").range(0, 1).def(0.25).unit("s").smoothing(0).group("Left Hand");
     shiftTime = b.add("finger.shift").name("Shift Time").range(0, 0.3).def(0.04).unit("s").smoothing(0).group("Left Hand");
+    stringSel = b.add("string.select").name("String").choices({"Auto", "G", "D", "A", "E"}).def(0).group("Left Hand");
+    keyswitches = b.add("string.keys").name("String Keyswitches").toggle().def(1).group("Left Hand");
+    slideNoise = b.add("finger.noise").name("Slide Noise").range(0, 1).def(0.4).smoothing(0).group("Left Hand");
     intonation = b.add("finger.intonation").name("Intonation").range(0, 1).def(0.8).smoothing(0).group("Left Hand");
     coupling = b.add("body.coupling").name("Body Coupling").range(0, 2).def(1).smoothing(0).group("Instrument");
     hill = b.add("body.hill").name("Bridge Hill").range(1800, 3400).log().def(2600).unit("Hz").smoothing(0).group("Instrument");
@@ -137,7 +141,14 @@ struct StringModel : Synth {
     // Anything left from the last host block (shouldn't happen) applies now.
     for (int i = 0; i < queued_; ++i) queue_[i].sample = 0;
     blockPos_ = 0;
+    const bool keys = ctx.on(keyswitches);
     for (auto& e : ctx.in()) {
+      // String keyswitches: C1 Auto, C#1 G, D1 D, D#1 A, E1 E. They set the
+      // String parameter (the page and host follow) and don't sound.
+      if (keys && (e.isNoteOn() || e.isNoteOff()) && e.note >= kKeyswitchLow && e.note < kKeyswitchLow + 5) {
+        if (e.isNoteOn()) ctx.setParam(stringSel, static_cast<float>(e.note - kKeyswitchLow));
+        continue;
+      }
       if (queued_ < kQueue) queue_[queued_++] = e;
       ctx.out(e);  // the silent voices follow the keys
     }
@@ -158,7 +169,7 @@ struct StringModel : Synth {
     if (e.isNoteOn()) {
       p.noteOn(e.note, e.vel, pc_);
     } else if (e.isNoteOff()) {
-      p.noteOff(e.note, pc_);
+      p.noteOff(e.note, e.type == MidiEvent::Type::NoteOff && e.vel > 0.f ? e.vel : 64.f / 127.f, pc_);
     } else if (e.type == MidiEvent::Type::PitchBend) {
       pitchBend_ = e.value;
     } else if (e.type == MidiEvent::Type::ChannelPressure || e.type == MidiEvent::Type::PolyPressure) {
@@ -181,6 +192,8 @@ struct StringModel : Synth {
     pc_.legato = ctx.on(legato);
     pc_.bowChange = ctx.get(bowChange);
     pc_.autoChange = ctx.on(autoChange);
+    pc_.releaseMode = ctx.choice(releaseMode);
+    pc_.forcedString = ctx.choice(stringSel) - 1;
     pc_.sustainSpeed = ctx.get(sustainSpeed);
     pc_.chordWindow = ctx.get(chordWindow);
     pc_.rollTime = ctx.get(rollTime);
@@ -193,6 +206,7 @@ struct StringModel : Synth {
     ic_.noise = ctx.get(noise);
     ic_.intonation = ctx.get(intonation);
     ic_.coupling = ctx.get(coupling);
+    ic_.slideNoise = ctx.get(slideNoise);
     ic_.hillHz = ctx.get(hill);
     // The mute goes on over ~80 ms (it's put on by hand), on the samples'
     // own clock below.
@@ -260,6 +274,7 @@ struct StringModel : Synth {
 
  private:
   static constexpr int kQueue = 512;
+  static constexpr int kKeyswitchLow = 24;  // C1
   static constexpr float kWet = 0.12f;
   double sr_ = 48000;
   sm::Instrument inst_;

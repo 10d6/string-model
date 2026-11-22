@@ -94,6 +94,7 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
 ## CI
 
 Every PR: native checks, the browser page (Chromium test + browser-vs-native
-comparison), a Pages preview linked on the PR, and plugin builds for Windows,
-macOS and Linux (plugin check, pluginval, auval) with a zip per OS. A `v*` tag
-publishes a release. The steps live in `synthkit/tools/ci/`.
+comparison) and a Pages preview linked on the PR. Plugin builds for Windows,
+macOS and Linux (plugin check, pluginval, auval; a zip per OS) are off for
+PRs at the owner's request: they run for `v*` tags (which publish a release)
+and when CI is run by hand (Actions → CI → Run workflow, "plugins" ticked). The steps live in `synthkit/tools/ci/`.

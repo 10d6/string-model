@@ -19,17 +19,21 @@ How it works: [docs/MODEL.md](docs/MODEL.md). Roadmap: [docs/PLAN.md](docs/PLAN.
 | Aftertouch | bow pressure: airy ↔ crunchy |
 | CC 74 | contact point: sul tasto ↔ sul ponticello |
 | Pitch bend | the finger slides |
-| Overlapping keys | slur (same bow); separate keys change bow |
+| Overlapping keys | slur (same bow); separate keys change bow; slur velocity sets the slide speed |
+| Keys pressed together | double stop (2) or rolled chord (3–4) |
+| Key-up speed | Release Auto: a quick release stops the bow on the string, a gentle one lifts it |
+| C1, C#1, D1, D#1, E1 | keyswitches: string Auto, G, D, A, E (sul G, sul D…) |
 
 ## Playing it
 
 - **In the browser:** every PR gets a preview link (posted on the PR), and
   `main` is at the repo's GitHub Pages site. This needs GitHub Pages turned
   on once: Settings → Pages → Deploy from a branch → `gh-pages` / root.
-- **In your DAW:** each PR's CI run has a **plugin-windows**, **plugin-macos**
-  and **plugin-linux** download (under *Checks → CI → Summary → Artifacts*).
-  Unzip it and follow `INSTALL.md` inside. Tagging a version (`v0.2.0`)
-  publishes them as a release.
+- **In your DAW:** plugin builds are off for PRs (they're slow). To get
+  them, run CI by hand (Actions → CI → Run workflow, "plugins" ticked) and
+  download **plugin-windows**, **plugin-macos** or **plugin-linux** from that
+  run's Artifacts, or tag a version (`v0.2.0`), which publishes a release.
+  Unzip and follow `INSTALL.md` inside.
 
 ## Building
 

@@ -76,6 +76,10 @@
           "param": "bow.noise"
         },
         {
+          "param": "bow.release",
+          "type": "menu"
+        },
+        {
           "param": "bow.legato"
         }
       ]
@@ -108,6 +112,16 @@
         },
         {
           "param": "finger.intonation"
+        },
+        {
+          "param": "finger.noise"
+        },
+        {
+          "param": "string.select",
+          "type": "menu"
+        },
+        {
+          "param": "string.keys"
         }
       ]
     },
@@ -157,7 +171,12 @@
     "body.hill": "The bridge's main resonance on the body (the 'bridge hill', around 2.6 kHz on a violin): lower is darker and warmer, higher is brighter. It moves the string's damping too, not just the tone.",
     "body.mute": "A mute on the bridge: its extra mass lowers and weakens the bridge hill, so the tone goes veiled and quieter in the highs.",
     "body.resonance": "The low body resonances' peaks and dips, which make some notes louder than their neighbours (around C#5-D5 especially). 1: as measured on a real violin. 0: smoothed out, for an even instrument. (Modelled output.)",
-    "out.width": "Stereo width of the body's upper range, where the two channels hear different patterns of resonances. 0: mono. (Modelled output.)"
+    "out.width": "Stereo width of the body's upper range, where the two channels hear different patterns of resonances. 0: mono. (Modelled output.)",
+    "bow.release": "How a note ends when you let go. Lift: the bow leaves and the string rings on. Stop on String: the bow stops on the string and damps it, for a short, clean end. Finger Off: the bow leaves, then the finger, so the note falls to the open string. Auto: a quick key-up stops, a gentle one lifts (needs a keyboard that sends key-up speed).",
+    "finger.shift": "How long a slurred shift slides. Bigger intervals slide longer, and key velocity sets the speed: a gentle key slides slowly and expressively, a hard one shifts quickly.",
+    "finger.noise": "The whistle of the finger sliding over the string's winding during shifts (G, D and A strings; the steel E is plain).",
+    "string.select": "Which string plays the notes. Auto picks the usual string. G, D, A or E play every note that string reaches (up to two octaves above it): sul G and sul D give a darker, more intense sound.",
+    "string.keys": "Keys C1 to E1 choose the string without sounding: C1 Auto, C#1 G, D1 D, D#1 A, E1 E."
   },
   "keyboard": true
 }
