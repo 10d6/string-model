@@ -68,7 +68,7 @@ struct PerformerControls {
   float tremoloRate = 12.2f;  // bow reversals per second (VSCO solo violin median, KB §11.2)
 };
 
-enum Articulation { kArco = 0, kMartele, kSpiccato, kTremolo, kPizzicato, kHarmonics };
+enum Articulation { kArco = 0, kMartele, kSpiccato, kTremolo, kPizzicato, kHarmonics, kSautille };
 
 struct StringTarget {
   float hz = 440.f;        // sounding pitch incl. vibrato and bend
@@ -133,6 +133,10 @@ class Performer {
   // Keys ---------------------------------------------------------------
   void noteOn(int note, float vel, const PerformerControls& c) {
     prime(c);
+    // Sautillé follows the playing tempo: the time between key presses.
+    const float gap = now_ - lastOn_;
+    lastOn_ = now_;
+    if (gap > 0.04f && gap < 0.3f) noteGap_ += 0.5f * (gap - noteGap_);
     removeHeld(note);
     if (nHeld_ < kMaxHeld) {
       held_[nHeld_] = note;
@@ -238,7 +242,7 @@ class Performer {
     }
     // Bow-stroke templates (Demoucron, KB §11.5) set the bow's speed directly.
     templateForce_ = -1.f;
-    if (bowing_ && (art_ == kMartele || art_ == kSpiccato || art_ == kTremolo)) strokeTemplate(c, dt, want);
+    if (bowing_ && (art_ == kMartele || art_ == kSpiccato || art_ == kTremolo || art_ == kSautille)) strokeTemplate(c, dt, want);
     if (rounding_ && (!bowing_ || stopping_ || templateForce_ >= 0.f)) rounding_ = false;
     if (rounding_) {
       // Automatic reversal: half-cosine from the old speed to the new target
@@ -683,6 +687,25 @@ class Performer {
       const float drop = u < 0.2f ? 0.5f * (fp - fmin) * (1.f + std::cos(3.14159265f * u / 0.2f)) : 0.f;
       const float ripple = 0.15f * fp * std::exp(-u / 0.08f) * std::cos(6.2831853f * 13.f * u);
       templateForce_ = std::max(0.f, fmin + drop + ripple);
+    } else if (art_ == kSautille) {
+      // The bow bounces by itself (Guettler & Askenfelt 1997, KB §11.5): the
+      // speed is a sine at half the note rate (one note per half cycle,
+      // starting at the reversal) and the force a cosine at the note rate,
+      // clipped at 0 (briefly in the air), peaking 53 degrees of its cycle
+      // after the reversal: their "perfect" phase. The cycle is the time
+      // between key presses (60-200 ms). Peak force as spiccato (x0.4 of
+      // Demoucron's 0.5-3 N).
+      const float T = std::clamp(noteGap_, 0.06f, 0.2f);
+      const float fm = 0.4f * (0.5f + 2.5f * std::pow(d, 1.5f));
+      const float vm = 0.08f + 0.6f * std::pow(d, 1.2f);
+      if (t < T) {
+        const float ph = 6.2831853f * t / T - 0.925f;  // 53 degrees
+        templateForce_ = std::max(0.f, fm * (0.35f + 0.65f * std::cos(ph)));
+        want = dir_ * vm * std::sin(3.14159265f * t / T);
+      } else {
+        templateForce_ = 0.f;  // no next note: the bow leaves the string
+        want = 0.f;
+      }
     } else if (art_ == kSpiccato) {
       // Thrown: a ~75 ms force bell (rise a little faster than the fall) with a
       // half-sine stroke, then in the air. Demoucron measured 0.5 N (p) to 3 N
@@ -821,7 +844,7 @@ class Performer {
       const float floorBeta = std::min(attackBeta, c.sustainBetaMin);
       beta = std::max(beta, floorBeta);
     }
-    if (art_ == kSpiccato) beta = 0.18f - 0.1f * d;   // Demoucron: 58 / 40 / 29 mm at p / mf / f
+    if (art_ == kSpiccato || art_ == kSautille) beta = 0.18f - 0.1f * d;   // Demoucron: 58 / 40 / 29 mm at p / mf / f
     if (art_ == kPizzicato) beta = pluckBeta_;        // the pluck point
     // A touched string vibrates in k segments, like a string 1/k as long:
     // the bow goes k times closer to the bridge (relative), with less force
@@ -877,6 +900,7 @@ class Performer {
   bool stopping_ = false, muting_ = false;
   float stopStart_ = 0.f, damp_ = 0.f, muteStart_ = 0.f;
   int art_ = kArco;
+  float lastOn_ = -1.f, noteGap_ = 0.1f;
   float templateForce_ = -1.f, tremPhase_ = 0.f, tremRateJit_ = 1.f, tremForceJit_ = 1.f;
   float pluckStart_[4]{-1.f, -1.f, -1.f, -1.f}, pluckF_[4]{}, pluckRise_[4]{}, pluckRel_[4]{}, pluckDir_[4]{1, 1, 1, 1};
   float pluckCos_[4]{1, 1, 1, 1}, pluckSin_[4]{};

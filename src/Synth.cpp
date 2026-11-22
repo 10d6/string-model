@@ -67,7 +67,7 @@ struct StringModel : Synth {
 
   void defineParams(ParamBuilder& b) override {
     instrument = b.add("instrument").name("Instrument").choices({"Violin"}).group("Instrument");
-    artic = b.add("artic").name("Articulation").choices({"Arco", "Martelé", "Spiccato", "Tremolo", "Pizzicato", "Harmonics"}).def(0).group("Instrument");
+    artic = b.add("artic").name("Articulation").choices({"Arco", "Martelé", "Spiccato", "Tremolo", "Pizzicato", "Harmonics", "Sautillé"}).def(0).group("Instrument");
     tremRate = b.add("artic.tremRate").name("Tremolo Rate").range(6, 18).def(12.2).unit("/s").smoothing(0).group("Bow");
     dynamics = b.add("bow.dynamics").name("Dynamics").range(0, 1).def(0.55).smoothing(0).group("Bow").cc(1).cc(11);
     velSens = b.add("bow.velSens").name("Velocity → Dynamics").range(0, 1).def(0.7).smoothing(0).group("Bow");
@@ -147,8 +147,8 @@ struct StringModel : Synth {
     for (auto& e : ctx.in()) {
       // Keyswitches set a parameter (the page and host follow) and don't sound:
       // C1 Auto, C#1 G, D1 D, D#1 A, E1 E (String);
-      // F1 Arco, F#1 Martelé, G1 Spiccato, G#1 Tremolo, A1 Pizzicato, A#1 Harmonics.
-      if (keys && (e.isNoteOn() || e.isNoteOff()) && e.note >= kKeyswitchLow && e.note < kKeyswitchLow + 11) {
+      // F1 Arco, F#1 Martelé, G1 Spiccato, G#1 Tremolo, A1 Pizzicato, A#1 Harmonics, B1 Sautillé.
+      if (keys && (e.isNoteOn() || e.isNoteOff()) && e.note >= kKeyswitchLow && e.note < kKeyswitchLow + 12) {
         if (e.isNoteOn()) {
           const int k = e.note - kKeyswitchLow;
           if (k < 5) ctx.setParam(stringSel, static_cast<float>(k));
