@@ -65,7 +65,10 @@ struct PerformerControls {
   // Articulation for new notes (KB §11.2, §11.5): 0 Arco, 1 Martelé,
   // 2 Spiccato, 3 Tremolo, 4 Pizzicato, 5 Harmonics.
   int articulation = 0;
-  float tremoloRate = 12.2f;  // bow reversals per second (VSCO solo violin median, KB §11.2)
+  float tremoloRate = 12.2f;
+  // Player habits (instrument-research player_technique_and_responsiveness.md).
+  float intonStyle = 0.7f;   // 0 equal temperament .. 1 expressive (§3.2)
+  float vibShape = 0.7f;     // 0 the same vibrato on every note .. 1 by context (§3.1)  // bow reversals per second (VSCO solo violin median, KB §11.2)
 };
 
 enum Articulation { kArco = 0, kMartele, kSpiccato, kTremolo, kPizzicato, kHarmonics, kSautille };
@@ -128,6 +131,9 @@ class Performer {
     now_ = 0.f;
     accent_ = 0.f;
     rng_ = 0x12345678u;
+    for (float& w : pcWeight_) w = 0.f;
+    keyCenter_ = 1;
+    vibShapeK_ = 1.f;
   }
 
   // Keys ---------------------------------------------------------------
@@ -137,6 +143,8 @@ class Performer {
     const float gap = now_ - lastOn_;
     lastOn_ = now_;
     if (gap > 0.04f && gap < 0.3f) noteGap_ += 0.5f * (gap - noteGap_);
+    hearKey(note);
+    shapeVibrato(note, gap, c);
     removeHeld(note);
     if (nHeld_ < kMaxHeld) {
       held_[nHeld_] = note;
@@ -289,6 +297,7 @@ class Performer {
       if (force_[s] < 1e-4f && goal == 0.f) force_[s] = 0.f;
     }
     noteAge_ += dt;
+    keyAge_ += dt;
     vibPhase_ += vibRateNow_ * dt;
     if (vibPhase_ >= 1.f) {
       vibPhase_ -= 1.f;
@@ -331,7 +340,9 @@ class Performer {
       const bool stopped = stopped_[s] || (lead && std::fabs(c.bend) > 0.01f);
       // Open strings are tuned a little sharp at rest (InstrumentDef): the bow
       // pulls them down. Plucked, there is no bow, so they sound at pitch.
-      const float tune = stopped || art_ == kPizzicato ? 0.f : def_->openTuneCents[s] * 0.01f;
+      float tune = stopped || art_ == kPizzicato ? 0.f : def_->openTuneCents[s] * 0.01f;
+      // Open strings in pure fifths around A (G -3.9, D -2.0, E +2.0 cents).
+      if (!stopped) tune += 0.01f * c.intonStyle * openPureCents(s);
       const float noteHz = mtof(n + tune, c.a4);
       float vib = 0.f;
       if (stopped && (lead || s == str_)) vib = vibCents_ * std::sin(6.2831853f * vibPhase_);
@@ -377,7 +388,12 @@ class Performer {
     const float age = noteAge_ - c.vibDelay;
     const float ramp = age <= 0.f ? 0.f : std::min(1.f, age / 0.35f);
     // Peak-to-peak depth given; amplitude is half. Louder = wider, faster.
-    vibCents_ = 0.5f * c.vibDepth * (0.6f + 0.8f * d) * ramp * vibDepthJit_;
+    // Shaped by context (shapeVibrato), and on long strokes it keeps growing
+    // a little for ~1.5 s, as players' vibrato does [T].
+    const float grow = 1.f - c.vibShape * 0.25f * (1.f - std::min(1.f, std::max(0.f, age) / 1.5f));
+    const float fast = vibFast_ * std::max(0.f, 1.f - keyAge_ / 0.5f);
+    vibShapeK_ = 1.f + c.vibShape * (vibReg_ * (1.f - 0.7f * fast) - 1.f);
+    vibCents_ = 0.5f * c.vibDepth * (0.6f + 0.8f * d) * ramp * vibDepthJit_ * vibShapeK_ * grow;
     vibRateNow_ = c.vibRate * (0.9f + 0.2f * d) * vibRateJit_;
     // Fingers leave strings the bow has left, so they ring open (a "finger
     // off" release lifts the playing finger too, soon after the bow).
@@ -510,6 +526,7 @@ class Performer {
       shiftT_[s] = 1.f;
       stopped_[s] = notes[j] != def_->strings[s].openNote;
     }
+    tuneChord(n, c);
     note_ = notes[n - 1];
     str_ = chordStr_[n - 1];
     vel_now_ = vel;
@@ -583,6 +600,7 @@ class Performer {
       }
     }
     const bool open = static_cast<int>(n) == def_->strings[s].openNote;
+    if (!open) n += 0.01f * c.intonStyle * melodicCents(note);  // the sounding note's tuning
     // Finger: shift on the same string while sounding; jump otherwise.
     const bool sounding = force_[s] > 0.f || (s == str_ && bowing_);
     if (sounding && slur) {
@@ -654,6 +672,86 @@ class Performer {
       // the synth: octaves within ~5 cents, thirds/quarters within ~15 [T].
       if (touchQ_[s] > 0.f) fFactor_[s] *= touchQ_[s] < 0.3f ? 0.15f : 0.3f;
     }
+    // Double stops: more weight on the lower string so the upper one doesn't
+    // go flat (player doc §2.6) [T: 1.12 / 0.9].
+    if (count == 2) {
+      int lo = -1, hi = -1;
+      for (int s = 0; s < 4; ++s)
+        if (bowed_[s]) (lo < 0 ? lo : hi) = s;
+      fFactor_[lo] *= 1.12f;
+      fFactor_[hi] *= 0.9f;
+    }
+  }
+
+  // Intonation (player doc §3.2) ---------------------------------------
+  // Players tune by fifths from the open strings (Pythagorean-leaning),
+  // which raises leading tones in the usual keys and makes a note matching
+  // an open string ring it; double stops are tuned pure. Each note's place on
+  // the chain of fifths depends on the key, estimated from recent notes.
+  static int chainOf(int pc) {  // fifths above A, 0..11
+    int k = (7 * (pc - 9)) % 12;
+    return k < 0 ? k + 12 : k;
+  }
+  void hearKey(int note) {
+    // Krumhansl-Kessler major profile against a decaying pitch-class count
+    // (~7 notes of memory); relative minors share the key signature.
+    static constexpr float kProfile[12] = {6.35f, 2.23f, 3.48f, 2.33f, 4.38f, 4.09f, 2.52f, 5.19f, 2.39f, 3.66f, 2.29f, 2.88f};
+    for (float& w : pcWeight_) w *= 0.85f;
+    pcWeight_[((note % 12) + 12) % 12] += 1.f;
+    int best = 2;
+    float bestScore = -1.f;
+    for (int t = 0; t < 12; ++t) {
+      float sc = 0.f;
+      for (int pc = 0; pc < 12; ++pc) sc += pcWeight_[pc] * kProfile[(pc - t + 12) % 12];
+      if (sc > bestScore + 1e-4f) bestScore = sc, best = t;
+    }
+    int k = chainOf(best);
+    if (k > 5) k -= 12;
+    keyCenter_ = k + 2;  // the middle of the major scale's span on the chain (-1..+5 from the tonic)
+  }
+  // Cents from equal temperament: Pythagorean, the note spelled nearest the
+  // key (from 5 fifths flat to 6 sharp of its centre, so minor-key leading
+  // tones are sharps). A Pythagorean fifth is 1.955 cents wide.
+  float melodicCents(int note) const {
+    int rel = ((chainOf(((note % 12) + 12) % 12) - keyCenter_) % 12 + 12) % 12;
+    if (rel > 6) rel -= 12;
+    return 1.955f * static_cast<float>(keyCenter_ + rel);
+  }
+  float openPureCents(int s) const {
+    int k = chainOf(def_->strings[s].openNote % 12);
+    if (k > 5) k -= 12;
+    return 1.955f * static_cast<float>(k);
+  }
+  // Pure intervals, cents from equal temperament, by semitones mod 12.
+  static float justCents(int semis) {
+    static constexpr float kJust[12] = {0.f, 11.7f, 3.9f, 15.6f, -13.7f, -2.0f, -9.8f, 2.0f, 13.7f, -15.6f, -3.9f, -11.7f};
+    const int m = ((semis % 12) + 12) % 12;
+    return kJust[m];
+  }
+  // A chord's notes pure against one reference: an open string if it has one
+  // (it can't be retuned), else its lowest note at its melodic tuning.
+  void tuneChord(int n, const PerformerControls& c) {
+    int ref = 0;
+    for (int j = 0; j < n; ++j)
+      if (!stopped_[chordStr_[j]]) ref = j;
+    const bool refOpen = !stopped_[chordStr_[ref]];
+    const float refCents = refOpen ? openPureCents(chordStr_[ref]) : melodicCents(chordNote_[ref]);
+    for (int j = 0; j < n; ++j) {
+      const int s = chordStr_[j];
+      if (!stopped_[s]) continue;
+      const int iv = chordNote_[j] - chordNote_[ref];
+      const float cents = refCents + (iv >= 0 ? justCents(iv) : -justCents(-iv));
+      fingerFrom_[s] = fingerTo_[s] = static_cast<float>(chordNote_[j]) + 0.01f * c.intonStyle * cents;
+    }
+  }
+
+  // Vibrato by context (player doc §3.1): wider higher up; narrow in fast
+  // passages (the time since the last key: under ~0.12 s, ~30%), opening up
+  // over half a second if the note is held [T].
+  void shapeVibrato(int note, float gap, const PerformerControls&) {
+    vibReg_ = std::clamp(1.f + 0.25f * static_cast<float>(note - 69) / 12.f, 0.8f, 1.35f);
+    vibFast_ = std::clamp((0.28f - gap) / 0.16f, 0.f, 1.f);
+    keyAge_ = 0.f;
   }
 
   float currentFinger(int s) const {
@@ -740,10 +838,11 @@ class Performer {
     const int s = chooseString(note, false, c.forcedString);
     vel_now_ = vel;
     note_ = note;
-    const float n = static_cast<float>(std::max(note, def_->strings[0].openNote - 7));
+    float n = static_cast<float>(std::max(note, def_->strings[0].openNote - 7));
+    stopped_[s] = note != def_->strings[s].openNote;
+    if (stopped_[s]) n += 0.01f * c.intonStyle * melodicCents(note);
     fingerFrom_[s] = fingerTo_[s] = n;
     shiftT_[s] = 1.f;
-    stopped_[s] = note != def_->strings[s].openNote;
     for (float& q : touchQ_) q = 0.f;
     str_ = s;
     noteAge_ = 0.f;
@@ -900,7 +999,9 @@ class Performer {
   bool stopping_ = false, muting_ = false;
   float stopStart_ = 0.f, damp_ = 0.f, muteStart_ = 0.f;
   int art_ = kArco;
-  float lastOn_ = -1.f, noteGap_ = 0.1f;
+  float lastOn_ = -1.f, noteGap_ = 0.1f, vibShapeK_ = 1.f, vibReg_ = 1.f, vibFast_ = 0.f, keyAge_ = 0.f;
+  float pcWeight_[12]{};
+  int keyCenter_ = 1;  // D major until notes say otherwise
   float templateForce_ = -1.f, tremPhase_ = 0.f, tremRateJit_ = 1.f, tremForceJit_ = 1.f;
   float pluckStart_[4]{-1.f, -1.f, -1.f, -1.f}, pluckF_[4]{}, pluckRise_[4]{}, pluckRel_[4]{}, pluckDir_[4]{1, 1, 1, 1};
   float pluckCos_[4]{1, 1, 1, 1}, pluckSin_[4]{};

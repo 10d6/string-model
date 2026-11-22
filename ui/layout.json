@@ -34,7 +34,22 @@
           "label": "Bridge Hill"
         },
         {
+          "param": "body.brilliance"
+        },
+        {
           "param": "body.resonance"
+        },
+        {
+          "param": "body.a0"
+        },
+        {
+          "param": "body.nasal"
+        },
+        {
+          "param": "body.softness"
+        },
+        {
+          "param": "body.voice"
         },
         {
           "param": "out.width"
@@ -115,10 +130,16 @@
           "param": "vib.delay"
         },
         {
+          "param": "vib.shape"
+        },
+        {
           "param": "finger.shift"
         },
         {
           "param": "finger.intonation"
+        },
+        {
+          "param": "finger.style"
         },
         {
           "param": "finger.noise"

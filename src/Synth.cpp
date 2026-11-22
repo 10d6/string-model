@@ -60,7 +60,7 @@ std::vector<float> resampleIr(const float* x, int n, double from, double to) {
 }  // namespace
 
 struct StringModel : Synth {
-  Param autoChange, sustainSpeed, coupling, chordWindow, rollTime, hill, mute, resonance, width, releaseMode, slideNoise, stringSel, keyswitches, artic, tremRate;
+  Param autoChange, sustainSpeed, coupling, chordWindow, rollTime, hill, mute, resonance, a0, nasal, brilliance, softness, voice, width, releaseMode, slideNoise, stringSel, keyswitches, artic, tremRate, intonStyle, vibShape;
   Param instrument, dynamics, velSens, pressure, atPressure, contact, bite, legato, bowChange, noise, friction;
   Param vibDepth, vibRate, vibDelay, shiftTime, intonation, output, roomMix, roomSpace;
   Param bendRange, a4;
@@ -100,6 +100,15 @@ struct StringModel : Synth {
     width = b.add("out.width").name("Stereo Width").range(0, 1).def(1).smoothing(0).group("Output");
     roomMix = b.add("room.mix").name("Room").range(0, 100).def(20).unit("%").group("Output");
     roomSpace = b.add("room.space").name("Space").choices({"Room", "Chamber", "Hall", "Cathedral", "Plate"}).def(2).group("Output");
+    // Body character (KB §5.8): offsets from the measured violin, in dB.
+    a0 = b.add("body.a0").name("Air Resonance").range(-9, 9).def(0).unit("dB").smoothing(0).group("Body");
+    nasal = b.add("body.nasal").name("Nasality").range(-9, 9).def(0).unit("dB").smoothing(0).group("Body");
+    brilliance = b.add("body.brilliance").name("Brilliance").range(-9, 9).def(0).unit("dB").smoothing(0).group("Body");
+    softness = b.add("body.softness").name("Softness").range(-6, 12).def(0).unit("dB").smoothing(0).group("Body");
+    voice = b.add("body.voice").name("Voice").range(-10, 10).def(0).unit("%").smoothing(0).group("Body");
+    // Player habits (instrument-research player_technique_and_responsiveness.md).
+    intonStyle = b.add("finger.style").name("Intonation Style").range(0, 1).def(0.7).smoothing(0).group("Left Hand");
+    vibShape = b.add("vib.shape").name("Vibrato Shaping").range(0, 1).def(0.7).smoothing(0).group("Left Hand");
   }
 
   std::unique_ptr<Voice> makeVoice() override { return std::make_unique<SilentVoice>(); }
@@ -203,6 +212,8 @@ struct StringModel : Synth {
     pc_.forcedString = ctx.choice(stringSel) - 1;
     pc_.articulation = ctx.choice(artic);
     pc_.tremoloRate = ctx.get(tremRate);
+    pc_.intonStyle = ctx.get(intonStyle);
+    pc_.vibShape = ctx.get(vibShape);
     pc_.sustainSpeed = ctx.get(sustainSpeed);
     pc_.chordWindow = ctx.get(chordWindow);
     pc_.rollTime = ctx.get(rollTime);
@@ -225,6 +236,11 @@ struct StringModel : Synth {
     rs.hillHz = ctx.get(hill);
     rs.resonance = ctx.get(resonance);
     rs.width = ctx.get(width);
+    rs.a0 = ctx.get(a0);
+    rs.nasal = ctx.get(nasal);
+    rs.brilliance = ctx.get(brilliance);
+    rs.softness = ctx.get(softness);
+    rs.voice = 0.01f * ctx.get(voice);
     const int mode = ctx.choice(output);
     const float bendSt = ctx.get(bendRange);
     const float gain = inst_.def().outputGain;

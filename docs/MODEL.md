@@ -422,6 +422,56 @@ the wanted period, and the finger moves to correct it. The correction is
 the motion is steadily periodic (±4%). Open strings stay flat, as on a real
 violin.
 
+### Player habits (instrument-research `player_technique_and_responsiveness.md`)
+
+What players measurably do, so a keyboard sounds like a musician without
+extra controls. Each one has an amount, on at moderate settings by default.
+
+**`Intonation Style`** (0 equal temperament … 1 expressive, default 0.7;
+player doc §3.2). It sets the target that the intonation loop above aims for:
+- **Open strings in pure fifths** around A: G −3.9, D −2.0, E +2.0 cents.
+- **Stopped notes by fifths from the open strings** (Pythagorean). A fifth is
+  1.955 cents wide, so each note's place on the chain of fifths sets its
+  tuning. This raises leading tones in the usual keys: C# +7.8 in D, G# +9.8
+  in A. Notes matching an open string match it exactly, so it rings in
+  sympathy (player doc: the player's tuning cue).
+- **Which spelling.** A note's place on the chain depends on the key. The key
+  comes from a decaying count of recent pitch classes (~7 notes) against the
+  Krumhansl–Kessler major profile. Each note is spelled within 5 fifths flat
+  to 6 sharp of the key's centre, so minor-key leading tones are sharps.
+- **Double stops and chords pure** against one reference note: an open
+  string if the chord has one, else the lowest note at its melodic tuning.
+  Major thirds come out 13.7 cents narrow, minor sixths 13.7 wide, fifths
+  2 wide.
+- **Measured** with Intonation Style 1, vibrato off, against Intonation
+  Style 0:
+  - D-major scale: E +3, F# +6, G −4, B +4, C# +8 cents.
+  - D–F# third: −13; E–C and F#–D sixths: +14.
+  - The open strings sound ~6–8 cents flat under the bow at mf in both
+    modes: the bow's flattening, not this control.
+- **Measured behaviour, not lore:** the player doc's rule that a crescendo
+  shouldn't speed up the bow is teaching advice. Demoucron measured bow speed
+  rising 10 → 50 cm/s across crescendos (KB §11.5), as the assistant already
+  does, so it was not adopted.
+
+**`Vibrato Shaping`** (0 the same on every note … 1 by context, default 0.7;
+player doc §3.1, KB ref 65 / P15):
+- **Register:** wider higher up, ×(1 + 0.25 per octave above A4), from 0.8×
+  to 1.35×.
+- **Fast passages:** narrower. If the key came within ~0.12 s of the last
+  one, the vibrato is ~30%. It opens up over 0.5 s if the note is held, so a
+  long note ending a run gets its full vibrato.
+- **Long strokes:** it keeps widening, by 25% over the first 1.5 s.
+- **Measured** (5–95% pitch range, Shaping 0 vs 0.7):
+  - B4 at 0.5–1 s: 15 vs 13 cents; later: 15 vs 15.
+  - B6: 15 vs 18.
+  - B4 straight after a run, at 0.2–0.5 s: 7 vs 5; at 0.7–1.3 s: 17 vs 15.
+- Rate on weak beats and phrase position need the meter: PR C.
+
+**Double stops** put more weight on the lower string: ×1.12 lower, ×0.9
+upper (player doc §2.6) [T]. In `instrument_lab chord`, both strings of
+D–A, G–D, A–E and E–C slip once per period.
+
 ## Articulations (KB §11)
 
 `Articulation` (Arco / Martelé / Spiccato / Tremolo / Pizzicato / Harmonics),
@@ -561,6 +611,47 @@ HF loss in Phase 4). For the Library Mic (Smooth):
   the measured peaks and dips and the smoothed fit. At 0, the 700 Hz dip
   fills by +8 dB and the 550 Hz region is trimmed: an even instrument.
 - **`Stereo Width`:** mid/side on the per-channel gains (0 = mono).
+- **Body character** (KB §5.8). Research on Stradivari and other fine
+  violins found no single "Strad sound". It did map which response regions
+  listeners and players care about, so these are offsets (dB) from the
+  measured violin, applied to the radiation modes by frequency. They are
+  cheap, glide, and the default is the measured response, bit for bit.
+  - `Air Resonance`: A0 (~280 Hz), a bump of σ 0.2 octave. A0 output is the
+    one measured correlate of rated quality (KB ref 109).
+  - `Nasality`: 0.8–1.5 kHz (centre 1.1 kHz, σ 0.4 octave). Factory
+    violins concentrate their energy here; the most pleasant violin in a
+    blind Cremona test was weak here (KB ref 114).
+  - `Brilliance`: the bridge hill's level, at Bridge Hill's frequency.
+  - `Softness`: a cut above ~4 kHz (4th-order shelf). Negative adds air.
+  - `Voice`: moves the modes below 3 kHz (fading out by 4.5 kHz) by ±10%,
+    shifting F1–F3 together. Tai et al. measured Stradivari formants ~8/6/4%
+    above other old Italians (KB ref 112).
+
+  `radiation_lab character` measures them per third-octave band:
+  - Air Resonance +9 gives +6 dB at 250 Hz.
+  - Nasality +9 gives +7 to +8 dB from 0.8 to 1.3 kHz.
+  - Brilliance +9 gives +6 to +9 dB from 2 to 3.2 kHz.
+  - Softness 12 gives −6 dB at 4 kHz and about −10 dB above 6 kHz.
+  - Voice ±10% moves the bands around 400–800 Hz by 5–7 dB.
+  - Boosting a mid region also lifts the band below 200 Hz by up to ~2 dB,
+    through the modes' low tails, where the 230 Hz high-pass already cuts.
+
+  Four presets are labelled approximations, not claims about any
+  instrument (KB §5.8: ≥3–6 dB or ~6% steps to be audible). On a test
+  phrase, against the default:
+
+  | Preset | 200–350 Hz | 350–700 Hz | 0.8–1.5 kHz | 1.5–2.2 kHz | 2.2–3.5 kHz | 3.5–5 kHz | 5–10 kHz |
+  |---|---|---|---|---|---|---|---|
+  | Cremonese, Dark & Vocal | +3.7 | −1.9 | −2.2 | +1.3 | −1.9 | −3.1 | −2.6 |
+  | Cremonese, Bright & Vocal | +2.4 | +0.6 | −2.7 | +3.6 | +2.8 | +0.3 | +0.4 |
+  | Modern Soloist | +1.2 | −0.1 | −0.8 | +2.7 | +4.6 | +2.4 | +2.0 |
+  | Student Factory Violin | +0.7 | +0.3 | +4.7 | −1.2 | −4.8 | −3.9 | −4.6 |
+
+  The controls act on the Modelled output only: the Library Mic outputs are
+  recordings' responses, and Pickup has no body. They change what the body
+  radiates, not how it loads the strings; a body whose stronger, less
+  damped low modes also change playability (KB §5.8's "character vs ease")
+  is left for later.
 
 **Library Mic / Library Mic (Smooth):** the CC0 library-mic IRs by
 convolution (resampled from 48 kHz in `prepare`). They have the library's
