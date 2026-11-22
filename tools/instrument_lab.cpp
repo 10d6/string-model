@@ -59,7 +59,7 @@ int main(int argc, char** argv) {
         const float b = ra * (h2y + a - h2x); h2x = a; h2y = b;
         m = b;
       }
-      e += m * m;
+      e += static_cast<double>(m) * m;
       const float v = inst.performer().bowVelocity();
       const float dir = v > 0 ? 1.f : (v < 0 ? -1.f : 0.f);
       if (prevDir != 0 && dir != 0 && dir != prevDir)
@@ -107,6 +107,6 @@ int main(int argc, char** argv) {
       e = 0; cnt = 0; ++ni;
     }
     const float y = inst.process(pc, ic);
-    if (on && t > ni * step + 0.08f) { e += y * y; ++cnt; }
+    if (on && t > ni * step + 0.08f) { e += static_cast<double>(y) * y; ++cnt; }
   }
 }

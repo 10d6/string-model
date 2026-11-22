@@ -59,7 +59,7 @@ Stats run(int s, float note, float vb, float fb, float beta, FrictionModel model
       tsum += t;
       tmin = std::min<double>(tmin, t);
       tmax = std::max<double>(tmax, t);
-      e += f[static_cast<std::size_t>(i)] * f[static_cast<std::size_t>(i)];
+      e += static_cast<double>(f[static_cast<std::size_t>(i)]) * f[static_cast<std::size_t>(i)];
     }
   }
   Stats st;
@@ -78,7 +78,7 @@ Stats run(int s, float note, float vb, float fb, float beta, FrictionModel model
   std::vector<double> ac(static_cast<std::size_t>(hi + 2), 0.0);
   for (int l = lo - 1; l <= hi + 1; ++l) {
     double c = 0;
-    for (int i = a0; i + l < n; ++i) c += f[static_cast<std::size_t>(i)] * f[static_cast<std::size_t>(i + l)];
+    for (int i = a0; i + l < n; ++i) c += static_cast<double>(f[static_cast<std::size_t>(i)]) * f[static_cast<std::size_t>(i + l)];
     ac[static_cast<std::size_t>(l)] = c;
   }
   for (int l = lo; l <= hi; ++l)
