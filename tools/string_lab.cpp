@@ -25,6 +25,13 @@ struct Stats {
   float cents = 0, slipsPerPeriod = 0, slipFraction = 0, tempMean = 0, tempMin = 0, tempMax = 0, rms = 0;
 };
 
+// LAB_HFLOOR, LAB_HSPEED, LAB_TDROPE: the enhanced model's h(u) and Y(T).
+void tuneFriction(BowedString& str) {
+  if (const char* e = std::getenv("LAB_HFLOOR")) str.thermal.hFloor = static_cast<float>(std::atof(e));
+  if (const char* e = std::getenv("LAB_HSPEED")) str.thermal.hSpeed = static_cast<float>(std::atof(e));
+  if (const char* e = std::getenv("LAB_TDROPE")) str.thermal.tDropEnhanced = static_cast<float>(std::atof(e));
+}
+
 float midiHz(float n) { return 440.f * std::pow(2.f, (n - 69.f) / 12.f); }
 
 Stats run(int s, float note, float vb, float fb, float beta, FrictionModel model, std::vector<float>* out, float seconds = 1.5f) {
@@ -32,6 +39,7 @@ Stats run(int s, float note, float vb, float fb, float beta, FrictionModel model
   str.prepare(kFs, 60.f);
   const InstrumentDef& inst = violin();
   str.setDef(inst.strings[s], inst.loss);
+  tuneFriction(str);
   if (std::getenv("LAB_HEAT")) str.thermal.heatScale = static_cast<float>(std::atof(std::getenv("LAB_HEAT")));
   if (std::getenv("LAB_TDROP")) str.thermal.tDrop = static_cast<float>(std::atof(std::getenv("LAB_TDROP")));
   const float hz = midiHz(note);
@@ -118,7 +126,59 @@ int main(int argc, char** argv) {
   const float note = static_cast<float>(std::atof(argv[3]));
   const float vb = static_cast<float>(std::atof(argv[4]));
   auto hasArg = [&](const char* a) { for (int i = 5; i < argc; ++i) if (!std::strcmp(argv[i], a)) return true; return false; };
-  const FrictionModel model = hasArg("classic") ? FrictionModel::Classic : FrictionModel::Thermal;
+  const FrictionModel model = hasArg("classic") ? FrictionModel::Classic : (hasArg("enhanced") ? FrictionModel::Enhanced : FrictionModel::Thermal);
+  if (!std::strcmp(argv[1], "guettler")) {
+    // Attacks from rest at constant bow acceleration (Guettler's plane, KB
+    // §7.2): rows acceleration, columns force, at beta = argv[4]. Cell: ms of
+    // pre-Helmholtz motion after the first slip ("P" = perfect: Helmholtz
+    // from the first slip), "-" = no Helmholtz within 0.4 s.
+    const float beta = vb;
+    const float accs[] = {0.25f, 0.5f, 1.f, 2.f, 4.f, 8.f};
+    const float forces[] = {0.05f, 0.1f, 0.2f, 0.4f, 0.8f, 1.6f, 3.2f};
+    const float hz = midiHz(note), P = kFs / hz;
+    std::printf("acc \\ F  ");
+    for (float f : forces) std::printf("%6.2f", f);
+    std::printf("\n");
+    int perfect = 0, good = 0, cells = 0;
+    for (float ac : accs) {
+      std::printf("%7.2f  ", ac);
+      for (float fb : forces) {
+        BowedString str;
+        str.prepare(kFs, 60.f);
+        const InstrumentDef& inst = violin();
+        str.setDef(inst.strings[s], inst.loss);
+        tuneFriction(str);
+        const bool stopped = static_cast<int>(note) != inst.strings[s].openNote;
+        str.setGeometry(hz, hz, beta, stopped);
+        const int n = static_cast<int>(0.4f * kFs);
+        int first = -1, last = -1, run = 0, settled = -1;
+        bool prev = false;
+        unsigned seed = 1;
+        for (int i = 0; i < n && settled < 0; ++i) {
+          const float v = std::min(ac * i / kFs, 0.5f);
+          seed = seed * 1664525u + 1013904223u;
+          str.process(v, fb, model, 0.f, (seed >> 8) * (1.f / 16777216.f));
+          const bool sl = str.slipping();
+          if (sl && !prev) {
+            if (first < 0) first = i;
+            if (last >= 0 && std::fabs((i - last) - P) < 0.05f * P) ++run;
+            else run = 0;
+            if (run >= 3) settled = i - 4 * static_cast<int>(P + 0.5f);
+            last = i;
+          }
+          prev = sl;
+        }
+        ++cells;
+        if (settled < 0 || first < 0) { std::printf("     -"); continue; }
+        const float ms = std::max(0.f, (settled - first) / kFs * 1000.f);
+        if (settled - first <= static_cast<int>(1.5f * P)) { ++perfect; ++good; std::printf("     P"); }
+        else { if (ms <= 50.f) ++good; std::printf("%6.0f", ms); }
+      }
+      std::printf("\n");
+    }
+    std::printf("perfect %d, within 50 ms %d, of %d\n", perfect, good, cells);
+    return 0;
+  }
   if (!std::strcmp(argv[1], "tone")) {
     const float fb = static_cast<float>(std::atof(argv[5])), beta = static_cast<float>(std::atof(argv[6]));
     std::vector<float> out;

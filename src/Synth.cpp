@@ -81,7 +81,7 @@ struct StringModel : Synth {
     sustainSpeed = b.add("bow.sustain").name("Long-Note Bow Speed").range(0.25, 1).def(0.6).smoothing(0).group("Bow");
     releaseMode = b.add("bow.release").name("Release").choices({"Auto (Key-Up Speed)", "Lift", "Stop on String", "Finger Off"}).def(0).group("Bow");
     noise = b.add("bow.noise").name("Rosin Noise").range(0, 0.5).def(0.12).smoothing(0).group("Bow");
-    friction = b.add("bow.friction").name("Friction Model").choices({"Thermal", "Classic"}).group("Bow");
+    friction = b.add("bow.friction").name("Friction Model").choices({"Thermal", "Classic", "Enhanced Thermal"}).def(2).group("Bow");
     chordWindow = b.add("chord.window").name("Chord Window").range(0, 0.08).def(0.035).unit("s").smoothing(0).group("Bow");
     rollTime = b.add("chord.roll").name("Chord Roll").range(0.02, 0.2).def(0.06).unit("s").smoothing(0).group("Bow");
     vibDepth = b.add("vib.depth").name("Vibrato Depth").range(0, 60).def(16).unit("ct").smoothing(0).group("Left Hand");
@@ -211,7 +211,8 @@ struct StringModel : Synth {
     pc_.vibDelay = ctx.get(vibDelay);
     pc_.shiftTime = ctx.get(shiftTime);
     pc_.a4 = ctx.get(a4);
-    ic_.friction = ctx.choice(friction) == 1 ? sm::FrictionModel::Classic : sm::FrictionModel::Thermal;
+    static constexpr sm::FrictionModel kModels[3] = {sm::FrictionModel::Thermal, sm::FrictionModel::Classic, sm::FrictionModel::Enhanced};
+    ic_.friction = kModels[std::clamp(ctx.choice(friction), 0, 2)];
     ic_.noise = ctx.get(noise);
     ic_.intonation = ctx.get(intonation);
     ic_.coupling = ctx.get(coupling);

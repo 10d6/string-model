@@ -85,7 +85,7 @@ class Decimator {
 };
 
 struct InstrumentControls {
-  FrictionModel friction = FrictionModel::Thermal;
+  FrictionModel friction = FrictionModel::Enhanced;
   float noise = 0.12f;       // rosin noise during slip
   float intonation = 0.8f;   // 0..1: how much the player corrects flattening
   float coupling = 1.f;      // bridge admittance scale (0 = rigid bridge, no sympathy)

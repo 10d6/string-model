@@ -44,7 +44,7 @@ struct LossDef {
   float fingerHz;    // stopping-finger low-pass
 };
 
-enum class FrictionModel { Thermal, Classic };
+enum class FrictionModel { Thermal, Classic, Enhanced };
 
 class BowedString {
  public:
@@ -195,6 +195,9 @@ class BowedString {
       thermal.coolIdle();
     } else if (model == FrictionModel::Thermal) {
       r = thermal.solve(vh, vb, fb, zeff, noiseAmt, noise);
+      thermal.update(r, vb, fb);
+    } else if (model == FrictionModel::Enhanced) {
+      r = thermal.solveEnhanced(vh, vb, fb, zeff, noiseAmt, noise);
       thermal.update(r, vb, fb);
     } else {
       r = classic.solve(vh, vb, fb, zeff, noiseAmt, noise);
