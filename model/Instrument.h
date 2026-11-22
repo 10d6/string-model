@@ -92,6 +92,7 @@ struct InstrumentControls {
   float hillHz = 2600.f;     // bridge hill centre (admittance; the radiation follows in the synth)
   float mute = 0.f;          // 0..1: the mute's mass on the bridge
   float slideNoise = 0.4f;   // 0..1: winding noise under a sliding finger
+  float bowWidth = 0.006f;   // m: hair in contact (two contact points this far apart; 0 = one point) [T]
 };
 
 class Instrument {
@@ -222,6 +223,9 @@ class Instrument {
       const float k = std::pow(2.f, corr_[s] / 1200.f);
       wantHz_[s] = target_[s].hz;
       str_[s].setTouch(target_[s].touchQ, target_[s].touchR);
+      // Width in samples: the wave speed is 2 x scale x open pitch on any stop.
+      const float openHz = 440.f * std::pow(2.f, (static_cast<float>(def_->strings[s].openNote) - 69.f) / 12.f);
+      str_[s].setBowWidth(ic.bowWidth > 0.f ? static_cast<int>(std::lround(ic.bowWidth * fs_ / (2.f * def_->scaleLength * openHz))) : 0);
       str_[s].setGeometry(target_[s].hz * k, target_[s].noteHz * k, beta, target_[s].stopped, target_[s].slide);
       // Winding noise: the finger rubbing turns of winding at speed v gives a
       // band of noise around v / pitch (KB §11.2 "Shifts") [T level].

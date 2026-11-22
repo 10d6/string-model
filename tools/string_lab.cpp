@@ -27,6 +27,7 @@ struct Stats {
 
 // LAB_HFLOOR, LAB_HSPEED, LAB_TDROPE: the enhanced model's h(u) and Y(T).
 void tuneFriction(BowedString& str) {
+  if (const char* e = std::getenv("LAB_WIDTH")) str.setBowWidth(std::atoi(e), std::getenv("LAB_SHARE") ? static_cast<float>(std::atof(std::getenv("LAB_SHARE"))) : 0.8f);  // contact points, samples apart; force share of the first
   if (const char* e = std::getenv("LAB_HFLOOR")) str.thermal.hFloor = static_cast<float>(std::atof(e));
   if (const char* e = std::getenv("LAB_HSPEED")) str.thermal.hSpeed = static_cast<float>(std::atof(e));
   if (const char* e = std::getenv("LAB_TDROPE")) str.thermal.tDropEnhanced = static_cast<float>(std::atof(e));
