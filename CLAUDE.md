@@ -50,7 +50,7 @@ cmake -S . -B build -G Ninja && cmake --build build
 ./build/stringmodel_render --check . --out build/renders
 ./build/stringmodel_render tests/chord.json --out x.wav
 ./build/stringmodel_render --params
-python3 synthkit/tools/stress.py build/stringmodel_render 300   # random playing: every note must stop (API.md §10)
+python3 synthkit/tools/stress.py build/stringmodel_render 300 --tail 5   # random playing: every note must stop (API.md §10); plucked open strings ring > 3 s
 
 # the model, offline (docs/MODEL.md)
 ./build/string_lab sweep 1 62 0.13                 # Schelleng map, open D
@@ -63,7 +63,7 @@ python3 tools/calibrate_force.py                   # Helmholtz window vs the pla
 python3 tools/analyze.py build/renders/legato-scale.wav   # spectrogram, level, pitch per note
 
 # browser page (API.md §11)
-cmake -S . -B build-web -G Ninja -DCMAKE_TOOLCHAIN_FILE=synthkit/cmake/wasm32-wasi.cmake && cmake --build build-web
+cmake -S . -B build-web -G Ninja -DCMAKE_TOOLCHAIN_FILE=synthkit/cmake/wasm32-wasi.cmake -DCMAKE_BUILD_TYPE=Release && cmake --build build-web   # Release: without it the page is unoptimised (-O0)
 node synthkit/web/test/browser-test.cjs build-web/web/stringmodel.html build-web/test tests/chord.json
 node synthkit/web/test/bench-web.cjs build-web/web/stringmodel.html tests/chord.json   # browser speed
 

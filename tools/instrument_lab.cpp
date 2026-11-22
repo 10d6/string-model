@@ -34,6 +34,8 @@ int main(int argc, char** argv) {
   Instrument inst; inst.prepare(sr);
   PerformerControls pc; InstrumentControls ic;
   const char* mode = argc > 1 ? argv[1] : "detache";
+  if (const char* e = std::getenv("LAB_FRICTION")) ic.friction = static_cast<FrictionModel>(std::atoi(e));  // 0 thermal, 1 classic, 2 enhanced
+  if (const char* e = std::getenv("LAB_BOWWIDTH")) ic.bowWidth = static_cast<float>(std::atof(e));
   if (std::getenv("LAB_COUPLING")) ic.coupling = static_cast<float>(std::atof(std::getenv("LAB_COUPLING")));
   if (std::getenv("LAB_STRING")) pc.forcedString = std::atoi(std::getenv("LAB_STRING"));
   if (std::getenv("LAB_MUTE")) ic.mute = static_cast<float>(std::atof(std::getenv("LAB_MUTE")));

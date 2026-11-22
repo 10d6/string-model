@@ -145,7 +145,41 @@ and the force calibration re-run (both unchanged in quality).
 
 ## Friction (KB §3)
 
-**Thermal (default): Woodhouse 2003 (KB §3.2a).** μ depends only on contact
+**Enhanced Thermal (default since Phase 6): the structure of Woodhouse &
+Galluzzo 2025 (KB §3.2a).** Friction = Y(T) × h(u): a temperature-dependent
+yield stress times a function of the slip speed u with h(0) = 1. The 2003
+thermal model can only lower friction as the contact heats; h makes it drop
+the moment the string slips, which is what measured Guettler transients show.
+The paper's fitted constants weren't available here (the publisher's page
+lacks the equation bodies), so both are tuned [T]:
+- h(u) = 0.8 + 0.2 · 0.6 / (0.6 + u), a hyperbola like the classic curve's;
+- Y(T) falls from 1.2 to 0.35/0.8 = 0.44 over 30 K (the paper's crossover is
+  ~26 K above ambient; the 2003 model ran ~10 K hotter), so steady sliding
+  matches the thermal model. The heat paths below are shared.
+- With h the junction can have several slip solutions. It keeps the
+  hysteresis rule (KB §3.4): it sticks until the stick force exceeds Y, then
+  slips while a root of u + k·Y·h(u) = |a| exists.
+
+h was chosen by attack quality: `string_lab guettler` starts the bow from
+rest at constant acceleration (0.25–8 m/s²) and force (0.05–3.2 N) and counts
+attacks that reach Helmholtz motion within 50 ms of the first slip. Over five
+grids (open D at β 0.1 and 0.06, G3, A4 at β 0.08, E5), out of 210 attacks:
+
+| Model | Perfect (Helmholtz from the first slip) | Within 50 ms |
+|---|---|---|
+| Thermal 2003 | 0 | 50 |
+| Classic | 23 | 71 |
+| Enhanced, h = 0.6 + 0.4·0.1/(0.1+u) | 22 | 65 |
+| **Enhanced, h = 0.8 + 0.2·0.6/(0.6+u)** | **29** | **112** |
+
+Through the synth (`instrument_lab hold`, G3–C6, three velocities) attacks
+reach −6 dB of the steady level 5–10 ms sooner, and bow-change gaps are
+shorter (e.g. D4 mf: 30 → 15 ms). The Schelleng map below keeps its wedge and
+Demoucron's points with slightly less flattening; `calibrate_force.py`
+straddles 0 on every row. The string comes out a little darker above 4.5 kHz
+(2–4 dB), so the radiation target was re-measured (Output).
+
+**Thermal: Woodhouse 2003 (KB §3.2a).** μ depends only on contact
 temperature: 1.2 at ambient, falling smoothly to 0.35 at 40 K. With μ fixed
 at each instant, the junction (string line v = v_h + f/2Z_eff against
 |f| ≤ F_b μ) has one solution, found in closed form. There's no hysteresis
@@ -173,9 +207,34 @@ reports 17–31 K.
 μd 0.3, v₀ 0.15 m/s, with the hysteresis rule, solved in closed form
 (KB §3.4).
 
+**Bow width (KB §3.5).** The hair ribbon touches the string over a few mm,
+so the bow is two contact points ~6 mm apart (2–5 samples at 96 kHz: the
+wave speed on a string is 2 × scale × open pitch on any stop), each with its
+own friction and contact temperature. The outer edge carries 80% of the force
+(tilted hair) [T]: with 50/50 the low-force, far-from-the-bridge corner of
+the Schelleng map (pp) turned to multiple slipping. The points can slip at
+slightly different moments (differential slipping), which adds 3–5 dB of
+noise between the harmonics at 5–10 kHz (A4 mf). Where the bow is within a
+few samples of the bridge (very high notes), it's one point.
+
 **Rosin noise (KB §6.4):** during slip, μ × (1 − A·u) with u uniform in [0, 1).
 
-### Measured with `string_lab` (open D, v_b = 0.13 m/s, thermal, 96 kHz)
+### Measured with `string_lab` (open D, v_b = 0.13 m/s, 96 kHz)
+
+Enhanced Thermal with the bow width (`LAB_WIDTH=3 string_lab sweep 1 62 0.13 enhanced`):
+
+```
+beta \ F    0.02  0.04  0.08  0.15  0.30  0.60  1.20  2.40  4.80
+   0.020     r-99   r-99   r-99   m -1   m -2   m -4   H -5   H-13   r +1
+   0.030     r-99   r-99   m -1   m -1   m -3   H -4   H -9   r-27   r+99
+   0.045     r-99   r-99   m -1   m -2   H -3   H -7   r-15   r+28   r+99
+   0.065     r-99   m -0   m -1   H -3   H -5   H-11   r-31   r -4   r-99
+   0.090     r-99   m -1   H -2   H -4   H -7   r-18   r-84   r-99   r-99
+   0.130     r -0   m -1   H -2   H -5   H-10   r-38   r+61   r-99   r+99
+   0.180     m -0   H -1   r -3   H -6   H-13   r-89   r+99   r -9   r-99
+```
+
+Thermal 2003, one contact point (Phase 1–5):
 
 ```
 beta \ F    0.02  0.04  0.08  0.15  0.30  0.60  1.20  2.40  4.80
@@ -386,6 +445,13 @@ directly (it is already smooth) and turn off the automatic bow change.
 - **Tremolo.** Near-sinusoidal bow speed at `Tremolo Rate` reversals per
   second (VSCO median 12.2/s, KB §11.2), ±12% rate and ±15% force jitter per
   stroke; down-bows lighter than up-bows (×0.8 / ×1.2).
+- **Sautillé** (B1). The bow bounces by itself (Guettler & Askenfelt 1997,
+  KB §11.5): its speed is a sine at half the note rate, one note per half
+  cycle starting at the reversal, and the force a cosine at the note rate,
+  clipped at 0 (briefly in the air), peaking 53° of its cycle after the
+  reversal, the phase their simulations found "perfect". The cycle is the
+  time between key presses (60–200 ms). At 9 notes/s the notes are within
+  ~10 cents and dip 8–12 dB between notes.
 - **Pizzicato.** The bow lifts and a force pulse acts at the pluck point
   (β 0.2 ± 0.05, KB §11.2): it rises over 12–24 ms to 0.6–3.6 N (velocity),
   then lets go. The release ramp is 1–2.5 ms but never longer than ~0.35 of
@@ -395,8 +461,20 @@ directly (it is already smooth) and turn off the automatic bow change.
   pressed together strum, 12 ms apart. Open strings sound at pitch (no
   bow-flattening allowance). A quick key-up damps the string with the
   hand; `Finger Off` lifts the finger. Plucked notes peak about as loud as
-  an mf bowed note. One polarisation only: the two-stage decay (KB §11.2)
-  waits for the vertical bridge admittance (Phase 6).
+  an mf bowed note.
+  - **Second polarisation (Phase 6).** The pluck's angle (14–46° from the
+    bowing plane, random) splits it between the horizontal string and a
+    second, vertical one: an unbowed copy of the string on a rigid bridge,
+    with 2.5× the decay time, 1.5 cents sharp (slow beating), whose bridge
+    force goes straight to the output at the same gain. The horizontal
+    polarisation gives its energy to the body quickly; the vertical one rings
+    on: the two-stage decay (KB §4, §11.2). Fitted to VSCO-2-CE solo-violin
+    pizzicato (forte, A3–A6), comparing the early decay rate, the late one and
+    the level 1 s after the pluck. The recordings' tails (~25–35 dB/s on
+    almost every note) include the room, so the synth was measured with its
+    default room. Mean error, early and late rates in units of 30 dB/s plus
+    level in 10 dB: 1.71 with one polarisation, 1.02 now. Open strings
+    plucked hard ring for more than 3 s. A damping hand stops both.
 - **Harmonics.** A light finger touches the string at 1/k of its vibrating
   length from the nut-side end. In the waveguide the bow–nut segment is split
   at that point by a resistive junction, R = 4·Z0, gliding in over ~10 ms:
@@ -455,6 +533,10 @@ from 300 Hz to 5 kHz (×1.19).
   too dark above 5.6 kHz compared with the real notes. Fully undoing the
   roll-off would overshoot, since real forces roll off too; the direct
   comparison measures where the truth lies.
+
+**Re-measured in Phase 6** for the enhanced friction (its string is 2–4 dB
+darker above 4.5 kHz): the same pipeline, after which the per-band residual
+(`radiation_target.py … - 3`) matches Phase 5's within ~1 dB.
 
 **Result:** Modelled minus real, per half-octave band from 350 Hz to
 9.5 kHz: −1.4, −2.9, −0.1, +1.1, +0.8 dB (re-measured after the per-string
@@ -519,15 +601,23 @@ python3 tools/analyze.py render.wav [out.png]                        # spectrogr
 
 ## Known limits (next phases)
 
-- Pizzicato has one polarisation; no snap (Bartók) pizz, sautillé, ricochet, col legno or left-hand pizz yet.
-- Spiccato is a fixed thrown stroke; the bow doesn't bounce on its own.
+- No snap (Bartók) pizz, ricochet, col legno or left-hand pizz yet. The
+  vertical polarisation doesn't touch the bridge solve (no sympathy through
+  it) and isn't bowed.
+- The enhanced friction's constants are tuned here, not the paper's.
+- Spiccato is a fixed thrown stroke; sautillé bounces at the key tempo but
+  there's no bow-bounce degree of freedom (ricochet, KB §11.1).
 - The bridge has one direction (bowing). There's no vertical admittance or
   second polarisation yet.
 - The highest notes have few samples per slip even at 96 kHz (KB §6.4); they
   slip longer and flatten more (A6: ~30 cents uncorrected).
-- Cost: all four strings run while the bridge moves, plus 45 bridge modes
+- Cost: all four strings run while the bridge moves (two bow points on a
+  bowed string; plucked strings add a vertical copy), plus 45 bridge modes
   at 96 kHz and 120 radiation modes at the host rate. The browser renders
-  2.2× faster than realtime.
+  ~7× faster than realtime with the room (~12× without), measured with the
+  kit's `bench-web.cjs` on a Release build. Earlier figures here came from an
+  unoptimised local build. The radiation's modes are plain arrays and the
+  page uses WebAssembly SIMD; the kit's reverb is ~40% of the browser's cost.
 - Start-up: in the browser, `prepare` runs when audio starts. The radiation
   fit takes ~4 ms natively; notes in the first ~300 ms after audio starts
   may be missed (mostly the kit's reverb set-up). Calibration was 24 ms

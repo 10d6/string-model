@@ -39,6 +39,8 @@ class Delay {
     const float c3 = (1.f / 6.f) * (y2 - ym1) + 0.5f * (y0 - y1);
     return ((c3 * t + c2) * t + c1) * t + c0;
   }
+  // Integer delay d >= 1 (no interpolation).
+  float tap(int d) const { return at(d); }
   int capacity() const { return mask_ - 4; }
 
  private:

@@ -67,7 +67,7 @@ struct StringModel : Synth {
 
   void defineParams(ParamBuilder& b) override {
     instrument = b.add("instrument").name("Instrument").choices({"Violin"}).group("Instrument");
-    artic = b.add("artic").name("Articulation").choices({"Arco", "Martelé", "Spiccato", "Tremolo", "Pizzicato", "Harmonics"}).def(0).group("Instrument");
+    artic = b.add("artic").name("Articulation").choices({"Arco", "Martelé", "Spiccato", "Tremolo", "Pizzicato", "Harmonics", "Sautillé"}).def(0).group("Instrument");
     tremRate = b.add("artic.tremRate").name("Tremolo Rate").range(6, 18).def(12.2).unit("/s").smoothing(0).group("Bow");
     dynamics = b.add("bow.dynamics").name("Dynamics").range(0, 1).def(0.55).smoothing(0).group("Bow").cc(1).cc(11);
     velSens = b.add("bow.velSens").name("Velocity → Dynamics").range(0, 1).def(0.7).smoothing(0).group("Bow");
@@ -81,7 +81,7 @@ struct StringModel : Synth {
     sustainSpeed = b.add("bow.sustain").name("Long-Note Bow Speed").range(0.25, 1).def(0.6).smoothing(0).group("Bow");
     releaseMode = b.add("bow.release").name("Release").choices({"Auto (Key-Up Speed)", "Lift", "Stop on String", "Finger Off"}).def(0).group("Bow");
     noise = b.add("bow.noise").name("Rosin Noise").range(0, 0.5).def(0.12).smoothing(0).group("Bow");
-    friction = b.add("bow.friction").name("Friction Model").choices({"Thermal", "Classic"}).group("Bow");
+    friction = b.add("bow.friction").name("Friction Model").choices({"Thermal", "Classic", "Enhanced Thermal"}).def(2).group("Bow");
     chordWindow = b.add("chord.window").name("Chord Window").range(0, 0.08).def(0.035).unit("s").smoothing(0).group("Bow");
     rollTime = b.add("chord.roll").name("Chord Roll").range(0.02, 0.2).def(0.06).unit("s").smoothing(0).group("Bow");
     vibDepth = b.add("vib.depth").name("Vibrato Depth").range(0, 60).def(16).unit("ct").smoothing(0).group("Left Hand");
@@ -147,8 +147,8 @@ struct StringModel : Synth {
     for (auto& e : ctx.in()) {
       // Keyswitches set a parameter (the page and host follow) and don't sound:
       // C1 Auto, C#1 G, D1 D, D#1 A, E1 E (String);
-      // F1 Arco, F#1 Martelé, G1 Spiccato, G#1 Tremolo, A1 Pizzicato, A#1 Harmonics.
-      if (keys && (e.isNoteOn() || e.isNoteOff()) && e.note >= kKeyswitchLow && e.note < kKeyswitchLow + 11) {
+      // F1 Arco, F#1 Martelé, G1 Spiccato, G#1 Tremolo, A1 Pizzicato, A#1 Harmonics, B1 Sautillé.
+      if (keys && (e.isNoteOn() || e.isNoteOff()) && e.note >= kKeyswitchLow && e.note < kKeyswitchLow + 12) {
         if (e.isNoteOn()) {
           const int k = e.note - kKeyswitchLow;
           if (k < 5) ctx.setParam(stringSel, static_cast<float>(k));
@@ -211,7 +211,8 @@ struct StringModel : Synth {
     pc_.vibDelay = ctx.get(vibDelay);
     pc_.shiftTime = ctx.get(shiftTime);
     pc_.a4 = ctx.get(a4);
-    ic_.friction = ctx.choice(friction) == 1 ? sm::FrictionModel::Classic : sm::FrictionModel::Thermal;
+    static constexpr sm::FrictionModel kModels[3] = {sm::FrictionModel::Thermal, sm::FrictionModel::Classic, sm::FrictionModel::Enhanced};
+    ic_.friction = kModels[std::clamp(ctx.choice(friction), 0, 2)];
     ic_.noise = ctx.get(noise);
     ic_.intonation = ctx.get(intonation);
     ic_.coupling = ctx.get(coupling);

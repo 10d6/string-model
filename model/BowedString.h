@@ -44,7 +44,7 @@ struct LossDef {
   float fingerHz;    // stopping-finger low-pass
 };
 
-enum class FrictionModel { Thermal, Classic };
+enum class FrictionModel { Thermal, Classic, Enhanced };
 
 class BowedString {
  public:
@@ -53,6 +53,7 @@ class BowedString {
     const int maxLen = static_cast<int>(fs / lowestHz) + 16;
     for (Delay* d : lines()) d->prepare(maxLen);
     thermal.prepare(fs);
+    thermal2.prepare(fs);
     smooth_ = 1.f - std::exp(-1.f / (0.001f * fs));  // 1 ms for delay-length steps
     touchGlide_ = 1.f - std::exp(-1.f / (0.01f * fs));  // ~10 ms touch on/off (KB: 5-20 ms)
     reset();
@@ -67,10 +68,12 @@ class BowedString {
   void reset() {
     for (Delay* d : lines()) d->clear();
     nutLP_.y = bridgeLP_.y = 0.f;
-    torX_ = torY_ = 0.f;
+    torX_ = torY_ = torX2_ = torY2_ = 0.f;
     touchR_ = 0.f;
     thermal.reset();
+    thermal2.reset();
     classic.reset();
+    classic2.reset();
     level_ = 0.f;
     quiet_ = 0;
     asleep_ = true;
@@ -130,6 +133,16 @@ class BowedString {
     touchTarget_ = rOverZ;
   }
 
+  // Finite bow width (KB §3.5): the hair ribbon touches the string over a few
+  // mm, so the bow is two contact points `samples` apart (each with its own
+  // friction and contact temperature, half the force each). They can slip at
+  // different moments (differential slipping), which adds the ribbon's noise
+  // and roughness. 0 = one point.
+  void setBowWidth(int samples, float share = 0.8f) {
+    width_ = samples > 0 ? std::max(samples, 2) : 0;
+    share_ = share;
+  }
+
   float betaActual() const { return betaActual_; }
   bool asleep() const { return asleep_; }
   float temperature() const { return thermal.temperature(); }
@@ -169,17 +182,22 @@ class BowedString {
     const float dBT = dN_ - dT_;
     touchR_ += (touchTarget_ - touchR_) * touchGlide_;
 
+    const int w = width_ > 0 && dB_ > static_cast<float>(width_) + kMinD ? width_ : 0;
+    const float dBB = dB_ - static_cast<float>(w);  // bridge side of the second point
     const float vinN = fromTouch_.read(dBT);       // from the touch point toward the bow
-    const float vinB = fromBridge_.read(dB_);
     const float atTouchB = toTouch_.read(dBT);     // from the bow, arriving at the touch point
     const float atNut = touchToNut_.read(dT_);
     const float atTouchN = nutToTouch_.read(dT_);  // from the nut/finger, arriving at the touch point
-    const float atBridge = toBridge_.read(dB_);
+    const float vinB = w ? fromB2_.tap(w) : fromBridge_.read(dB_);  // toward the (first) bow point
+    const float vin2N = w ? toB2_.tap(w) : 0.f;    // second point: from the first
+    const float vin2B = w ? fromBridge_.read(dBB) : 0.f;
+    const float atBridge = toBridge_.read(dBB);
 
     // Contact velocity = vh + f/(2 Z0) + HP(f)/(2 ZR); the HP's instantaneous
     // part folds into Zeff, its memory into the history term.
-    const float vh = vinN + vinB + torA_ * (torY_ - torX_) / (2.f * def_.zr);
     const float zeff = 1.f / (1.f / def_.z0 + torA_ / def_.zr);
+    const float vh = vinN + vinB + torA_ * (torY_ - torX_) / (2.f * def_.zr);
+    const float f1 = w ? fb * share_ : fb;
     JunctionResult r;
     if (damp > 0.f) {
       // Point resistor: f = -R v, v = vh + f/(2 Zeff)  =>  v = vh / (1 + R/(2 Zeff)).
@@ -193,17 +211,38 @@ class BowedString {
       r.f = pluck;
       r.v = vh + pluck / (2.f * zeff);
       thermal.coolIdle();
-    } else if (model == FrictionModel::Thermal) {
-      r = thermal.solve(vh, vb, fb, zeff, noiseAmt, noise);
-      thermal.update(r, vb, fb);
     } else {
-      r = classic.solve(vh, vb, fb, zeff, noiseAmt, noise);
-      thermal.update(r, vb, fb);  // keep the temperature meaningful for switching
+      r = solve(thermal, classic, model, vh, vb, f1, zeff, noiseAmt, noise);
     }
     slipping_ = r.slipping;
     torY_ = torA_ * (torY_ + r.f - torX_);
     torX_ = r.f;
     const float inc = r.f / (2.f * def_.z0);
+    if (w) {
+      // The second point: the rest of the force, its own noise sample.
+      const float vh2 = vin2N + vin2B + torA_ * (torY2_ - torX2_) / (2.f * def_.zr);
+      JunctionResult r2;
+      if (fb > 0.f && damp <= 0.f) {
+        const float n2 = noise * 7.31f + 0.37f;
+        r2 = solve(thermal2, classic2, model, vh2, vb, fb - f1, zeff, noiseAmt, n2 - std::floor(n2));
+      } else {
+        r2.v = vh2;
+        thermal2.coolIdle();
+      }
+      // (Slip is reported for the first point: the labs count slips per period.)
+      torY2_ = torA_ * (torY2_ + r2.f - torX2_);
+      torX2_ = r2.f;
+      const float inc2 = r2.f / (2.f * def_.z0);
+      toB2_.write(vinN + inc);
+      toTouch_.write(vinB + inc);
+      toBridge_.write(vin2N + inc2);
+      fromB2_.write(vin2B + inc2);
+    } else {
+      toBridge_.write(vinN + inc);
+      toTouch_.write(vinB + inc);
+      toB2_.write(0.f);
+      fromB2_.write(0.f);
+    }
 
     const float reflNut = -gNut_ * nutLP_.process(atNut) + fingerNoise_;
     // Touch junction: a resistance R between the two sides,
@@ -211,8 +250,6 @@ class BowedString {
     // (R = 0: transparent).
     const float R = touchR_ * def_.z0;
     const float vt = 2.f * def_.z0 * (atTouchB + atTouchN) / (2.f * def_.z0 + R);
-    toBridge_.write(vinN + inc);
-    toTouch_.write(vinB + inc);
     touchToNut_.write(vt - atTouchN);
     nutToTouch_.write(reflNut);
     fromTouch_.write(vt - atTouchB);
@@ -236,7 +273,7 @@ class BowedString {
       if (++quiet_ > 2048) {
         for (Delay* d : lines()) d->clear();
         nutLP_.y = bridgeLP_.y = 0.f;
-        torX_ = torY_ = 0.f;
+        torX_ = torY_ = torX2_ = torY2_ = 0.f;
         asleep_ = true;
       }
     } else {
@@ -252,16 +289,33 @@ class BowedString {
   // Recent peak wave amplitude at the ends (m/s), 0 when asleep.
   float level() const { return asleep_ ? 0.f : level_; }
 
-  ThermalFriction thermal;
-  ClassicFriction classic;
+  ThermalFriction thermal, thermal2;  // the two contact points (thermal2: bow width)
+  ClassicFriction classic, classic2;
 
  private:
+  static JunctionResult solve(ThermalFriction& th, ClassicFriction& cl, FrictionModel model, float vh, float vb, float fb, float zeff,
+                              float noiseAmt, float noise) {
+    JunctionResult r;
+    if (model == FrictionModel::Thermal) {
+      r = th.solve(vh, vb, fb, zeff, noiseAmt, noise);
+    } else if (model == FrictionModel::Enhanced) {
+      r = th.solveEnhanced(vh, vb, fb, zeff, noiseAmt, noise);
+    } else {
+      r = cl.solve(vh, vb, fb, zeff, noiseAmt, noise);  // the temperature still follows, for switching
+    }
+    th.update(r, vb, fb);
+    return r;
+  }
+
   static constexpr float kMinD = 2.f;
   // The finger side is split at the touch point: bow -> touch -> nut and back.
-  Delay toTouch_, touchToNut_, nutToTouch_, fromTouch_, toBridge_, fromBridge_;
-  std::array<Delay*, 6> lines() {
-    return {&toTouch_, &touchToNut_, &nutToTouch_, &fromTouch_, &toBridge_, &fromBridge_};
+  // With bow width, the bridge side is split at the second contact point.
+  Delay toTouch_, touchToNut_, nutToTouch_, fromTouch_, toBridge_, fromBridge_, toB2_, fromB2_;
+  std::array<Delay*, 8> lines() {
+    return {&toTouch_, &touchToNut_, &nutToTouch_, &fromTouch_, &toBridge_, &fromBridge_, &toB2_, &fromB2_};
   }
+  int width_ = 0;
+  float share_ = 0.8f, torX2_ = 0.f, torY2_ = 0.f;
   OnePoleLP nutLP_, bridgeLP_;
   StringDef def_{"", 69, 0.2f, 0.7f};
   LossDef loss_{2.f, 1.f, 7000.f, 9000.f, 4000.f};

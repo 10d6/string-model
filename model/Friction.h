@@ -19,6 +19,17 @@
 // adds convection 2 a delta rho c v_b. Without these terms fast strokes run
 // away thermally (continuous slip).
 //
+// Enhanced is the structure of Woodhouse & Galluzzo 2025 (KB §3.2a): friction
+// = Y(T) x h(u), a temperature-dependent yield stress times an antisymmetric
+// function of the slip speed u, h(0) = 1. h makes friction drop abruptly at
+// the first slip (the thermal model can only lower it as the contact heats),
+// which is what measured Guettler transients show. The paper's fitted
+// constants weren't available here, so h is a hyperbola like the classic
+// curve, hFloor + (1 - hFloor) hSpeed/(hSpeed + u), and Y falls from muStatic
+// to muDynamic/hFloor, so steady sliding matches the thermal model [T]. With
+// h the junction can have several slip solutions; it keeps the hysteresis
+// rule (KB §3.4): stick until the stick force exceeds Y, slip while a root exists.
+//
 // ClassicFriction is the hyperbolic friction curve with the hysteresis rule,
 // solved in closed form (KB §3.4), kept for A/B comparison.
 #pragma once
@@ -59,8 +70,13 @@ class ThermalFriction {
     idleDecay_ = std::exp(-dt_ / 0.05f);  // ~50 ms cooling with the bow off [T]
     reset();
   }
+  // Enhanced model [T]: h(u) and the cooler drop of Y(T) (the paper's
+  // crossover is ~26 K above ambient; the 2003 model ran ~10 K hotter).
+  float hFloor = 0.8f, hSpeed = 0.6f, tDropEnhanced = 30.f;
+
   void reset() {
     temp_ = 0.f;
+    slipE_ = false;
     for (float& u : u_) u = 0.f;
   }
 
@@ -69,6 +85,7 @@ class ThermalFriction {
   // Bow off the string: the contact cools toward ambient. A cheap stand-in for
   // update() with no power (the full network isn't needed until the bow lands).
   void coolIdle() {
+    slipE_ = false;
     if (temp_ == 0.f) return;
     temp_ *= idleDecay_;
     for (float& u : u_) u *= idleDecay_;
@@ -83,6 +100,51 @@ class ThermalFriction {
     const float x = temp_ / tDrop;
     const float s = x <= 0.f ? 1.f : (x >= 1.f ? 0.f : 1.f - x * x * (3.f - 2.f * x));
     return muDynamic + (muStatic - muDynamic) * s;
+  }
+
+  // Yield-stress factor of the enhanced model.
+  float yieldMu() const {
+    const float x = temp_ / tDropEnhanced;
+    const float s = x <= 0.f ? 1.f : (x >= 1.f ? 0.f : 1.f - x * x * (3.f - 2.f * x));
+    const float hot = muDynamic / hFloor;
+    return hot + (muStatic - hot) * s;
+  }
+
+  JunctionResult solveEnhanced(float vh, float vb, float fb, float zeff, float noiseAmt, float noise) {
+    JunctionResult r;
+    if (fb <= 0.f) {
+      slipE_ = false;
+      r.v = vh;
+      return r;
+    }
+    const float y = yieldMu();
+    const float a = vb - vh, aa = std::fabs(a);
+    const float k = fb / (2.f * zeff);
+    if (!slipE_ && aa <= k * y) {
+      r.f = 2.f * zeff * a;
+      r.v = vb;
+      return r;
+    }
+    // Slip speed u from u + k y h(u) = |a|: u^2 + (v0 - b) u - v0 (b - k y (1 - hf)) = 0, b = |a| - k y hf.
+    const float v0 = hSpeed, hf = hFloor;
+    const float b = aa - k * y * hf;
+    const float disc = (v0 - b) * (v0 - b) + 4.f * v0 * (b - k * y * (1.f - hf));
+    const float u = disc >= 0.f ? 0.5f * ((b - v0) + std::sqrt(disc)) : -1.f;
+    if (u <= 0.f) {  // no slip solution: re-stick
+      slipE_ = false;
+      if (aa <= k * y) {
+        r.f = 2.f * zeff * a;
+        r.v = vb;
+        return r;
+      }
+    }
+    slipE_ = true;
+    const float uu = std::max(u, 0.f);
+    const float m = y * (hf + (1.f - hf) * v0 / (v0 + uu)) * (1.f - noiseAmt * noise);
+    r.f = (a > 0.f ? 1.f : -1.f) * fb * m;
+    r.v = vh + r.f / (2.f * zeff);
+    r.slipping = true;
+    return r;
   }
 
   // Solve the bow junction: v = vh + f/(2 Zeff), |f| <= Fb*mu, f opposes slip.
@@ -141,6 +203,7 @@ class ThermalFriction {
   static constexpr float kLnRatio = 1.6094379f;  // ln 5
   float tau_[kBranches]{}, relax_[kBranches]{}, invSqrtTau_[kBranches]{}, u_[kBranches]{};
   float temp_ = 0.f, dt_ = 1.f / 96000.f, idleDecay_ = 0.9998f;
+  bool slipE_ = false;
 };
 
 // Hyperbolic friction curve mu = muD + (muS - muD) v0 / (v0 + |u|) with the
