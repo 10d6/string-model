@@ -34,8 +34,15 @@ struct RadiationSettings {
   float mute = 0.f;        // 0..1: a practice/orchestral mute (hill down, highs cut)
   float resonance = 1.f;   // 0..1: low body peaks and dips (1 = as measured, 0 = smoothed)
   float width = 1.f;       // 0..1: stereo width of the high band
+  // Body character (KB §5.8): offsets from the measured response, in dB.
+  float a0 = 0.f;          // A0 air resonance (~280 Hz): the one measured quality correlate
+  float nasal = 0.f;       // 0.8-1.5 kHz: the "nasal" region (factory violins: strong)
+  float brilliance = 0.f;  // the bridge hill's level (2-3 kHz)
+  float softness = 0.f;    // cut above ~4 kHz (negative: more air)
+  float voice = 0.f;       // F1-F3 shift, fraction: +0.06 ~ Tai's Stradivari vs other old Italians
   bool operator==(const RadiationSettings& o) const {
-    return hillHz == o.hillHz && mute == o.mute && resonance == o.resonance && width == o.width;
+    return hillHz == o.hillHz && mute == o.mute && resonance == o.resonance && width == o.width && a0 == o.a0 &&
+           nasal == o.nasal && brilliance == o.brilliance && softness == o.softness && voice == o.voice;
   }
 };
 
@@ -58,6 +65,7 @@ class Radiation {
     applySettings(settings_, true);
     // The audio loop reads plain arrays (structure of arrays, padded to 4
     // with silent modes) so it vectorises.
+    voiceNow_ = 0.f;
     const std::size_t n = (modes_.size() + 3) & ~std::size_t(3);
     for (auto* v : {&b0_, &a1_, &a2_, &s1_, &s2_, &rl_, &rr_}) v->assign(n, 0.f);
     for (std::size_t k = 0; k < modes_.size(); ++k) {
@@ -88,6 +96,18 @@ class Radiation {
       m.rr += (m.tr - m.rr) * kGlide;
     }
     syncResidues();
+    // Voice moves the modes themselves: glide, recomputing their filters.
+    if (voiceNow_ != settings_.voice) {
+      voiceNow_ += (settings_.voice - voiceNow_) * kGlide;
+      if (std::fabs(settings_.voice - voiceNow_) < 1e-4f) voiceNow_ = settings_.voice;
+      for (std::size_t k = 0; k < modes_.size(); ++k) {
+        float b0, a1, a2;
+        coefficients(modes_[k].hz * voiceScale(modes_[k].hz, voiceNow_), modes_[k].q, b0, a1, a2);
+        b0_[k] = b0;
+        a1_[k] = a1;
+        a2_[k] = a2;
+      }
+    }
   }
 
   void process(float f, float& l, float& r) {
@@ -120,7 +140,13 @@ class Radiation {
   // Magnitude (dB) of one channel's current response at hz (0 left, 1 right).
   float responseDb(float hz, int ch) const {
     std::complex<double> sum = 0;
-    for (const auto& m : modes_) sum += static_cast<double>(ch == 0 ? m.rl : m.rr) * modeResponse(m, hz);
+    for (std::size_t k = 0; k < modes_.size(); ++k) {
+      Mode m = modes_[k];  // with the current (voice-shifted) filter
+      m.b0 = b0_[k];
+      m.a1 = a1_[k];
+      m.a2 = a2_[k];
+      sum += static_cast<double>(ch == 0 ? m.rl : m.rr) * modeResponse(m, hz);
+    }
     for (const auto& h : hp_) sum *= h.response(hz, fs_);
     return static_cast<float>(20.0 * std::log10(std::abs(sum) * gain_ + 1e-12));
   }
@@ -198,6 +224,30 @@ class Radiation {
   }
   std::complex<double> modeResponse(const Mode& m, float hz) const { return modeResponse(m, hz, fs_); }
 
+  // Peak-normalised band-pass (bilinear, prewarped).
+  void coefficients(float hz, float q, float& b0, float& a1, float& a2) const {
+    const double w = 2 * 3.141592653589793 * hz;
+    const double K = w / std::tan(w / (2.0 * fs_));
+    const double a = w / q, b = w * w;
+    const double a0 = K * K + a * K + b;
+    b0 = static_cast<float>(a * K / a0);
+    a1 = static_cast<float>((2 * b - 2 * K * K) / a0);
+    a2 = static_cast<float>((K * K - a * K + b) / a0);
+  }
+
+  // Voice: scale the formant region (F1-F3, below ~3 kHz) by 1 + v, fading to
+  // no shift by 4.5 kHz so F4 and the top stay put (Tai et al.: F4 ~1%).
+  static float voiceScale(float hz, float v) {
+    const float t = hz <= 3000.f ? 1.f : (hz >= 4500.f ? 0.f : 0.5f * (1.f + std::cos(3.14159265f * (hz - 3000.f) / 1500.f)));
+    return 1.f + v * t;
+  }
+
+  // A smooth bump in log frequency (1 at the centre).
+  static float bump(float hz, float centre, float sigmaOct) {
+    const float o = std::log2(hz / centre) / sigmaOct;
+    return std::exp(-0.5f * o * o);
+  }
+
   void buildModes(uint32_t seed) {
     modes_.clear();
     uint32_t r = seed;
@@ -229,13 +279,7 @@ class Radiation {
       const float ll = std::pow(10.f, 4.f * gauss() / 20.f), lr = std::pow(10.f, 4.f * gauss() / 20.f);
       m.gl = (1.f - x) + x * sl * ll;
       m.gr = (1.f - x) + x * sr * lr;
-      const double w = 2 * 3.141592653589793 * hz;
-      const double K = w / std::tan(w / (2.0 * fs_));
-      const double a = w / m.q, b = w * w;
-      const double a0 = K * K + a * K + b;
-      m.b0 = static_cast<float>(a * K / a0);  // peak-normalised band-pass
-      m.a1 = static_cast<float>((2 * b - 2 * K * K) / a0);
-      m.a2 = static_cast<float>((K * K - a * K + b) / a0);
+      coefficients(hz, m.q, m.b0, m.a1, m.a2);
       modes_.push_back(m);
     }
   }
@@ -340,6 +384,13 @@ class Radiation {
       // move, about -10 to -12 dB in the bridge-hill region) [T].
       const float hi = 1.f / (1.f + std::pow(1500.f / m.hz, 4.f));
       a *= std::pow(10.f, -5.f * s.mute * hi / 20.f);
+      // Body character (KB §5.8): bumps at the regions the research names,
+      // placed where the mode sounds (after Voice) [T: widths].
+      const float hz = m.hz * voiceScale(m.hz, s.voice);
+      const float soft = 1.f / (1.f + std::pow(4000.f / hz, 4.f));
+      const float db = s.a0 * bump(hz, 280.f, 0.2f) + s.nasal * bump(hz, 1100.f, 0.4f) +
+                       s.brilliance * bump(hz, hill, 0.4f) - s.softness * soft;
+      a *= std::pow(10.f, db / 20.f);
       // Width: mid/side on the per-channel gains.
       const float mid = 0.5f * (m.gl + m.gr), side = 0.5f * (m.gl - m.gr);
       m.tl = a * norm_ * (mid + s.width * side);
@@ -363,7 +414,7 @@ class Radiation {
   Biquad hp_[2];
   std::vector<float> tHz_, tDb_;
   RadiationSettings settings_;
-  float fs_ = 48000.f, baseHill_ = 2600.f, gain_ = 1.f, norm_ = 1.f, lowCut_ = 230.f;
+  float fs_ = 48000.f, baseHill_ = 2600.f, gain_ = 1.f, norm_ = 1.f, lowCut_ = 230.f, voiceNow_ = 0.f;
 };
 
 }  // namespace sm
