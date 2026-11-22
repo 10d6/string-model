@@ -53,6 +53,14 @@ struct PerformerControls {
   float chordWindow = 0.035f; // s: keys pressed within this are one chord
   float rollTime = 0.06f;     // s per string pair when rolling a 3-4 note chord
   float fingerLift = 0.25f;   // s after the bow leaves a string before the finger lifts [T]
+  // How a note ends when the last key goes up (KB §11.2 "Note release"):
+  // 0 Auto (by key-up speed: quick = stop, gentle = lift), 1 Lift (the bow
+  // leaves; the string rings), 2 Stop (the bow stops on the string and damps
+  // it), 3 Finger Off (the bow leaves, then the finger: the note falls to the
+  // open string).
+  int releaseMode = 0;
+  int forcedString = -1;      // -1 auto, else 0..3: play on this string when it reaches the note
+  float slideNoise = 0.4f;    // 0..1: winding noise under a sliding finger
 };
 
 struct StringTarget {
@@ -60,6 +68,8 @@ struct StringTarget {
   float noteHz = 440.f;    // without vibrato (sets bridge-side length)
   bool stopped = false;
   float force = 0.f;       // N
+  float damp = 0.f;        // 0..1: the bow resting on the string as a damper (a "stop" release)
+  float slide = 0.f;       // m/s: the stopping finger's speed along the string (shifts)
 };
 
 class Performer {
@@ -90,10 +100,13 @@ class Performer {
       shiftT_[s] = 1.f;
       stopped_[s] = false;
       offTime_[s] = 0.f;
+      fingerOffAt_[s] = 0.f;
       fFactor_[s] = 1.f;
     }
     str_ = 2;
     chordN_ = 0;
+    stopping_ = false;
+    damp_ = 0.f;
     primed_ = false;
     vibPhase_ = 0.f;
     noteAge_ = 0.f;
@@ -112,14 +125,20 @@ class Performer {
       press_[nHeld_] = now_;
       ++nHeld_;
     }
+    // A note after a "stop" release is a new stroke from rest.
+    const bool wasStopping = stopping_;
+    stopping_ = false;
+    damp_ = 0.f;
+    for (float& t : fingerOffAt_) t = 0.f;
     // Keys pressed together: a double stop or a rolled chord.
     if (nHeld_ >= 2 && tryChord(c)) return;
     chordN_ = 0;
-    const bool slur = bowing_ && c.legato && note_ >= 0;
+    const bool slur = bowing_ && c.legato && note_ >= 0 && !wasStopping;
     play(note, vel, slur, c);
   }
 
-  void noteOff(int note, const PerformerControls& c) {
+  // relVel: key-up velocity 0..1 (keyboards without it send 64/127).
+  void noteOff(int note, float relVel, const PerformerControls& c) {
     const bool wasTop = nHeld_ > 0 && held_[nHeld_ - 1] == note;
     removeHeld(note);
     if (chordN_ > 0) {
@@ -145,7 +164,7 @@ class Performer {
         updateForceFactors();
       } else {
         chordN_ = 0;
-        lift();
+        release(relVel, c);
       }
       return;
     }
@@ -154,13 +173,15 @@ class Performer {
       // Back to the previous held key, slurred.
       play(held_[nHeld_ - 1], vel_[nHeld_ - 1], c.legato, c);
     } else {
-      lift();
+      release(relVel, c);
     }
   }
 
   void allNotesOff() {
     nHeld_ = 0;
     chordN_ = 0;
+    stopping_ = false;
+    damp_ = 0.f;
     lift();
   }
 
@@ -168,9 +189,24 @@ class Performer {
   float tickSample(const PerformerControls& c) {
     const float dt = 1.f / fs_;
     now_ += dt;
-    // Bow velocity: approach dir * vbTarget at a limited acceleration.
-    const float want = bowing_ ? dir_ * vbT_ : vb_ * 0.999f;
-    const float accel = bowing_ ? accel_ : 0.5f;
+    // Bow velocity: approach dir * vbTarget at a limited acceleration. A
+    // "stop" release brings the bow to rest on the string in ~40 ms, then
+    // lifts it.
+    float want = bowing_ ? dir_ * vbT_ : vb_ * 0.999f;
+    float accel = bowing_ ? accel_ : 0.5f;
+    if (stopping_) {
+      want = 0.f;
+      accel = std::max(vbT_, 0.05f) / 0.04f;
+      // Once the bow has (nearly) stopped, it rests on the string as a damper
+      // (over ~15 ms), then lifts after 150 ms.
+      if (std::fabs(vb_) < 0.1f * std::max(vbT_, 0.05f)) damp_ = std::min(1.f, damp_ + dt / 0.015f);
+      if (std::fabs(vb_) < 1e-3f && now_ - stopStart_ > 0.15f) {
+        stopping_ = false;
+        lift();
+      }
+    } else if (damp_ > 0.f) {
+      damp_ = std::max(0.f, damp_ - dt / 0.02f);
+    }
     const float dv = want - vb_;
     const float step = accel * dt;
     vb_ += std::clamp(dv, -step, step);
@@ -192,7 +228,8 @@ class Performer {
     // Force dips through a reversal: players lighten the bow, which shortens the
     // gap and cleans the re-attack (KB §11.5: dip 0.6 -> 0.1 N, gap 28 -> 16 ms).
     const float sf = std::min(1.f, speedFrac / c.changeWidth);
-    const float dip = c.changeFloor + (1.f - c.changeFloor) * sf * sf;
+    // (A stop holds its force: the stationary bow is what damps the string.)
+    const float dip = stopping_ ? 1.f : c.changeFloor + (1.f - c.changeFloor) * sf * sf;
     accent_ *= accentDecay_;
     const float fTarget = fT_ * dip * (1.f + accent_);
     for (int s = 0; s < 4; ++s) {
@@ -230,6 +267,17 @@ class Performer {
       out[s].hz = noteHz * std::pow(2.f, vib / 1200.f);
       out[s].stopped = stopped;
       out[s].force = force_[s];
+      out[s].damp = (bowed_[s] || s == str_) ? damp_ : 0.f;
+      // Finger speed along the string during a shift: x = L (1 - 2^(-p/12)),
+      // p semitones above the open string; dn/dt from the S-curve.
+      out[s].slide = 0.f;
+      if (shiftT_[s] < 1.f && stopped) {
+        const float t = shiftT_[s];
+        const float dndt = (fingerTo_[s] - fingerFrom_[s]) * 6.f * t * (1.f - t) / shiftDur_[s];
+        const float pos = n - static_cast<float>(def_->strings[s].openNote);
+        const float dxdn = def_->scaleLength * 0.0577623f * std::pow(2.f, -pos / 12.f);  // L ln2/12 2^(-p/12)
+        out[s].slide = std::fabs(dxdn * dndt);
+      }
     }
   }
 
@@ -257,10 +305,13 @@ class Performer {
     // Peak-to-peak depth given; amplitude is half. Louder = wider, faster.
     vibCents_ = 0.5f * c.vibDepth * (0.6f + 0.8f * d) * ramp * vibDepthJit_;
     vibRateNow_ = c.vibRate * (0.9f + 0.2f * d) * vibRateJit_;
-    // Fingers leave strings the bow has left, so they ring open.
+    // Fingers leave strings the bow has left, so they ring open (a "finger
+    // off" release lifts the playing finger too, soon after the bow).
     for (int s = 0; s < 4; ++s) {
-      if (bowed_[s] || s == str_ || !stopped_[s]) continue;
-      if (now_ - offTime_[s] >= c.fingerLift) {
+      const bool due = fingerOffAt_[s] > 0.f && now_ >= fingerOffAt_[s] && !(bowed_[s] && bowing_);
+      if (due) fingerOffAt_[s] = 0.f;
+      if (!stopped_[s] || (!due && (bowed_[s] || s == str_))) continue;
+      if (due || now_ - offTime_[s] >= c.fingerLift) {
         stopped_[s] = false;
         fingerFrom_[s] = fingerTo_[s] = static_cast<float>(def_->strings[s].openNote);
         shiftT_[s] = 1.f;
@@ -292,6 +343,21 @@ class Performer {
         ++j;
       }
     nHeld_ = j;
+  }
+
+  // The last key went up: end the note the chosen way.
+  void release(float relVel, const PerformerControls& c) {
+    int mode = c.releaseMode;
+    if (mode == 0) mode = relVel > 0.7f ? 2 : 1;  // a quick key-up stops the bow on the string
+    if (mode == 2 && bowing_) {
+      stopping_ = true;
+      stopStart_ = now_;
+      return;
+    }
+    lift();
+    if (mode == 3)
+      for (int s = 0; s < 4; ++s)
+        if (stopped_[s]) fingerOffAt_[s] = now_ + 0.04f;  // the finger leaves just after the bow
   }
 
   void lift() {
@@ -385,7 +451,13 @@ class Performer {
     updateForceFactors();
   }
 
-  int chooseString(int note, bool slur) const {
+  int chooseString(int note, bool slur, int forced) const {
+    // A chosen string (keyswitch / String parameter) plays every note it
+    // reaches: from its open note up two octaves.
+    if (forced >= 0 && forced < 4) {
+      const int open = def_->strings[forced].openNote;
+      if (note >= open && note <= open + 24) return forced;
+    }
     // Stay on the current string through a slur if it reaches within 7 semitones.
     if (slur) {
       const int open = def_->strings[str_].openNote;
@@ -398,7 +470,7 @@ class Performer {
   }
 
   void play(int note, float vel, bool slur, const PerformerControls& c) {
-    const int s = chooseString(note, slur);
+    const int s = chooseString(note, slur, c.forcedString);
     const float prevNote = note_ >= 0 ? static_cast<float>(note_) : static_cast<float>(note);
     vel_now_ = vel;
     note_ = note;
@@ -410,7 +482,10 @@ class Performer {
       fingerFrom_[s] = currentFinger(s);
       fingerTo_[s] = n;
       const float interval = std::fabs(n - prevNote);
-      shiftDur_[s] = 0.008f + c.shiftTime * std::min(1.f, interval / 5.f);
+      // A gentle key slides slowly and expressively, a hard one shifts quickly
+      // (x1.4 at velocity 0.2, x1 at 0.5, x0.4 at 1).
+      const float speed = std::clamp(1.6f - 1.2f * vel, 0.4f, 1.4f);
+      shiftDur_[s] = 0.008f + c.shiftTime * std::min(1.f, interval / 5.f) * speed;
       shiftT_[s] = 0.f;
     } else {
       fingerFrom_[s] = fingerTo_[s] = n;
@@ -552,7 +627,9 @@ class Performer {
   float vbT_ = 0.2f, betaT_ = 0.08f, fT_ = 0.4f, dyn_ = 0.5f;
   float accel_ = 5.f, accelChange_ = 5.f, attackK_ = 10.f, accent_ = 0.f;
   float landRate_ = 0.01f, liftRate_ = 0.01f, accentDecay_ = 0.999f;
-  float force_[4]{}, fFactor_[4]{1, 1, 1, 1}, offTime_[4]{};
+  float force_[4]{}, fFactor_[4]{1, 1, 1, 1}, offTime_[4]{}, fingerOffAt_[4]{};
+  bool stopping_ = false;
+  float stopStart_ = 0.f, damp_ = 0.f;
   bool bowed_[4]{};
   bool stopped_[4]{};
   float fingerFrom_[4]{}, fingerTo_[4]{}, shiftT_[4]{1, 1, 1, 1}, shiftDur_[4]{0.03f, 0.03f, 0.03f, 0.03f};

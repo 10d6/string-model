@@ -8,6 +8,12 @@ on:
     branches: [main]
     tags: ["v*"]          # a version tag also publishes a release
   pull_request:
+  workflow_dispatch:      # Actions -> CI -> Run workflow: tick "plugins" to build them
+    inputs:
+      plugins:
+        description: Build the plugins (Windows, macOS, Linux)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -78,9 +84,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
+  # Plugins are slow and only needed at milestones: they build for version
+  # tags (releases) and when the workflow is run by hand with "plugins" ticked,
+  # not on every PR or push.
   plugin:
     name: Plugin (${{ matrix.name }})
     needs: web
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.plugins)
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

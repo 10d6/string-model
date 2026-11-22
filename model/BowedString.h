@@ -27,6 +27,10 @@ struct StringDef {
   int openNote;   // MIDI note of the open string
   float z0;       // transverse wave impedance (kg/s)
   float zr;       // torsional impedance seen at the surface (kg/s)
+  // Scales the low-pass corners of the terminations: thicker, wound strings
+  // lose their high partials faster (internal viscous loss grows with
+  // frequency and diameter, KB §2.3) [T]. 1 = the plain E.
+  float hf = 1.f;
 };
 
 // Lumped losses for a string family [T]: decay of the low partials, and the
@@ -73,10 +77,12 @@ class BowedString {
   // Called at control rate. hz: sounding pitch (with vibrato). noteHz: the
   // pitch without vibrato, which fixes the bridge-side length (vibrato moves
   // only the finger, KB §11.2). beta: relative bow–bridge distance.
-  void setGeometry(float hz, float noteHz, float beta, bool stopped) {
-    const float t60 = stopped ? loss_.stoppedT60 : loss_.openT60;
-    nutLP_.setCutoff(stopped ? loss_.fingerHz : loss_.nutHz, fs_);
-    bridgeLP_.setCutoff(loss_.bridgeHz, fs_);
+  // slide: finger speed (m/s) during a shift; a sliding finger presses
+  // lighter, so the stop is lossier [T].
+  void setGeometry(float hz, float noteHz, float beta, bool stopped, float slide = 0.f) {
+    const float t60 = (stopped ? loss_.stoppedT60 : loss_.openT60) / (1.f + 1.5f * slide);
+    nutLP_.setCutoff((stopped ? loss_.fingerHz : loss_.nutHz) * def_.hf, fs_);
+    bridgeLP_.setCutoff(loss_.bridgeHz * def_.hf, fs_);
     const float period = fs_ / hz;
     const float filt = nutLP_.delayAt(hz, fs_) + bridgeLP_.delayAt(hz, fs_);
     const float net = std::max(period - filt, 8.f);
@@ -115,7 +121,7 @@ class BowedString {
       if (fb <= 0.f) return 0.f;
       wake();
     }
-    step(vb, fb, model, noiseAmt, noise);
+    step(vb, fb, model, noiseAmt, noise, 0.f);
     return finish(0.f);
   }
 
@@ -129,7 +135,11 @@ class BowedString {
   // velocity wave arriving at the bridge (after the string's own losses);
   // the caller solves the bridge and calls finish() with its velocity.
   // vb: bow velocity (m/s), fb: bow force (N, 0 = bow off).
-  float step(float vb, float fb, FrictionModel model, float noiseAmt, float noise) {
+  // damp (0..1): the bow resting on the string as a lossy contact (hair
+  // compliance and rosin) instead of a friction junction: a resistance
+  // R = damp * 2 Z0 at the bow point (2 Z0 absorbs best). A stopped bow damps
+  // the string (KB §11.2); a rigid stick would only pin it.
+  float step(float vb, float fb, FrictionModel model, float noiseAmt, float noise, float damp = 0.f) {
     dN_ += (tdN_ - dN_) * smooth_;
     dB_ += (tdB_ - dB_) * smooth_;
 
@@ -143,7 +153,13 @@ class BowedString {
     const float vh = vinN + vinB + torA_ * (torY_ - torX_) / (2.f * def_.zr);
     const float zeff = 1.f / (1.f / def_.z0 + torA_ / def_.zr);
     JunctionResult r;
-    if (fb <= 0.f) {
+    if (damp > 0.f) {
+      // Point resistor: f = -R v, v = vh + f/(2 Zeff)  =>  v = vh / (1 + R/(2 Zeff)).
+      const float R = damp * 2.f * def_.z0;
+      r.v = vh / (1.f + R / (2.f * zeff));
+      r.f = -R * r.v;
+      thermal.coolIdle();
+    } else if (fb <= 0.f) {
       // Bow off: the junction is transparent; the contact just cools.
       r.v = vh;
       thermal.coolIdle();
@@ -159,7 +175,7 @@ class BowedString {
     torX_ = r.f;
     const float inc = r.f / (2.f * def_.z0);
 
-    const float reflNut = -gNut_ * nutLP_.process(atNut);
+    const float reflNut = -gNut_ * nutLP_.process(atNut) + fingerNoise_;
     toBridge_.write(vinN + inc);
     toNut_.write(vinB + inc);
     fromNut_.write(reflNut);
@@ -192,6 +208,9 @@ class BowedString {
   }
 
   float z0() const { return def_.z0; }
+  // A sliding finger rubbing the winding: velocity (m/s) added at the finger
+  // end this sample.
+  void setFingerNoise(float v) { fingerNoise_ = v; }
   // Recent peak wave amplitude at the ends (m/s), 0 when asleep.
   float level() const { return asleep_ ? 0.f : level_; }
 
@@ -206,7 +225,7 @@ class BowedString {
   LossDef loss_{2.f, 1.f, 7000.f, 9000.f, 4000.f};
   float fs_ = 96000.f, smooth_ = 0.01f, torA_ = 0.99f, torX_ = 0.f, torY_ = 0.f;
   float dN_ = 100.f, dB_ = 10.f, tdN_ = 100.f, tdB_ = 10.f, betaActual_ = 0.1f;
-  float gNut_ = 0.99f, gBridge_ = 0.99f, level_ = 0.f, arrive_ = 0.f, lv_ = 0.f, fb_ = 0.f;
+  float gNut_ = 0.99f, gBridge_ = 0.99f, level_ = 0.f, arrive_ = 0.f, lv_ = 0.f, fb_ = 0.f, fingerNoise_ = 0.f;
   int quiet_ = 0;
   bool asleep_ = true, first_ = true, slipping_ = false;
 };

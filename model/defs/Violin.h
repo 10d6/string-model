@@ -38,6 +38,9 @@ struct InstrumentDef {
   int radiationCount;
   float radiationLowCut;
   float radiationGain;
+  float scaleLength;      // m, nut to bridge (for the finger's speed along the string)
+  float winding[4];       // 0..1 per string: how much a sliding finger rubs a winding (0 = plain)
+  float windingPitch;     // m between turns of the winding
 };
 
 inline const InstrumentDef& violin() {
@@ -46,10 +49,11 @@ inline const InstrumentDef& violin() {
   static const InstrumentDef d{
       "Violin",
       {
-          {"G", 55, 0.33f, 1.15f},
-          {"D", 62, 0.24f, 0.85f},
-          {"A", 69, 0.20f, 0.70f},
-          {"E", 76, 0.19f, 0.65f},
+          // name, open note, Z0, ZR, HF loss scale [T]
+          {"G", 55, 0.33f, 1.15f, 0.55f},
+          {"D", 62, 0.24f, 0.85f, 0.70f},
+          {"A", 69, 0.20f, 0.70f, 0.85f},
+          {"E", 76, 0.19f, 0.65f, 1.00f},
       },
       // open T60, stopped T60, bridge LP, nut LP, finger LP  [T]
       {2.2f, 0.9f, 9000.f, 12000.f, 5000.f},
@@ -86,6 +90,11 @@ inline const InstrumentDef& violin() {
       data::kViolinRadiationHz, data::kViolinRadiationDb, data::kViolinRadiationCount,
       230.f,  // below A0 (~280 Hz) the violin radiates little; weak at the open G (KB §12.7)
       1.19f,  // same loudness (300 Hz-5 kHz) as the Library Mic (Smooth) output
+      0.328f,  // KB §2.1
+      // G, D and A are wound (silver/aluminium on synthetic cores); the E is
+      // plain steel [T].
+      {1.f, 1.f, 0.7f, 0.f},
+      0.12e-3f,  // [T]
   };
   return d;
 }

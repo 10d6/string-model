@@ -133,6 +133,16 @@ violins.
 String impedances (KB §2.1, Z₀ = μc mid-range): G 0.33, D 0.24, A 0.20,
 E 0.19 kg/s.
 
+**High-frequency loss per string [T]:** the termination low-passes are
+scaled by G 0.55, D 0.7, A 0.85, E 1. Thicker, wound strings lose their high
+partials faster, since internal viscous loss grows with frequency and
+diameter (KB §2.3). Without this, D5 sul G came out brighter than D5 on the
+A string. Now A4 sul D is clearly darker than the open A (spectral centroid
+2359 vs 2723 Hz). D5 sul G is close to D5 on the A string (2311 vs
+2184 Hz); its remaining brightness is the extra force high positions on a
+thick string need. After this change the radiation target was re-measured
+and the force calibration re-run (both unchanged in quality).
+
 ## Friction (KB §3)
 
 **Thermal (default): Woodhouse 2003 (KB §3.2a).** μ depends only on contact
@@ -288,8 +298,48 @@ whatever the host block size. The performer smooths dynamics, pressure and
 contact (15 ms) on its own fixed 16-sample clock. Bowing is chaotic: the kit's
 per-control-block smoothing made renders differ by 1.9 dB between block sizes.
 
-**Release.** Key up lifts the bow: the force falls over 25 ms and the string
-rings.
+**Release** (`Release`; KB §11.2: three releases that sound very different):
+- **Lift:** the force falls over 25 ms and the string rings.
+- **Stop on String:** the bow decelerates to rest in ~40 ms with its force
+  held. Once nearly still, the contact turns into a damper over 15 ms: a
+  point resistance R = 2Z₀ (matched, so it absorbs best) in place of the
+  friction junction. The bow lifts after 150 ms.
+  - A rigid stick would only pin the string at the bow point (a node), and
+    both halves rang on at 1–2 kHz. That was the first version.
+  - Measured (`instrument_lab release`): −40 dB in ~270 ms, against
+    0.5–1.3 s for a lift. Through the synth, it's −26 dB 100 ms after the
+    key-up, against −8 dB.
+- **Finger Off:** the bow lifts, and 40 ms later the playing finger lifts,
+  so the ringing note falls to the open string (B4 → A4, E4 → D4).
+- **Auto (default):** uses the key-up velocity. Above 0.7 (a quick release)
+  it stops on the string; otherwise it lifts. Keyboards that don't measure
+  key-up speed send 64, which lifts.
+- A note played during a stop starts a new stroke from rest.
+
+**Shifts** (KB §11.2 "Shifts, portamento"). A slur on the same string slides
+the finger with an S-curve over 8 ms + `Shift Time` × min(1, interval/5 st)
+× (1.6 − 1.2·velocity) [T]: a gentle key slides slowly (×1.4 at 0.2), a hard
+one quickly (×0.4 at 1). The finger's speed along the string,
+v = |dx/dt| with x = L(1 − 2^(−p/12)) and L = 0.328 m, does two things:
+- **Lighter finger:** the stopped T60 is divided by (1 + 1.5 v) [T]. The
+  note dips ~6 dB during a slow 5-semitone slide.
+- **Winding noise** on the wound strings (G 1, D 1, A 0.7, E 0) [T]:
+  - White noise band-passed (Q 2) at v / 0.12 mm (the turns of winding the
+    finger crosses), with level `Slide Noise` × 0.3 × v.
+  - It's injected at the finger end. Since a sticking bow reflects it back
+    toward the finger, it also goes straight into the bridge force (in
+    reality it also reaches the body through the neck and the string's
+    other wave types).
+  - Measured during a slow shift: about −20 dB re the note at `Slide Noise`
+    1, −23 dB at 0.4 (not linear: the noise also nudges the chaotic bowing).
+
+**String choice** (`String`: Auto / G / D / A / E). A chosen string plays
+every note from its open note up two octaves; others fall back to Auto.
+**Keyswitches** (`String Keyswitches`, on): C1 Auto, C#1 G, D1 D, D#1 A,
+E1 E. They set the `String` parameter (`ctx.setParam`, so the page and host
+follow) and don't sound. Checked with `LAB_STRING`: G-string notes up to
+G5 and D-string notes up to G5 keep clean Helmholtz motion at soft and loud
+dynamics. Forces on the high G string reach the 3 N cap at mf and above.
 
 **Vibrato (stopped, bowed strings).** `Vibrato Depth` is peak-to-peak at mf,
 scaled 0.6–1.4× by dynamics; the rate is ×0.9–1.1. It ramps in over 350 ms
@@ -344,7 +394,8 @@ from 300 Hz to 5 kHz (×1.19).
   comparison measures where the truth lies.
 
 **Result:** Modelled minus real, per half-octave band from 350 Hz to
-9.5 kHz: −1.0, −3.0, −0.1, +1.2, +0.9 dB. For the Library Mic (Smooth):
+9.5 kHz: −1.4, −2.9, −0.1, +1.1, +0.8 dB (re-measured after the per-string
+HF loss in Phase 4). For the Library Mic (Smooth):
 +1.6, −0.9, −0.3, +3.0, +8.1 dB.
 
 **Controls** (on the 120 residues, gliding over ~5 ms):
@@ -397,7 +448,8 @@ python3 tools/calibrate_force.py                                     # Helmholtz
 python3 tools/force_tilt.py                                          # bridge force vs 1/n, per 1/3 octave
 python3 tools/radiation_target.py <VSCO Arco Vib dir> [render] [csv|-] [mode]   # real vs synth per band
 python3 tools/combine_target.py <library csv> <measured csv> <out csv>          # the radiation target
-  env: LAB_HF=1 (measure above 1 kHz), LAB_DYN, LAB_PRESSURE, LAB_COUPLING, LAB_MUTE, LAB_CHANGE, LAB_FLOOR,
+./build/instrument_lab release <note> <1 lift|2 stop|3 finger off> [relVel]   # decay and the pitch left ringing
+  env: LAB_HF=1 (measure above 1 kHz), LAB_DYN, LAB_PRESSURE, LAB_COUPLING, LAB_MUTE, LAB_STRING, LAB_CHANGE, LAB_FLOOR,
        LAB_WIDTH, LAB_SUSTAIN, LAB_BMIN, LAB_MINACC, LAB_TRACE=from,to
 python3 tools/analyze.py render.wav [out.png]                        # spectrogram, level, pitch per note
 ```
