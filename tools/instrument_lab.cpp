@@ -37,6 +37,7 @@ int main(int argc, char** argv) {
   if (std::getenv("LAB_COUPLING")) ic.coupling = static_cast<float>(std::atof(std::getenv("LAB_COUPLING")));
   if (std::getenv("LAB_STRING")) pc.forcedString = std::atoi(std::getenv("LAB_STRING"));
   if (std::getenv("LAB_MUTE")) ic.mute = static_cast<float>(std::atof(std::getenv("LAB_MUTE")));
+  if (std::getenv("LAB_AVARY")) pc.autoChangeVary = static_cast<float>(std::atof(std::getenv("LAB_AVARY")));
   if (std::getenv("LAB_FLOOR")) pc.changeFloor = static_cast<float>(std::atof(std::getenv("LAB_FLOOR")));
   if (std::getenv("LAB_MINACC")) pc.minAccel = static_cast<float>(std::atof(std::getenv("LAB_MINACC")));
   if (std::getenv("LAB_PRESSURE")) pc.pressure = static_cast<float>(std::atof(std::getenv("LAB_PRESSURE")));

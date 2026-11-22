@@ -274,14 +274,25 @@ to β 0.025, a bow change stayed > 6 dB down for ~90 ms.
 
 **Bow changes.** The bow position along the hair is tracked (62 cm). A long
 note changes bow at the tip or the frog; `Auto Bow Change` off gives an
-endless bow. The bow reverses in `Bow Change` (default 20 ms) at constant
-acceleration. Force dips towards 20% at zero speed (0.2 + 0.8 (v/v_t)²):
+endless bow. A key-driven bow change (détaché) reverses in `Bow Change`
+(default 20 ms) at constant acceleration. An automatic change (the bow ran
+out) takes the same time but follows a half cosine through zero, like a
+tremolo reversal, so less of it is spent near zero speed. Each automatic
+change varies (KB §11.2): its time ±20%, the new stroke's force ±6%, and
+where the bow turns next, 3–8% from the end. Force dips towards 20% at zero speed (0.2 + 0.8 (v/v_t)²):
 players lighten the bow here, and the KB reports that a deeper dip shortens
 the gap.
 
 Measured above 1 kHz (where the body boosts) at each change, over 35 held
 notes (D4–A5, five velocities): mean dip 12.5 dB, more than 6 dB down for
 15 ms on average (30 ms at most), with changes about every 4–5 s at mf.
+
+Rounded automatic changes (instrument_lab hold, `LAB_HF=1`, G3–E6 at three
+velocities): the gap more than 6 dB down fell from a median of ~25 ms
+(constant acceleration) to ~15 ms, with a shallower dip. Keeping the force
+on through the turn, as tremolo does, made no measurable difference (floors
+0.2–1.0 all gave the same gap at 20 ms), and slower round turns (40–100 ms)
+lengthened the gap to 25–60 ms.
 
 What made the difference:
 - The first version (60 ms reversals, no bow saving) changed every 2.5 s
