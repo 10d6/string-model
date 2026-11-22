@@ -4,21 +4,28 @@
 // - Monophonic, last-note priority. Overlapping keys slur (same bow, finger
 //   change); a new key after all keys are up is a new stroke in the other
 //   bow direction. With legato off every key is a bow change (détaché).
+// - Keys pressed together (within the chord window) become a double stop on
+//   two adjacent strings sharing the bow, or a rolled chord for three or four
+//   (KB §11.2: the lower pair first, then onto the upper pair).
 // - Playability assistant (KB §11.5): a dynamics value picks v_b/beta from the
 //   measured level law, splits it into v_b and beta, and sets the force on the
 //   players' line through the Schelleng diagram, F ∝ v_b * beta^-1.39 * Z^1.39.
-//   Pressure moves along the force axis; contact point moves beta.
+//   Pressure moves along the force axis; contact point moves beta. High
+//   positions get more force (the body loads short, high strings: F_min rises).
 // - Attacks: the bow lands (force rises over ~8 ms) and accelerates at
 //   a = k * F (Guettler plane, KB §7.2); velocity raises k and adds an accent.
 // - Bow changes reverse v_b at a limited acceleration with a force dip; the
 //   bow position is tracked so long notes change bow at the tip/frog.
-// - Vibrato on stopped notes only, delayed and ramped in, tied to dynamics.
+// - Vibrato on stopped, bowed strings, delayed and ramped in, tied to dynamics.
+// - Fingers leave strings the bow has left (after a moment), so those strings
+//   ring open and in sympathy through the bridge.
 #pragma once
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 
+#include "Bridge.h"
 #include "defs/Violin.h"
 
 namespace sm {
@@ -36,12 +43,16 @@ struct PerformerControls {
   float vibDelay = 0.25f;     // s
   float shiftTime = 0.04f;    // s
   float bend = 0.f;           // semitones
+  float a4 = 440.f;
   float changeFloor = 0.2f;   // force at zero bow speed during a reversal, x target [T]
   float changeWidth = 1.f;    // force is back to full at this fraction of the target speed [T]
-  float sustainSpeed = 0.4f;  // long notes: bow speed after the attack, x attack speed
+  float sustainSpeed = 0.6f;  // long notes: bow speed after the attack, x attack speed
   bool autoChange = true;     // change bow at the tip/frog; off = an endless bow
+  float sustainBetaMin = 0.06f;  // long notes move toward the bridge no closer than this [T]
   float minAccel = 2.5f;      // m/s^2, floor on attack acceleration: below ~2 soft notes take 0.25 s to speak [T]
-  float a4 = 440.f;
+  float chordWindow = 0.035f; // s: keys pressed within this are one chord
+  float rollTime = 0.06f;     // s per string pair when rolling a 3-4 note chord
+  float fingerLift = 0.25f;   // s after the bow leaves a string before the finger lifts [T]
 };
 
 struct StringTarget {
@@ -62,6 +73,8 @@ class Performer {
     reset();
   }
   void setInstrument(const InstrumentDef& def) { def_ = &def; }
+  // The bridge, for the body's load on each note (see updateForceFactors).
+  void setBridge(const Bridge* b) { bridge_ = b; }
 
   void reset() {
     nHeld_ = 0;
@@ -72,16 +85,19 @@ class Performer {
     bowPos_ = 0.15f;
     for (int s = 0; s < 4; ++s) {
       force_[s] = 0.f;
-      lift_[s] = true;
-      fingerNote_[s] = static_cast<float>(def_->strings[s].openNote);
-      fingerFrom_[s] = fingerTo_[s] = fingerNote_[s];
+      bowed_[s] = false;
+      fingerFrom_[s] = fingerTo_[s] = static_cast<float>(def_->strings[s].openNote);
       shiftT_[s] = 1.f;
       stopped_[s] = false;
+      offTime_[s] = 0.f;
+      fFactor_[s] = 1.f;
     }
     str_ = 2;
+    chordN_ = 0;
     primed_ = false;
     vibPhase_ = 0.f;
     noteAge_ = 0.f;
+    now_ = 0.f;
     accent_ = 0.f;
     rng_ = 0x12345678u;
   }
@@ -93,8 +109,12 @@ class Performer {
     if (nHeld_ < kMaxHeld) {
       held_[nHeld_] = note;
       vel_[nHeld_] = vel;
+      press_[nHeld_] = now_;
       ++nHeld_;
     }
+    // Keys pressed together: a double stop or a rolled chord.
+    if (nHeld_ >= 2 && tryChord(c)) return;
+    chordN_ = 0;
     const bool slur = bowing_ && c.legato && note_ >= 0;
     play(note, vel, slur, c);
   }
@@ -102,25 +122,52 @@ class Performer {
   void noteOff(int note, const PerformerControls& c) {
     const bool wasTop = nHeld_ > 0 && held_[nHeld_ - 1] == note;
     removeHeld(note);
+    if (chordN_ > 0) {
+      int k = -1;
+      for (int i = 0; i < chordN_; ++i)
+        if (chordNote_[i] == note) k = i;
+      if (k < 0) return;
+      // Drop that note from the chord; the bow stays on the rest.
+      bowed_[chordStr_[k]] = false;
+      for (int i = k; i + 1 < chordN_; ++i) {
+        chordNote_[i] = chordNote_[i + 1];
+        chordStr_[i] = chordStr_[i + 1];
+      }
+      --chordN_;
+      if (chordN_ >= 2) {
+        rollIdx_ = chordN_ - 2;
+        applyChordContact();
+      } else if (chordN_ == 1) {
+        str_ = chordStr_[0];
+        note_ = chordNote_[0];
+        chordN_ = 0;
+        for (int s = 0; s < 4; ++s) bowed_[s] = s == str_;
+        updateForceFactors();
+      } else {
+        chordN_ = 0;
+        lift();
+      }
+      return;
+    }
     if (!wasTop) return;
     if (nHeld_ > 0) {
       // Back to the previous held key, slurred.
-      play(held_[nHeld_ - 1], vel_[nHeld_ - 1], c.legato, c, true);
+      play(held_[nHeld_ - 1], vel_[nHeld_ - 1], c.legato, c);
     } else {
-      bowing_ = false;  // lift the bow; the string rings on
-      lift_[str_] = true;
+      lift();
     }
   }
 
   void allNotesOff() {
     nHeld_ = 0;
-    bowing_ = false;
-    for (bool& l : lift_) l = true;
+    chordN_ = 0;
+    lift();
   }
 
   // Per sample: bow kinematics and forces. Returns the bow velocity.
   float tickSample(const PerformerControls& c) {
     const float dt = 1.f / fs_;
+    now_ += dt;
     // Bow velocity: approach dir * vbTarget at a limited acceleration.
     const float want = bowing_ ? dir_ * vbT_ : vb_ * 0.999f;
     const float accel = bowing_ ? accel_ : 0.5f;
@@ -135,6 +182,11 @@ class Performer {
       else if (dir_ < 0 && bowPos_ < 0.03f) bowChange(c);
     }
     bowPos_ = std::clamp(bowPos_, 0.f, 1.f);
+    // Rolled chords move onto the next pair of strings.
+    if (chordN_ >= 3 && rollIdx_ < chordN_ - 2 && now_ - rollStart_ >= c.rollTime * static_cast<float>(rollIdx_ + 1)) {
+      ++rollIdx_;
+      applyChordContact();
+    }
     // Force per string: landing ramp, change dip, accent; lift ramps to 0.
     const float speedFrac = vbT_ > 1e-4f ? std::min(1.f, std::fabs(vb_) / vbT_) : 1.f;
     // Force dips through a reversal: players lighten the bow, which shortens the
@@ -144,7 +196,7 @@ class Performer {
     accent_ *= accentDecay_;
     const float fTarget = fT_ * dip * (1.f + accent_);
     for (int s = 0; s < 4; ++s) {
-      const float goal = (!lift_[s] && bowing_ && s == str_) ? fTarget : 0.f;
+      const float goal = (bowed_[s] && bowing_) ? std::min(fTarget * fFactor_[s], def_->forceMax) : 0.f;
       const float rate = goal > force_[s] ? landRate_ : liftRate_;
       force_[s] += (goal - force_[s]) * rate;
       if (force_[s] < 1e-4f && goal == 0.f) force_[s] = 0.f;
@@ -165,14 +217,15 @@ class Performer {
   // At control rate: pitch, vibrato and force targets per string.
   void strings(StringTarget out[4], const PerformerControls& c) const {
     for (int s = 0; s < 4; ++s) {
-      const float t = shiftT_[s];
-      const float sc = t * t * (3.f - 2.f * t);  // S-curve shift
-      float n = fingerFrom_[s] + (fingerTo_[s] - fingerFrom_[s]) * sc;
-      if (s == str_ && note_ >= 0) n += c.bend;
-      const bool stopped = stopped_[s] || (s == str_ && std::fabs(c.bend) > 0.01f);
-      const float noteHz = mtof(n, c.a4);
+      const bool lead = bowed_[s] && (bowing_ || s == str_);
+      float n = currentFinger(s);
+      if (lead && note_ >= 0) n += c.bend;
+      const bool stopped = stopped_[s] || (lead && std::fabs(c.bend) > 0.01f);
+      // Open strings are tuned a little sharp at rest (InstrumentDef).
+      const float tune = stopped ? 0.f : def_->openTuneCents[s] * 0.01f;
+      const float noteHz = mtof(n + tune, c.a4);
       float vib = 0.f;
-      if (stopped && s == str_) vib = vibCents_ * std::sin(6.2831853f * vibPhase_);
+      if (stopped && (lead || s == str_)) vib = vibCents_ * std::sin(6.2831853f * vibPhase_);
       out[s].noteHz = noteHz;
       out[s].hz = noteHz * std::pow(2.f, vib / 1200.f);
       out[s].stopped = stopped;
@@ -181,12 +234,15 @@ class Performer {
   }
 
   float beta() const { return betaT_; }
+  float forceOn(int s) const { return force_[s]; }
   float bowVelocity() const { return vb_; }
   int currentString() const { return str_; }
+  int chordSize() const { return chordN_; }
   bool bowing() const { return bowing_; }
+  bool bowedString(int s) const { return bowed_[s]; }
   float bowPosition() const { return bowPos_; }
 
-  // At control rate: vibrato depth envelope.
+  // At control rate: smoothing, targets, vibrato envelope, finger lifts.
   void controlTick(const PerformerControls& c, float dtControl) {
     // Smooth the continuous controls (~15 ms) on this fixed clock.
     prime(c);
@@ -201,6 +257,15 @@ class Performer {
     // Peak-to-peak depth given; amplitude is half. Louder = wider, faster.
     vibCents_ = 0.5f * c.vibDepth * (0.6f + 0.8f * d) * ramp * vibDepthJit_;
     vibRateNow_ = c.vibRate * (0.9f + 0.2f * d) * vibRateJit_;
+    // Fingers leave strings the bow has left, so they ring open.
+    for (int s = 0; s < 4; ++s) {
+      if (bowed_[s] || s == str_ || !stopped_[s]) continue;
+      if (now_ - offTime_[s] >= c.fingerLift) {
+        stopped_[s] = false;
+        fingerFrom_[s] = fingerTo_[s] = static_cast<float>(def_->strings[s].openNote);
+        shiftT_[s] = 1.f;
+      }
+    }
   }
 
   static float mtof(float n, float a4) { return a4 * std::pow(2.f, (n - 69.f) / 12.f); }
@@ -223,9 +288,101 @@ class Performer {
       if (held_[i] != note) {
         held_[j] = held_[i];
         vel_[j] = vel_[i];
+        press_[j] = press_[i];
         ++j;
       }
     nHeld_ = j;
+  }
+
+  void lift() {
+    bowing_ = false;  // the bow leaves the string(s); they ring on
+    for (int s = 0; s < 4; ++s)
+      if (bowed_[s]) {
+        bowed_[s] = false;
+        offTime_[s] = now_;
+      }
+  }
+
+  void setBowed(int s, bool on) {
+    if (bowed_[s] && !on) offTime_[s] = now_;
+    bowed_[s] = on;
+  }
+
+  // Keys pressed within the chord window of the newest key, lowest first.
+  // Assign them to adjacent strings (lowest positions); false if they can't
+  // be played as one chord.
+  bool tryChord(const PerformerControls& c) {
+    int notes[4], n = 0;
+    float vel = 0.f;
+    for (int i = nHeld_ - 1; i >= 0 && n < 4; --i)
+      if (now_ - press_[i] <= c.chordWindow) {
+        notes[n++] = held_[i];
+        vel = std::max(vel, vel_[i]);
+      }
+    if (n < 2) return false;
+    std::sort(notes, notes + n);
+    for (int i = 1; i < n; ++i)
+      if (notes[i] == notes[i - 1]) return false;
+    // The whole chord if it fits on adjacent strings, else its top notes.
+    int best = -1;
+    while (n >= 2) {
+      int bestCost = 1 << 20;
+      for (int s0 = 0; s0 + n <= 4; ++s0) {
+        int lo = 99, hi = -99;
+        bool ok = true;
+        for (int j = 0; j < n && ok; ++j) {
+          const int pos = notes[j] - def_->strings[s0 + j].openNote;
+          if (pos < 0 || pos > 14) ok = false;
+          lo = std::min(lo, pos);
+          hi = std::max(hi, pos);
+        }
+        if (!ok || hi - lo > 7) continue;  // the hand spans about a fifth
+        const int cost = hi;               // lowest positions win
+        if (cost < bestCost) bestCost = cost, best = s0;
+      }
+      if (best >= 0) break;
+      for (int j = 0; j + 1 < n; ++j) notes[j] = notes[j + 1];  // drop the lowest
+      --n;
+    }
+    if (best < 0) return false;
+    const bool wasChord = chordN_ > 0;
+    // A chord started from silence (the first of its keys began this stroke)
+    // keeps that stroke; otherwise it's a new one, like any key.
+    const bool fresh = !bowing_ || noteAge_ <= c.chordWindow + 0.005f;
+    for (int s = 0; s < 4; ++s) setBowed(s, false);
+    chordN_ = n;
+    for (int j = 0; j < n; ++j) {
+      const int s = best + j;
+      chordStr_[j] = s;
+      chordNote_[j] = notes[j];
+      fingerFrom_[s] = fingerTo_[s] = static_cast<float>(notes[j]);
+      shiftT_[s] = 1.f;
+      stopped_[s] = notes[j] != def_->strings[s].openNote;
+    }
+    note_ = notes[n - 1];
+    str_ = chordStr_[n - 1];
+    vel_now_ = vel;
+    rollIdx_ = 0;
+    rollStart_ = now_;
+    applyChordContact();
+    if (!fresh && !wasChord) startStroke(vel, c, true);
+    else if (!bowing_) startStroke(vel, c, false);
+    else computeTargets(c);
+    return true;
+  }
+
+  // Which strings the bow touches: both of a double stop; for 3-4 notes, the
+  // pair at rollIdx_ (lower pair first, then onto the upper pair).
+  void applyChordContact() {
+    for (int s = 0; s < 4; ++s) setBowed(s, false);
+    if (chordN_ == 2) {
+      setBowed(chordStr_[0], true);
+      setBowed(chordStr_[1], true);
+    } else if (chordN_ >= 3) {
+      setBowed(chordStr_[rollIdx_], true);
+      setBowed(chordStr_[rollIdx_ + 1], true);
+    }
+    updateForceFactors();
   }
 
   int chooseString(int note, bool slur) const {
@@ -240,7 +397,7 @@ class Performer {
     return s;
   }
 
-  void play(int note, float vel, bool slur, const PerformerControls& c, bool returning = false) {
+  void play(int note, float vel, bool slur, const PerformerControls& c) {
     const int s = chooseString(note, slur);
     const float prevNote = note_ >= 0 ? static_cast<float>(note_) : static_cast<float>(note);
     vel_now_ = vel;
@@ -260,29 +417,55 @@ class Performer {
       shiftT_[s] = 1.f;
     }
     stopped_[s] = !open;
-    if (s != str_) {
-      lift_[str_] = true;  // string crossing: leave the old string ringing
-      str_ = s;
-    }
-    lift_[s] = false;
-    computeTargets(c);
-    if (!slur) {
-      noteAge_ = 0.f;
-      // Guettler plane: acceleration proportional to force, steeper with velocity.
-      attackK_ = (6.f + 8.f * vel) * (1.f + 1.5f * c.bite);
-      accent_ = std::max(0.f, vel - 0.55f) * (0.6f + 1.2f * c.bite);
-      if (bowing_) {
-        bowChange(c);
-      } else {
-        // From the air: start the stroke in the direction with more bow left.
-        dir_ = bowPos_ > 0.6f ? -1.f : (bowPos_ < 0.4f ? 1.f : -dir_);
-        vb_ = 0.f;
-        bowing_ = true;
-      }
-    } else if (!returning && std::fabs(vb_) < 1e-3f) {
+    str_ = s;
+    // The bow is on this string only (a crossing leaves the others ringing).
+    for (int k = 0; k < 4; ++k) setBowed(k, k == s);
+    updateForceFactors();
+    if (!slur) startStroke(vel, c, bowing_);
+    else computeTargets(c);
+  }
+
+  // A new stroke: a bow change if the bow is moving, else from the air.
+  void startStroke(float vel, const PerformerControls& c, bool change) {
+    noteAge_ = 0.f;
+    // Guettler plane: acceleration proportional to force, steeper with velocity.
+    attackK_ = (6.f + 8.f * vel) * (1.f + 1.5f * c.bite);
+    accent_ = std::max(0.f, vel - 0.55f) * (0.6f + 1.2f * c.bite);
+    if (change && bowing_) {
+      bowChange(c);
+    } else {
+      // From the air: start the stroke in the direction with more bow left.
+      dir_ = bowPos_ > 0.6f ? -1.f : (bowPos_ < 0.4f ? 1.f : -dir_);
+      vb_ = 0.f;
       bowing_ = true;
     }
-    (void)returning;
+    computeTargets(c);
+  }
+
+  // Force scale per bowed string, relative to the assistant's base force:
+  // string impedance (F ∝ Z^1.39 on the players' line), more force above a
+  // fifth up the string (short, high strings: the body loads them, F_min
+  // rises) [T], and more on each string when two share the bow: two strings
+  // driving one bridge load each other (e.g. A4's 3rd harmonic is E5's 2nd),
+  // which raises F_min (measured with instrument_lab chord) [T].
+  // Notes whose fundamental sits on a body resonance need more force too
+  // (the body absorbs, F_min rises, KB §5.4): log2 F += 1.5 * 25 Z0 |Y(f0)|,
+  // fitted with tools/calibrate_force.py (C#5 on the 550 Hz mode) [T].
+  void updateForceFactors() {
+    int count = 0;
+    for (int s = 0; s < 4; ++s) count += bowed_[s];
+    for (int s = 0; s < 4; ++s) {
+      const float z = def_->strings[s].z0;
+      const float ratio = std::pow(2.f, (fingerTo_[s] - static_cast<float>(def_->strings[s].openNote)) / 12.f);
+      const float pos = std::pow(std::max(1.f, ratio / 1.5f), 0.7f);
+      float body = 1.f;
+      if (bridge_) {
+        const float hz = mtof(fingerTo_[s], 440.f);
+        const float load = std::min(1.f, 25.f * z * bridge_->magnitude(hz));
+        body = std::pow(2.f, 1.5f * load);
+      }
+      fFactor_[s] = std::pow(z / def_->zRef, 1.39f) * pos * body * def_->forceTrim[s] * (count >= 2 ? 1.0f : 1.f);
+    }
   }
 
   float currentFinger(int s) const {
@@ -293,8 +476,8 @@ class Performer {
 
   void bowChange(const PerformerControls& c) {
     dir_ = -dir_;
-    // Reversal time ~ bowChange at mf; acceleration so that 2*vb/a matches.
-    const float a = 2.f * std::max(vbT_, 0.05f) / std::max(c.bowChange, 0.01f);
+    // Reversal time ~ bowChange; acceleration so that 2*vb/a matches.
+    const float a = 2.f * std::max(vbT_, 0.05f) / std::max(c.bowChange, 0.005f);
     accelChange_ = a;
     changing_ = true;
   }
@@ -316,19 +499,30 @@ class Performer {
     float vb = 0.10f * std::exp(1.4f * d) * (1.f + (c.sustainSpeed - 1.f) * ease);
     vb = std::max(vb, ratio * 0.02f);  // beta can't go below 0.02: keep the loudness
     float beta = vb / ratio;
+    // ...but a long note stays at a playable distance (Demoucron: 25-40 mm on
+    // long strokes; re-attacks at bow changes get very hard near beta 1/25,
+    // KB §7.2): below sustainBetaMin it gets a little softer instead.
+    if (ease > 0.f) {
+      const float attackBeta = 0.10f * std::exp(1.4f * d) / ratio;
+      const float floorBeta = std::min(attackBeta, c.sustainBetaMin);
+      beta = std::max(beta, floorBeta);
+    }
     beta *= std::pow(2.f, -1.5f * contactIn_);
     beta = std::clamp(beta, 0.015f, 0.3f);
-    const float z = def_->strings[str_].z0;
-    float f = def_->forceRef * (vb / def_->vbRef) * std::pow(beta / def_->betaRef, -1.39f) *
-              std::pow(z / def_->zRef, 1.39f);
-    f *= std::pow(2.f, 1.5f * pressureIn_);
-    f = std::min(f, def_->forceMax);
+    // Base force on the players' line at the reference impedance; per-string
+    // factors (impedance, position, double stops) are in fFactor_.
+    float f = def_->forceRef * (vb / def_->vbRef) * std::pow(beta / def_->betaRef, -1.39f);
+    // Soft playing sits near the bottom of the Helmholtz window in this model
+    // (calibrate_force.py): lift it, most at pp [T].
+    const float margin = 0.1f + 0.8f * (1.f - d) * (1.f - d);
+    f *= std::pow(2.f, 1.5f * (pressureIn_ + margin));
     vbT_ = vb;
     betaT_ = beta;
     fT_ = f;
     // Acceleration: attack (k * F) until near target speed, then gentle;
     // reversals use the bow-change acceleration.
-    const float attackA = std::clamp(attackK_ * f, c.minAccel, 30.f);
+    const float fLead = std::min(f * fFactor_[str_], def_->forceMax);
+    const float attackA = std::clamp(attackK_ * fLead, c.minAccel, 30.f);
     if (changing_) {
       accel_ = accelChange_;
       if (vb_ * dir_ > 0.9f * vbT_) changing_ = false;
@@ -343,10 +537,13 @@ class Performer {
   }
 
   const InstrumentDef* def_ = nullptr;
+  const Bridge* bridge_ = nullptr;
   float fs_ = 48000.f;
   int held_[kMaxHeld]{};
-  float vel_[kMaxHeld]{};
+  float vel_[kMaxHeld]{}, press_[kMaxHeld]{};
   int nHeld_ = 0, note_ = -1, str_ = 2;
+  int chordN_ = 0, chordStr_[4]{}, chordNote_[4]{}, rollIdx_ = 0;
+  float rollStart_ = 0.f;
   float vel_now_ = 0.7f;
   float dynIn_ = 0.55f, pressureIn_ = 0.f, contactIn_ = 0.f;  // smoothed controls
   bool primed_ = false;
@@ -355,11 +552,12 @@ class Performer {
   float vbT_ = 0.2f, betaT_ = 0.08f, fT_ = 0.4f, dyn_ = 0.5f;
   float accel_ = 5.f, accelChange_ = 5.f, attackK_ = 10.f, accent_ = 0.f;
   float landRate_ = 0.01f, liftRate_ = 0.01f, accentDecay_ = 0.999f;
-  float force_[4]{};
-  bool lift_[4]{true, true, true, true};
+  float force_[4]{}, fFactor_[4]{1, 1, 1, 1}, offTime_[4]{};
+  bool bowed_[4]{};
   bool stopped_[4]{};
-  float fingerNote_[4]{}, fingerFrom_[4]{}, fingerTo_[4]{}, shiftT_[4]{1, 1, 1, 1}, shiftDur_[4]{0.03f, 0.03f, 0.03f, 0.03f};
-  float noteAge_ = 0.f, vibPhase_ = 0.f, vibCents_ = 0.f, vibRateNow_ = 5.5f, vibRateJit_ = 1.f, vibDepthJit_ = 1.f;
+  float fingerFrom_[4]{}, fingerTo_[4]{}, shiftT_[4]{1, 1, 1, 1}, shiftDur_[4]{0.03f, 0.03f, 0.03f, 0.03f};
+  float noteAge_ = 0.f, now_ = 0.f, vibPhase_ = 0.f, vibCents_ = 0.f, vibRateNow_ = 5.5f, vibRateJit_ = 1.f,
+        vibDepthJit_ = 1.f;
   uint32_t rng_ = 1;
 };
 

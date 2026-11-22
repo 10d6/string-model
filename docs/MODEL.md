@@ -8,12 +8,13 @@ Values marked **[T]** are tuning choices made here, not measurements.
 
 ```
 keys, CCs ─► Performer (gesture layer)            model/Performer.h
-              v_b, F_b per string, beta, finger pitch, vibrato
+              v_b, F_b per string, beta, finger pitch, vibrato, chords
                  │
                  ▼
    ┌──── 4 × BowedString (waveguide, oversampled) ────┐   model/BowedString.h
-   │  nut/finger ◄─ dN ─► [bow junction] ◄─ dB ─► bridge │   model/Friction.h
-   └─────────────────────────────────────────────────────┘
+   │  nut/finger ◄─ dN ─► [bow junction] ◄─ dB ─► ─┐   │   model/Friction.h
+   └───────────────────────────────────────────────│───┘
+                       shared bridge: modal Y(z) ◄─┘        model/Bridge.h
                  │ bridge force (N), decimated              model/Instrument.h
                  ▼
    body/output: CC0 library-mic response (convolution) or raw pickup
@@ -26,9 +27,9 @@ keys, CCs ─► Performer (gesture layer)            model/Performer.h
 The instrument is a single object owned by the synth, running in
 `processGlobal`. `processEvents` takes every note and controller for it. The
 kit's voices only track keys (for the meter and the lit keys) and make no
-sound. This is because the strings will share one bridge (Phase 2:
-sympathetic ringing, cello wolf notes). Per-note voices render separately in
-32-sample blocks and couldn't do that.
+sound. This is because the four strings share one bridge (sympathetic
+ringing, double stops; the cello's wolf note later), solved sample by sample.
+Per-note voices render separately in 32-sample blocks and couldn't do that.
 
 The strings run at 2× the host rate below 70 kHz (96 kHz at 48 kHz). A
 49-tap Blackman–Harris FIR decimates them back to the host rate.
@@ -47,14 +48,86 @@ terminations as −g × a one-pole low-pass.
   2.2 s; stopped strings get 0.9 s, since the finger is far lossier than the
   nut (KB §2.3: η_F × 3). The low-pass corners are: bridge 9 kHz, nut
   12 kHz, finger 5 kHz.
+- **The loop's gain at DC must not exceed its gain at the fundamental.**
+  Phase 1 raised g to make up for the low-passes. On high notes that pushed
+  the loop's DC gain to ~1, and the waveguide then held a DC wave: a uniform
+  slope that a string fixed at both ends can't have. The bow's one-way drag
+  fed it, and it barely decayed (the open E "rang" for ~15 s at DC, hidden by
+  the output DC blocker but offsetting the velocity the bow sees). Now g
+  isn't raised, so high notes decay a little faster, as with a constant Q.
+  Two fixes that failed, for the record:
+  - Blocking DC in the loop breaks Helmholtz motion. The bow's mean drag is
+    held by a static deflection, which in a waveguide is a DC wave in each
+    segment.
+  - Making the ends lossless only at DC made a ~5 Hz resonance.
+- **Open strings are tuned a little sharp at rest [T].** Violinists tune
+  while bowing, and bowing flattens (measured at mf: G −11, D −6, A −15,
+  E −20 cents). The open strings sit +7 / +4 / +9 / +12 cents at rest.
+  Bowed, they're within ~9 cents. That's 60% compensation; the full amount
+  would leave them too sharp to ring with the (corrected) stopped notes.
 - **Torsion (KB §3.6):** the bow sees 1/Z_eff = 1/Z₀ + 1/Z_R, with Z_R ≈
   3.5 Z₀ [T]. The torsional part is **high-passed** at 2× the pitch. A pure
   resistance (the KB's "lumped Z_eff") lets a steady bow spin the string
   forever, so the string never slips; that was the first bug found here.
   Only f/(2Z₀) goes into the transverse waves.
-- **Bridge force** = Z₀ (incoming − reflected) at the bridge end.
+- **Bridge end:** the string meets the moving bridge (below). The incoming
+  wave a (after the string's own loss) reflects as r = u − a, where u is the
+  bridge velocity, and pushes with F = Z₀(a − r) = Z₀(2a − u).
 - **Sleep:** a string with the bow off that has decayed below 1e-7 m/s for
-  2048 samples stops running.
+  2048 samples stops running. It wakes when the bridge moves.
+
+## Bridge (KB §5.1–5.3)
+
+One driving-point admittance Y = v/F in the bowing direction, shared by the
+four strings: a passive modal filter bank (`model/Bridge.h`),
+Y(s) = Σ (1/m_k) s / (s² + (ω_k/Q_k) s + ω_k²). Each mode has a positive
+mass, so Y is positive real. The bilinear transform, pre-warped at each
+mode, keeps it passive. Each mode's biquad has a direct term, so the strings
+and bridge are solved together each sample without a delay:
+
+    F = Σ Z_i (2 a_i − u) = S − Zs·u,   u = Y0·F + h   ⇒   u = (Y0·S + h) / (1 + Y0·Zs)
+
+This is the reflectance −1 + 2Z₀Y of KB §5.1, solved exactly. A sleeping
+string still loads the bridge (its Z is in Zs) and wakes when the bridge
+moves; that's how open strings ring in sympathy.
+
+**Violin admittance [T]:**
+
+| Mode | Hz | Q | peak (s/kg) |
+|---|---|---|---|
+| A0 (air, weak at the bridge) | 280 | 40 | 0.024 |
+| CBR (weak) | 400 | 30 | 0.030 |
+| B1− | 460 | 40 | 0.15 |
+| B1+ | 550 | 40 | 0.18 |
+| | 660 / 820 | 30 | 0.06 / 0.072 |
+| ~1 kHz cluster | 1000 / 1150 | 25 | 0.12 / 0.09 |
+
+Above those is a dense band from 1.3 to 7 kHz: random modes (deterministic
+seed) about 150 Hz apart, Q falling from ~40 to 8. Their levels are shaped
+by the bridge hill: 2.6 kHz, Q 3, peak 0.15 s/kg (KB §5.3). That's 45 modes
+in all. `Body Coupling` scales Y (0 = rigid bridge).
+
+**How the levels were set.** My first guesses were the upper half of the
+KB's ranges (B1± 0.25–0.30, hill 0.35), and they were too strong:
+- 4·Z₀·Re(Y) took ~16% of the energy per reflection at 1–4 kHz. That gives
+  partials a Q of ~40, made the coupled instrument 4–10 dB quieter and
+  darker, and stopped A6 from sustaining.
+- Notes matching an open string's harmonic became wolf-like at pp. Under
+  D5, the open D rang only 8 dB below the bowed string, and soft D5 lost
+  9 dB.
+
+With the values above, coupled versus rigid costs 0–3 dB on most notes.
+Measured with `instrument_lab sympathy`:
+
+| Bowed | Open string response |
+|---|---|
+| G4 (D string) | open G (2nd harmonic) rings +1.6 dB, vs −27 dB under G#4 |
+| D5 (A string) | open D −7.8 dB, open G −15 dB; under D#5 both ≈ −27 dB |
+| E4 (D string) | open E −7 dB |
+
+Two exactly tuned high-Q resonances exchange energy efficiently even
+through a weak coupling, which is why sympathy is so audible on real
+violins.
 
 String impedances (KB §2.1, Z₀ = μc mid-range): G 0.33, D 0.24, A 0.20,
 E 0.19 kg/s.
@@ -118,7 +191,7 @@ What this shows:
 
 ## Gesture layer (KB §7.3, §11.5)
 
-**Keys.** Monophonic with last-note priority:
+**Keys.** Last-note priority, plus double stops and chords:
 - Overlapping keys **slur**: the same bow, the finger shifts with an S-curve
   over 8 ms + `Shift Time` × (interval / 5 st, max 1).
 - A key played after all keys are up starts a **new stroke** in the other
@@ -127,7 +200,23 @@ What this shows:
 - The string is chosen per note: the highest string whose open note is at or
   below it. Through a slur, the current string is kept if the note is within
   a fifth above its open note.
-- Leaving a string lifts the bow from it and lets it ring.
+- Leaving a string lifts the bow from it and lets it ring. After 0.25 s
+  [T] the finger lifts too, so the string rings open, and in sympathy.
+- **Double stops and chords.** Keys pressed within `Chord Window` (35 ms) of
+  each other are one chord.
+  - The notes go on adjacent strings, lowest note on the lowest string, at
+    the lowest positions, with the hand spanning at most a fifth.
+  - If the whole chord doesn't fit (C4–E4–G4: G4 is below the open A), its
+    top notes are played instead (E4 on G, G4 on D).
+  - Two notes share the bow.
+  - Three or four are **rolled** (KB §11.2): the bow takes the lower pair,
+    then moves up a pair every `Chord Roll` (60 ms) and sustains the top
+    pair, while the lower strings ring.
+  - Releasing a chord note leaves the bow on the rest.
+  - A key outside the window slurs out of the chord.
+  - Measured with `instrument_lab chord`: every pair tried (G–D, D–A, A–E;
+    open and stopped; 3–4 note chords) gives one slip per period on both
+    strings, at their own pitches.
 
 **Playability assistant.** `Dynamics` (mod wheel, CC 11, plus velocity ×
 `Velocity → Dynamics`) gives d ∈ [0, 1]. Then:
@@ -139,6 +228,20 @@ What this shows:
   F = F_ref (v_b / 0.13) (β / 0.07)^−1.39 (Z / 0.22)^1.39. F_ref = 0.35 N
   [T], trimmed from Demoucron's 0.47 N to sit mid-window in this model.
   F is capped at 3 N.
+- **Calibrated against the coupled instrument** (`tools/calibrate_force.py`).
+  The script sweeps Pressure for notes on every string at four dynamics and
+  reports the range with clean Helmholtz motion. Four corrections followed:
+  - **A margin**, most at pp: log₂ F += 1.5 (0.1 + 0.8 (1 − d)²). Soft notes
+    sat at the bottom of the window.
+  - **The E string × 1.22.**
+  - **High positions:** × (max(1, f/(1.5 f_open)))^0.7. Short, high strings
+    are loaded by the body. A6 went from −19 cents and unstable to −3 cents.
+  - **Body load:** log₂ F += 1.5 · min(1, 25 Z₀ |Y(f₀)|) for notes whose
+    fundamental sits on a body mode. C#5 is on the 550 Hz B1+ mode and
+    needed +0.7 pressure.
+- After these corrections, every note in the sweep (each string's open
+  note, third and fifth, at dynamics 0–0.9) is clean at the default
+  pressure, with at least ±0.3 of margin on both sides.
 - `Pressure` (+ aftertouch × `Aftertouch → Pressure`) multiplies F by
   2^(1.5 p).
 
@@ -151,9 +254,12 @@ decaying over 70 ms.
 
 **Long notes save bow** (KB §7.3 step 2; Demoucron measured 12 cm/s on whole
 notes against 54 cm/s on quarters). From 0.25 s into a stroke, over 0.6 s,
-the bow slows to `Long-Note Bow Speed` (default 0.4) × the attack speed. β
-moves towards the bridge to keep v_b/β, the loudness, the same (β ≥ 0.02),
-and the force follows the players' line.
+the bow slows to `Long-Note Bow Speed` (default 0.6) × the attack speed. β
+moves towards the bridge to keep v_b/β, the loudness, the same, but no
+closer than β 0.06. Below that the note gets slightly softer instead:
+Demoucron's players stayed 25–40 mm from the bridge on long strokes, and
+re-attacks at bow changes get very hard near β 1/25 (KB §7.2). Allowed down
+to β 0.025, a bow change stayed > 6 dB down for ~90 ms.
 
 **Bow changes.** The bow position along the hair is tracked (62 cm). A long
 note changes bow at the tip or the frog; `Auto Bow Change` off gives an
@@ -162,18 +268,18 @@ acceleration. Force dips towards 20% at zero speed (0.2 + 0.8 (v/v_t)²):
 players lighten the bow here, and the KB reports that a deeper dip shortens
 the gap.
 
-Measured over 35 held notes (D4–A5, five velocities):
-- At the bridge, a change dips the level ~4 dB; the fundamental carries
-  through.
-- The harmonics above 1 kHz drop 14–16 dB for ~20 ms while the Helmholtz
-  corner re-forms in the new direction. The measured violin body boosts
-  exactly that band, so through the library mic a change is a ~13 dB,
-  ~40 ms dip.
-- Faster reversals hardly help (8 ms: 11 dB, 15 ms), and the shape of the
-  force dip barely matters. This matches the KB's simulations, where even a
-  halved bow change left a ~12 ms gap.
-- With 60 ms reversals and no bow saving (the first version), changes came
-  every 2.5 s as 27–31 dB, 50–70 ms cuts.
+Measured above 1 kHz (where the body boosts) at each change, over 35 held
+notes (D4–A5, five velocities): mean dip 12.5 dB, more than 6 dB down for
+15 ms on average (30 ms at most), with changes about every 4–5 s at mf.
+
+What made the difference:
+- The first version (60 ms reversals, no bow saving) changed every 2.5 s
+  with 27–31 dB, 50–70 ms cuts.
+- Faster reversals hardly help, and the force dip's shape barely matters.
+  This matches the KB's simulations, where even a halved bow change left a
+  ~12 ms gap.
+- What does matter: a playable β on long notes and enough force (the
+  calibration above).
 
 **Controls are smoothed by the performer, not the kit.** The instrument's
 parameters have `smoothing(0)`, so they step at the controller's own sample
@@ -184,7 +290,7 @@ per-control-block smoothing made renders differ by 1.9 dB between block sizes.
 **Release.** Key up lifts the bow: the force falls over 25 ms and the string
 rings.
 
-**Vibrato (stopped notes only).** `Vibrato Depth` is peak-to-peak at mf,
+**Vibrato (stopped, bowed strings).** `Vibrato Depth` is peak-to-peak at mf,
 scaled 0.6–1.4× by dynamics; the rate is ×0.9–1.1. It ramps in over 350 ms
 after `Vibrato Delay`, with ±5% rate and ±15% depth drift per cycle.
 
@@ -217,19 +323,24 @@ violin.
 LAB_FS=192000 LAB_HEAT=2 ./build/string_lab ...                      # rate, heat calibration
 ./build/instrument_lab detache [legato]                               # gesture-layer trace
 ./build/instrument_lab hold <note> <seconds> [vel] [out.wav]         # bow changes, dips, attack time
-  env: LAB_HF=1 (measure above 1 kHz), LAB_DYN, LAB_CHANGE, LAB_FLOOR, LAB_WIDTH, LAB_SUSTAIN, LAB_MINACC
+./build/instrument_lab chord <n1> <n2> [n3 n4]                       # per bowed string: force, slip rate
+./build/instrument_lab sympathy <note>                               # each string's level, bowing and after
+./build/instrument_lab bridge                                        # |Y| of the bridge
+python3 tools/calibrate_force.py                                     # Helmholtz window vs the assistant
+  env: LAB_HF=1 (measure above 1 kHz), LAB_DYN, LAB_PRESSURE, LAB_COUPLING, LAB_CHANGE, LAB_FLOOR,
+       LAB_WIDTH, LAB_SUSTAIN, LAB_BMIN, LAB_MINACC, LAB_TRACE=from,to
 python3 tools/analyze.py render.wav [out.png]                        # spectrogram, level, pitch per note
 ```
 
 ## Known limits (next phases)
 
-- No bridge coupling yet: other strings ring only after being played; no
-  sympathetic ringing (Phase 2).
 - The body is a fixed measured response, not a model: no control over the
   bridge hill, mute, or the statistical high band (Phase 3).
-- No double stops, pizzicato, harmonics, spiccato, tremolo or martelé yet
-  (Phases 4–5).
+- No pizzicato, harmonics, spiccato, tremolo or martelé yet (Phases 4–5).
+- The bridge has one direction (bowing). There's no vertical admittance or
+  second polarisation yet.
 - The highest notes have few samples per slip even at 96 kHz (KB §6.4); they
   slip longer and flatten more (A6: ~30 cents uncorrected).
-- Cost: the instrument itself is about 2% of a native core. The browser
-  renders 2.6× faster than realtime, mostly in the convolution and the room.
+- Cost: all four strings run while the bridge moves, plus 45 bridge modes
+  at 96 kHz. Natively that's ~4% of a core for the instrument. The browser
+  renders 1.9× faster than realtime (it was 2.6× in Phase 1).

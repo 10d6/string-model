@@ -29,9 +29,9 @@ details: [MODEL.md](MODEL.md).
 | # | What | Status |
 |---|---|---|
 | 0 | Scaffold from the synthkit template, CI, Pages | done |
-| 1 | One bowed string you can hear: waveguide + thermal friction (+ classic for A/B), torsion, gesture layer with playability assistant, slurs/détaché/bow changes, vibrato, intonation, string choice, library-mic output, room | **this PR** |
-| 2 | Four strings on a shared bridge: modal bridge admittance Y(z), reflectance −1 + 2Z₀Y, sympathetic ringing, double stops (two notes held → two strings, one bow) | next |
-| 3 | Body and output: modelled radiativity (low modes + statistical high band × bridge hill, decorrelated L/R), mute, keep the library-mic option, pickup | |
+| 1 | One bowed string you can hear: waveguide + thermal friction (+ classic for A/B), torsion, gesture layer with playability assistant, slurs/détaché/bow changes, vibrato, intonation, string choice, library-mic output, room | done (#1) |
+| 2 | Four strings on a shared bridge: modal bridge admittance Y(z) solved exactly with the strings, sympathetic ringing, fingers lifting off unused strings, double stops and rolled chords, force calibration against the coupled instrument, string DC-loss fix | **this PR** |
+| 3 | Body and output (next): modelled radiativity (low modes + statistical high band × bridge hill, decorrelated L/R), mute, keep the library-mic option, pickup | |
 | 4 | Gesture polish: release types (lift / stop on string / left-hand release), portamento styles, bow-speed budget on long notes, string keyswitches/CC | |
 | 5 | Articulations: martelé, spiccato/sautillé (Demoucron's bow oscillator), tremolo, pizzicato (two polarisations), harmonics (touch junction), keyswitches | |
 | 6 | Refinement: enhanced rosin model for attacks (Woodhouse–Galluzzo 2025), finite-width bow noise, CPU work, a VST3 milestone build for Ableton | |

@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "BowedString.h"
+#include "Bridge.h"
 #include "Performer.h"
 
 namespace sm {
@@ -69,6 +70,7 @@ struct InstrumentControls {
   FrictionModel friction = FrictionModel::Thermal;
   float noise = 0.12f;       // rosin noise during slip
   float intonation = 0.8f;   // 0..1: how much the player corrects flattening
+  float coupling = 1.f;      // bridge admittance scale (0 = rigid bridge, no sympathy)
 };
 
 class Instrument {
@@ -84,6 +86,9 @@ class Instrument {
       str_[s].setDef(def_->strings[s], def_->loss);
     }
     perf_.prepare(host_, *def_);
+    bridge_.prepare(fs_, def_->modes, def_->modeCount, def_->hill, def_->bodySeed, def_->denseFrom, def_->denseTo,
+                    def_->denseSpacing);
+    perf_.setBridge(&bridge_);
     reset();
   }
 
@@ -98,9 +103,13 @@ class Instrument {
     }
     tick_ = 0;
     dcX_ = dcY_ = 0.f;
+    bridge_.reset();
+    uPrev_ = 0.f;
   }
 
   Performer& performer() { return perf_; }
+  const Bridge& bridge() const { return bridge_; }
+  BowedString& string(int s) { return str_[s]; }
   const InstrumentDef& def() const { return *def_; }
 
   // One host sample of summed bridge force (N).
@@ -109,26 +118,7 @@ class Instrument {
     tick_ = (tick_ + 1) % kControl;
     const float vb = perf_.tickSample(pc);
     float x[4];
-    for (int k = 0; k < os_; ++k) {
-      float sum = 0.f;
-      for (int s = 0; s < 4; ++s) {
-        BowedString& st = str_[s];
-        const float fb = target_[s].force;
-        if (st.asleep() && fb <= 0.f) continue;
-        rng_ = rng_ * 1664525u + 1013904223u;
-        const float noise = static_cast<float>(rng_ >> 8) * (1.f / 16777216.f);
-        sum += st.process(vb, fb, ic.friction, ic.noise, noise);
-        // Intonation: slip onsets mark periods in Helmholtz motion.
-        const bool sl = st.slipping();
-        ++sinceSlip_[s];
-        if (sl && !prevSlip_[s]) {
-          onPeriod(s, static_cast<float>(sinceSlip_[s]), ic);
-          sinceSlip_[s] = 0;
-        }
-        prevSlip_[s] = sl;
-      }
-      x[k] = sum;
-    }
+    for (int k = 0; k < os_; ++k) x[k] = internalSample(vb, ic);
     const float y = dec_.process(x);
     // DC blocker (5 Hz).
     const float out = y - dcX_ + dcR_ * dcY_;
@@ -140,7 +130,56 @@ class Instrument {
  private:
   static constexpr int kControl = 16;  // host samples per control tick
 
+  // One internal-rate sample: every string's bow junction, then the bridge
+  // they share, solved together without a delay (Bridge.h):
+  //   F = Σ Z_i (2 a_i - u) = S - Zs u,   u = Y0 F + h
+  //   =>  u = (Y0 S + h) / (1 + Y0 Zs)
+  // A sleeping string still loads the bridge (its Z is in Zs); it wakes when
+  // the bridge moves, which is how open strings ring in sympathy.
+  float internalSample(float vb, const InstrumentControls& ic) {
+    float S = 0.f, zs = 0.f;
+    bool any = false;
+    const bool coupled = bridge_.coupling() > 0.f;
+    const bool bridgeMoving = coupled && std::fabs(uPrev_) > 1e-7f;
+    for (int s = 0; s < 4; ++s) {
+      BowedString& st = str_[s];
+      const float fb = target_[s].force;
+      zs += st.z0();
+      active_[s] = !st.asleep() || fb > 0.f || bridgeMoving;
+      if (!active_[s]) continue;
+      any = true;
+      st.wake();
+      rng_ = rng_ * 1664525u + 1013904223u;
+      const float noise = static_cast<float>(rng_ >> 8) * (1.f / 16777216.f);
+      S += 2.f * st.z0() * st.step(vb, fb, ic.friction, ic.noise, noise);
+      // Intonation: slip onsets mark periods in Helmholtz motion.
+      const bool sl = st.slipping();
+      ++sinceSlip_[s];
+      if (sl && !prevSlip_[s]) {
+        onPeriod(s, static_cast<float>(sinceSlip_[s]), ic);
+        sinceSlip_[s] = 0;
+      }
+      prevSlip_[s] = sl;
+    }
+    if (!any && (!coupled || bridge_.activity() < 1e-12f)) {
+      uPrev_ = 0.f;
+      return 0.f;
+    }
+    float u = 0.f;
+    if (coupled) {
+      const float y0 = bridge_.y0();
+      u = (y0 * S + bridge_.history()) / (1.f + y0 * zs);
+    }
+    for (int s = 0; s < 4; ++s)
+      if (active_[s]) str_[s].finish(u);
+    const float force = S - zs * u;
+    if (coupled) bridge_.advance(force);
+    uPrev_ = u;
+    return force;
+  }
+
   void controlTick(const PerformerControls& pc, const InstrumentControls& ic) {
+    bridge_.setCoupling(ic.coupling);
     perf_.controlTick(pc, kControl / host_);
     perf_.strings(target_, pc);
     const float beta = perf_.beta();
@@ -167,6 +206,9 @@ class Instrument {
   BowedString str_[4];
   Performer perf_;
   Decimator dec_;
+  Bridge bridge_;
+  bool active_[4]{};
+  float uPrev_ = 0.f;
   StringTarget target_[4];
   float host_ = 48000.f, fs_ = 96000.f;
   int os_ = 2, tick_ = 0;
