@@ -68,7 +68,9 @@ struct PerformerControls {
   float tremoloRate = 12.2f;
   // Player habits (instrument-research player_technique_and_responsiveness.md).
   float intonStyle = 0.7f;   // 0 equal temperament .. 1 expressive (§3.2)
-  float vibShape = 0.7f;     // 0 the same vibrato on every note .. 1 by context (§3.1)  // bow reversals per second (VSCO solo violin median, KB §11.2)
+  float vibShape = 0.7f;     // 0 the same vibrato on every note .. 1 by context (§3.1)
+  float metric = 0.5f;       // 0..1: metric emphasis and bowing to the meter (§2, §4)
+  float portamento = 0.3f;   // 0..1: audible slides on slow slurred leaps (§3.3)  // bow reversals per second (VSCO solo violin median, KB §11.2)
 };
 
 enum Articulation { kArco = 0, kMartele, kSpiccato, kTremolo, kPizzicato, kHarmonics, kSautille };
@@ -133,8 +135,15 @@ class Performer {
     rng_ = 0x12345678u;
     for (float& w : pcWeight_) w = 0.f;
     keyCenter_ = 1;
+    meter_ = -1.f;
+    liftedAt_ = -1.f;
+    vibMeterK_ = 1.f;
     vibShapeK_ = 1.f;
   }
+
+  // The next note's metric strength (Meter.h), or -1 when the transport
+  // isn't playing (no meter to follow).
+  void setMeter(float strength) { meter_ = strength; }
 
   // Keys ---------------------------------------------------------------
   void noteOn(int note, float vel, const PerformerControls& c) {
@@ -145,6 +154,10 @@ class Performer {
     if (gap > 0.04f && gap < 0.3f) noteGap_ += 0.5f * (gap - noteGap_);
     hearKey(note);
     shapeVibrato(note, gap, c);
+    gapRaw_ = gap;
+    // Metric emphasis: a light lift on the downbeat and beats, lighter
+    // subdivisions (+15% / -4% velocity at the default) [T].
+    if (meter_ >= 0.f) vel = std::clamp(vel * (1.f + 0.5f * c.metric * (meter_ - 0.4f)), 0.f, 1.f);
     removeHeld(note);
     if (nHeld_ < kMaxHeld) {
       held_[nHeld_] = note;
@@ -288,7 +301,8 @@ class Performer {
     // (A stop holds its force: the stationary bow is what damps the string.)
     const float dip = stopping_ ? 1.f : c.changeFloor + (1.f - c.changeFloor) * sf * sf;
     accent_ *= accentDecay_;
-    const float fTarget = fT_ * dip * (1.f + accent_) * strokeForce_;
+    const float weight = 1.f + 0.12f * (0.5f - bowPos_);  // +6% at the frog, -6% at the tip
+    const float fTarget = fT_ * dip * (1.f + accent_) * strokeForce_ * weight;
     for (int s = 0; s < 4; ++s) {
       const float base = templateForce_ >= 0.f ? templateForce_ : fTarget;
       const float goal = (bowed_[s] && bowing_) ? std::min(base * fFactor_[s], def_->forceMax) : 0.f;
@@ -394,7 +408,7 @@ class Performer {
     const float fast = vibFast_ * std::max(0.f, 1.f - keyAge_ / 0.5f);
     vibShapeK_ = 1.f + c.vibShape * (vibReg_ * (1.f - 0.7f * fast) - 1.f);
     vibCents_ = 0.5f * c.vibDepth * (0.6f + 0.8f * d) * ramp * vibDepthJit_ * vibShapeK_ * grow;
-    vibRateNow_ = c.vibRate * (0.9f + 0.2f * d) * vibRateJit_;
+    vibRateNow_ = c.vibRate * (0.9f + 0.2f * d) * vibRateJit_ * vibMeterK_;
     // Fingers leave strings the bow has left, so they ring open (a "finger
     // off" release lifts the playing finger too, soon after the bow).
     for (int s = 0; s < 4; ++s) {
@@ -462,6 +476,7 @@ class Performer {
   }
 
   void lift() {
+    if (bowing_) liftedAt_ = now_;
     bowing_ = false;  // the bow leaves the string(s); they ring on
     for (int s = 0; s < 4; ++s)
       if (bowed_[s]) {
@@ -600,7 +615,7 @@ class Performer {
       }
     }
     const bool open = static_cast<int>(n) == def_->strings[s].openNote;
-    if (!open) n += 0.01f * c.intonStyle * melodicCents(note);  // the sounding note's tuning
+    if (!open) n += 0.01f * c.intonStyle * (melodicCents(note) + leadingToneLift(note));  // the sounding note's tuning
     // Finger: shift on the same string while sounding; jump otherwise.
     const bool sounding = force_[s] > 0.f || (s == str_ && bowing_);
     if (sounding && slur) {
@@ -611,6 +626,11 @@ class Performer {
       // (x1.4 at velocity 0.2, x1 at 0.5, x0.4 at 1).
       const float speed = std::clamp(1.6f - 1.2f * vel, 0.4f, 1.4f);
       shiftDur_[s] = 0.008f + c.shiftTime * std::min(1.f, interval / 5.f) * speed;
+      // Portamento (player doc §3.3): on slow slurred leaps of a third or
+      // more, an audible slide, up to x7 longer: none in fast passages [T].
+      const float slow = std::clamp((gapRaw_ - 0.3f) / 0.5f, 0.f, 1.f);
+      const float leap = std::clamp((interval - 2.f) / 5.f, 0.f, 1.f);
+      shiftDur_[s] *= 1.f + 6.f * c.portamento * slow * leap;
       shiftT_[s] = 0.f;
     } else {
       fingerFrom_[s] = fingerTo_[s] = n;
@@ -637,11 +657,28 @@ class Performer {
     if (change && bowing_) {
       bowChange(c);
     } else {
-      // From the air: start the stroke in the direction with more bow left.
-      dir_ = bowPos_ > 0.6f ? -1.f : (bowPos_ < 0.4f ? 1.f : -dir_);
+      // From the air: alternate, unless the bow is nearly at one end.
+      dir_ = bowPos_ > 0.8f ? -1.f : (bowPos_ < 0.2f ? 1.f : -dir_);
+      // Bowing to the meter (player doc §2): a down-bow (frog to tip) on a
+      // strong beat, an up-bow on a pickup or off-beat, if there's a fifth of
+      // the bow left that way. With time in the air (80 ms+), the bow is
+      // re-taken to the frog or tip first.
+      // Strong beats only (the downbeat, a mid-bar beat); other beats alternate.
+      // A phrase starting on any beat after a rest (0.25 s+) starts down-bow.
+      const float rest = now_ - liftedAt_;
+      const bool down = meter_ >= 0.7f || (meter_ >= 0.5f && rest > 0.25f);
+      if (meter_ >= 0.f && c.metric > 0.05f && (down || meter_ <= 0.25f)) {
+        const float want = down ? 1.f : -1.f;
+        const bool retake = rest > 0.08f;
+        if (retake) bowPos_ = want > 0.f ? 0.15f + 0.03f * bipolar() : 0.85f + 0.03f * bipolar();
+        if (retake || (want > 0.f ? bowPos_ < 0.8f : bowPos_ > 0.2f)) dir_ = want;
+      }
       vb_ = 0.f;
       bowing_ = true;
     }
+    // The hand balances the bow's weight, imperfectly (player doc §1.4: frog
+    // heavier, tip lighter; residual error a few % per stroke) [T].
+    strokeForce_ = 1.f + 0.03f * bipolar();
     computeTargets(c);
   }
 
@@ -717,6 +754,14 @@ class Performer {
     if (rel > 6) rel -= 12;
     return 1.955f * static_cast<float>(keyCenter_ + rel);
   }
+  // Leading tones a little higher still on metrically weak notes (player doc
+  // §3.2: students preferred the sharpest leading tones there): up to +3 cents.
+  float leadingToneLift(int note) const {
+    if (meter_ < 0.f) return 0.f;
+    int rel = ((chainOf(((note % 12) + 12) % 12) - keyCenter_) % 12 + 12) % 12;
+    if (rel > 6) rel -= 12;
+    return rel == 3 ? 3.f * (1.f - meter_) : 0.f;  // the major key's 7th: 5 fifths above the tonic (centre + 3)
+  }
   float openPureCents(int s) const {
     int k = chainOf(def_->strings[s].openNote % 12);
     if (k > 5) k -= 12;
@@ -748,10 +793,12 @@ class Performer {
   // Vibrato by context (player doc §3.1): wider higher up; narrow in fast
   // passages (the time since the last key: under ~0.12 s, ~30%), opening up
   // over half a second if the note is held [T].
-  void shapeVibrato(int note, float gap, const PerformerControls&) {
+  void shapeVibrato(int note, float gap, const PerformerControls& c) {
     vibReg_ = std::clamp(1.f + 0.25f * static_cast<float>(note - 69) / 12.f, 0.8f, 1.35f);
     vibFast_ = std::clamp((0.28f - gap) / 0.16f, 0.f, 1.f);
     keyAge_ = 0.f;
+    // Faster on metrically weak notes (Timmers & Desain, KB ref 65): ±4%.
+    vibMeterK_ = meter_ >= 0.f ? 1.f + 0.12f * c.vibShape * (0.5f - meter_) : 1.f;
   }
 
   float currentFinger(int s) const {
@@ -809,8 +856,11 @@ class Performer {
       // half-sine stroke, then in the air. Demoucron measured 0.5 N (p) to 3 N
       // (f) peaks; x0.4 maps them onto this string's force scale (at x1 the
       // notes went 20-40 cents flat, a sign of crushing) [T].
-      const float tc = 0.075f, A = 0.45f, fm = 0.4f * (0.5f + 2.5f * std::pow(d, 1.5f));
-      const float vm = 0.08f + 0.7f * std::pow(d, 1.2f), tb = 0.14f;
+      // Slower spiccato stays longer on the string, faster shorter (the note
+      // rate, from the time between keys: x0.7 at 9/s, x1.5 at 3/s) [T].
+      const float len = std::clamp(noteGap_ / 0.15f, 0.7f, 1.5f);
+      const float tc = 0.075f * len, A = 0.45f, fm = 0.4f * (0.5f + 2.5f * std::pow(d, 1.5f));
+      const float vm = 0.08f + 0.7f * std::pow(d, 1.2f), tb = 0.14f * len;
       float f = 0.f;
       if (t < A * tc) f = fm * sin2(t / (A * tc));
       else if (t < tc) f = fm * (1.f - sin2((t - A * tc) / ((1.f - A) * tc)));
@@ -1002,6 +1052,7 @@ class Performer {
   float lastOn_ = -1.f, noteGap_ = 0.1f, vibShapeK_ = 1.f, vibReg_ = 1.f, vibFast_ = 0.f, keyAge_ = 0.f;
   float pcWeight_[12]{};
   int keyCenter_ = 1;  // D major until notes say otherwise
+  float meter_ = -1.f, gapRaw_ = 1.f, liftedAt_ = -1.f, vibMeterK_ = 1.f;
   float templateForce_ = -1.f, tremPhase_ = 0.f, tremRateJit_ = 1.f, tremForceJit_ = 1.f;
   float pluckStart_[4]{-1.f, -1.f, -1.f, -1.f}, pluckF_[4]{}, pluckRise_[4]{}, pluckRel_[4]{}, pluckDir_[4]{1, 1, 1, 1};
   float pluckCos_[4]{1, 1, 1, 1}, pluckSin_[4]{};

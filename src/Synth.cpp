@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "../model/Instrument.h"
+#include "../model/Meter.h"
 #include "../model/Radiation.h"
 #include "ir/ViolinIR.h"
 
@@ -60,7 +61,7 @@ std::vector<float> resampleIr(const float* x, int n, double from, double to) {
 }  // namespace
 
 struct StringModel : Synth {
-  Param autoChange, sustainSpeed, coupling, chordWindow, rollTime, hill, mute, resonance, a0, nasal, brilliance, softness, voice, width, releaseMode, slideNoise, stringSel, keyswitches, artic, tremRate, intonStyle, vibShape;
+  Param autoChange, sustainSpeed, coupling, chordWindow, rollTime, hill, mute, resonance, a0, nasal, brilliance, softness, voice, width, releaseMode, slideNoise, stringSel, keyswitches, artic, tremRate, intonStyle, vibShape, metric, portamento;
   Param instrument, dynamics, velSens, pressure, atPressure, contact, bite, legato, bowChange, noise, friction;
   Param vibDepth, vibRate, vibDelay, shiftTime, intonation, output, roomMix, roomSpace;
   Param bendRange, a4;
@@ -109,6 +110,8 @@ struct StringModel : Synth {
     // Player habits (instrument-research player_technique_and_responsiveness.md).
     intonStyle = b.add("finger.style").name("Intonation Style").range(0, 1).def(0.7).smoothing(0).group("Left Hand");
     vibShape = b.add("vib.shape").name("Vibrato Shaping").range(0, 1).def(0.7).smoothing(0).group("Left Hand");
+    metric = b.add("bow.metric").name("Metric Emphasis").range(0, 1).def(0.5).smoothing(0).group("Bow");
+    portamento = b.add("finger.portamento").name("Portamento").range(0, 1).def(0.3).smoothing(0).group("Left Hand");
   }
 
   std::unique_ptr<Voice> makeVoice() override { return std::make_unique<SilentVoice>(); }
@@ -153,6 +156,7 @@ struct StringModel : Synth {
     for (int i = 0; i < queued_; ++i) queue_[i].sample = 0;
     blockPos_ = 0;
     const bool keys = ctx.on(keyswitches);
+    transport_ = ctx.transport();
     for (auto& e : ctx.in()) {
       // Keyswitches set a parameter (the page and host follow) and don't sound:
       // C1 Auto, C#1 G, D1 D, D#1 A, E1 E (String);
@@ -183,6 +187,9 @@ struct StringModel : Synth {
   void handle(const MidiEvent& e) {
     auto& p = inst_.performer();
     if (e.isNoteOn()) {
+      // The meter only while a transport plays (the kit's clock always runs).
+      const auto& t = transport_;
+      p.setMeter(t.playing ? sm::metricStrength(e.beat - t.barStart, t.timeSigNum, t.timeSigDen) : -1.f);
       p.noteOn(e.note, e.vel, pc_);
     } else if (e.isNoteOff()) {
       p.noteOff(e.note, e.type == MidiEvent::Type::NoteOff && e.vel > 0.f ? e.vel : 64.f / 127.f, pc_);
@@ -214,6 +221,8 @@ struct StringModel : Synth {
     pc_.tremoloRate = ctx.get(tremRate);
     pc_.intonStyle = ctx.get(intonStyle);
     pc_.vibShape = ctx.get(vibShape);
+    pc_.metric = ctx.get(metric);
+    pc_.portamento = ctx.get(portamento);
     pc_.sustainSpeed = ctx.get(sustainSpeed);
     pc_.chordWindow = ctx.get(chordWindow);
     pc_.rollTime = ctx.get(rollTime);
@@ -312,6 +321,7 @@ struct StringModel : Synth {
   int radTick_ = 0;
   dsp::Reverb reverb_;
   MidiEvent queue_[kQueue];
+  Transport transport_{};
   int queued_ = 0, blockPos_ = 0;
   float pitchBend_ = 0.f, bendSmooth_ = 0.f, pressureAt_ = 0.f;
   float dryL_[32]{}, dryR_[32]{}, wetL_[32]{}, wetR_[32]{};
