@@ -45,6 +45,7 @@ struct PerformerControls {
   float bend = 0.f;           // semitones
   float a4 = 440.f;
   float changeFloor = 0.2f;   // force at zero bow speed during a reversal, x target [T]
+  float autoChangeVary = 1.f;  // 0..1: automatic bow changes vary (turn point, time, force) [T]
   float changeWidth = 1.f;    // force is back to full at this fraction of the target speed [T]
   float sustainSpeed = 0.6f;  // long notes: bow speed after the attack, x attack speed
   bool autoChange = true;     // change bow at the tip/frog; off = an endless bow
@@ -238,7 +239,16 @@ class Performer {
     // Bow-stroke templates (Demoucron, KB §11.5) set the bow's speed directly.
     templateForce_ = -1.f;
     if (bowing_ && (art_ == kMartele || art_ == kSpiccato || art_ == kTremolo)) strokeTemplate(c, dt, want);
-    if (templateForce_ >= 0.f) {
+    if (rounding_ && (!bowing_ || stopping_ || templateForce_ >= 0.f)) rounding_ = false;
+    if (rounding_) {
+      // Automatic reversal: half-cosine from the old speed to the new target
+      // (the acceleration peaks at the zero crossing, as in tremolo).
+      const float u = (now_ - revStart_) / revT_;
+      if (u >= 1.f) rounding_ = false;
+      else vb_ = revFrom_ + (dir_ * vbT_ - revFrom_) * 0.5f * (1.f - std::cos(3.14159265f * u));
+    }
+    if (rounding_) {
+    } else if (templateForce_ >= 0.f) {
       vb_ = want;  // the template's speed is already smooth
     } else {
       const float dv = want - vb_;
@@ -249,8 +259,8 @@ class Performer {
     bowPos_ += vb_ * dt / def_->bowLength;
     if (!c.autoChange) bowPos_ = std::clamp(bowPos_, 0.1f, 0.9f);  // never runs out
     if (bowing_ && c.autoChange && art_ == kArco) {
-      if (dir_ > 0 && bowPos_ > 0.97f) bowChange(c);
-      else if (dir_ < 0 && bowPos_ < 0.03f) bowChange(c);
+      if (dir_ > 0 && bowPos_ > 1.f - turnAt_) bowChange(c, true);
+      else if (dir_ < 0 && bowPos_ < turnAt_) bowChange(c, true);
     }
     bowPos_ = std::clamp(bowPos_, 0.f, 1.f);
     // Rolled chords move onto the next pair of strings.
@@ -266,7 +276,7 @@ class Performer {
     // (A stop holds its force: the stationary bow is what damps the string.)
     const float dip = stopping_ ? 1.f : c.changeFloor + (1.f - c.changeFloor) * sf * sf;
     accent_ *= accentDecay_;
-    const float fTarget = fT_ * dip * (1.f + accent_);
+    const float fTarget = fT_ * dip * (1.f + accent_) * strokeForce_;
     for (int s = 0; s < 4; ++s) {
       const float base = templateForce_ >= 0.f ? templateForce_ : fTarget;
       const float goal = (bowed_[s] && bowing_) ? std::min(base * fFactor_[s], def_->forceMax) : 0.f;
@@ -594,6 +604,9 @@ class Performer {
   // A new stroke: a bow change if the bow is moving, else from the air.
   void startStroke(float vel, const PerformerControls& c, bool change) {
     noteAge_ = 0.f;
+    rounding_ = false;
+    strokeForce_ = 1.f;
+    turnAt_ = 0.03f + 0.025f * c.autoChangeVary * (1.f + bipolar());
     // Guettler plane: acceleration proportional to force, steeper with velocity.
     attackK_ = (6.f + 8.f * vel) * (1.f + 1.5f * c.bite);
     accent_ = std::max(0.f, vel - 0.55f) * (0.6f + 1.2f * c.bite);
@@ -751,8 +764,27 @@ class Performer {
     return bestCost < (1 << 20);
   }
 
-  void bowChange(const PerformerControls& c) {
+  void bowChange(const PerformerControls& c, bool automatic = false) {
     dir_ = -dir_;
+    const float vary = c.autoChangeVary;
+    if (automatic) {
+      rounding_ = true;
+      changing_ = false;
+      revFrom_ = vb_;
+      revStart_ = now_;
+      // Same reversal time as before, but the half-cosine spends less of it
+      // near zero speed: above 1 kHz the gap went from ~25 to ~15 ms
+      // (instrument_lab hold, G3-E6, soft to loud). Holding more force
+      // through the turn, as tremolo does, made no difference.
+      revT_ = std::max(c.bowChange, 0.005f) * (1.f + 0.2f * vary * bipolar());
+      // Each stroke a little different (KB §11.2): its force, and where the
+      // bow turns next time (2-8% from the end) [T].
+      strokeForce_ = 1.f + 0.06f * vary * bipolar();
+      turnAt_ = 0.03f + 0.025f * vary * (1.f + bipolar());
+      return;
+    }
+    rounding_ = false;
+    strokeForce_ = 1.f;
     // Reversal time ~ bowChange; acceleration so that 2*vb/a matches.
     const float a = 2.f * std::max(vbT_, 0.05f) / std::max(c.bowChange, 0.005f);
     accelChange_ = a;
@@ -830,7 +862,8 @@ class Performer {
   float vel_now_ = 0.7f;
   float dynIn_ = 0.55f, pressureIn_ = 0.f, contactIn_ = 0.f;  // smoothed controls
   bool primed_ = false;
-  bool bowing_ = false, changing_ = false;
+  bool bowing_ = false, changing_ = false, rounding_ = false;
+  float revFrom_ = 0.f, revStart_ = 0.f, revT_ = 0.06f, strokeForce_ = 1.f, turnAt_ = 0.03f;
   float vb_ = 0.f, dir_ = -1.f, bowPos_ = 0.15f;
   float vbT_ = 0.2f, betaT_ = 0.08f, fT_ = 0.4f, dyn_ = 0.5f;
   float accel_ = 5.f, accelChange_ = 5.f, attackK_ = 10.f, accent_ = 0.f;
