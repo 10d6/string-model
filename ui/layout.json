@@ -1,7 +1,7 @@
 {
   "theme": { "accent": "#9a4a1c" },
   "sections": [
-    { "title": "Instrument", "controls": [ { "param": "instrument", "type": "menu" }, { "param": "out.mode", "type": "menu" } ] },
+    { "title": "Instrument", "controls": [ { "param": "instrument", "type": "menu" }, { "param": "out.mode", "type": "menu" }, { "param": "body.coupling" } ] },
     { "title": "Bow", "wide": true, "controls": [
       { "param": "bow.dynamics", "size": "large" },
       { "param": "bow.pressure", "size": "large" },
@@ -15,6 +15,7 @@
       { "param": "bow.noise" },
       { "param": "bow.legato" }
     ] },
+    { "title": "Chords", "controls": [ { "param": "chord.window" }, { "param": "chord.roll" } ] },
     { "title": "Left Hand", "controls": [
       { "param": "vib.depth" }, { "param": "vib.rate" }, { "param": "vib.delay" },
       { "param": "finger.shift" }, { "param": "finger.intonation" }
@@ -33,6 +34,9 @@
     "bow.sustain": "On held notes the bow slows after the attack and moves toward the bridge to keep the same loudness, so it lasts longer between bow changes. 1 keeps the attack speed.",
     "bow.auto": "On: a long note changes bow when the bow runs out (every few seconds, as a player would). Off: an endless bow.",
     "bow.legato": "On: overlapping keys slur (same bow, the finger changes). Off: every note changes bow.",
+"body.coupling": "How strongly the strings drive the bridge and body. It sets sympathetic ringing (open strings sound along with notes that match their harmonics) and how much the body loads the strings. 0: a rigid bridge.",
+    "chord.window": "Keys pressed within this time of each other are one chord: two notes become a double stop on neighbouring strings, three or four are rolled.",
+    "chord.roll": "How long the bow stays on each pair of strings when it rolls across a three- or four-note chord.",
     "bow.friction": "Thermal: rosin friction set by contact temperature (Woodhouse). Classic: a friction curve with hysteresis.",
     "finger.intonation": "How much the player corrects the pitch drop that heavy bowing causes on stopped notes. Open strings can't be corrected.",
     "out.mode": "Library Mic: bridge force through a CC0 response measured from a solo-violin recording (body, mics and room). Pickup: the raw bridge force."

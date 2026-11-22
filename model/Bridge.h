@@ -1,0 +1,149 @@
+// The bridge: one driving-point admittance Y(ω) = v/F shared by every
+// string (KB §5.1), as a passive modal filter bank.
+//
+//   Y(s) = Σ_k (1/m_k) s / (s² + (ω_k/Q_k) s + ω_k²)
+//
+// Each mode has a positive effective mass, so Y is positive real (passive);
+// the bilinear transform (pre-warped at ω_k) keeps it so. Each mode becomes a
+// biquad with a direct term b0, which is what lets the strings and bridge be
+// solved together without a delay (see Instrument):
+//
+//   u = Y0·F + h,  Y0 = Σ b0_k,  h = Σ (modes' state)
+//
+// A string terminated by the moving bridge reflects r = u − a (a: incoming
+// velocity wave) and pushes on it with F = Z (a − r) = Z (2a − u). That's
+// the reflectance −1 + 2 Z Y of KB §5.1, solved exactly.
+#pragma once
+
+#include <cmath>
+#include <cstdint>
+#include <vector>
+
+namespace sm {
+
+struct BridgeMode {
+  float hz;      // resonance
+  float q;       // quality factor
+  float peak;    // admittance at resonance (s/kg) = Q / (m ω)
+};
+
+class Bridge {
+ public:
+  // modes: the instrument's signature modes; the dense part above them is
+  // generated (random frequencies, deterministic per instrument).
+  void prepare(float fs, const BridgeMode* modes, int count, const BridgeMode& hill, uint32_t seed,
+               float denseFrom, float denseTo, float spacing) {
+    fs_ = fs;
+    modes_.clear();
+    for (int i = 0; i < count; ++i) add(modes[i]);
+    // Dense high band (KB §5.3): random modes with mean spacing `spacing`,
+    // Q falling with frequency, levels shaped by the bridge hill (a broad
+    // resonance of the bridge rocking on the body).
+    uint32_t r = seed;
+    auto uni = [&r]() {
+      r = r * 1664525u + 1013904223u;
+      return static_cast<float>(r >> 8) * (1.f / 16777216.f);
+    };
+    for (float f = denseFrom + spacing * uni(); f < denseTo; f += spacing * (0.5f + uni())) {
+      const float x = f / hill.hz;
+      // |hill(f)|: 2nd-order resonance magnitude, normalised to 1 at hill.hz.
+      const float den = std::sqrt((1.f - x * x) * (1.f - x * x) + (x / hill.q) * (x / hill.q));
+      const float shape = (x / hill.q) / den;
+      const float q = std::max(8.f, 40.f * std::pow(denseFrom / f, 0.5f));
+      const float level = hill.peak * shape * (0.5f + uni());
+      add({f, q, level});
+    }
+    coupling_ = 1.f;
+    updateCoefficients();
+    reset();
+  }
+
+  void reset() {
+    for (auto& m : modes_) m.s1 = m.s2 = 0.f;
+    hist_ = 0.f;
+  }
+
+  // Scale every mode's admittance (0 = a rigid bridge).
+  void setCoupling(float c) {
+    if (c == coupling_) return;
+    coupling_ = c;
+    updateCoefficients();
+  }
+  float coupling() const { return coupling_; }
+
+  // Direct term and history of the bridge velocity for this sample.
+  float y0() const { return y0_; }
+  float history() const { return hist_; }
+  // Advance every mode with this sample's total force from the strings
+  // (and sum the next sample's history in the same pass).
+  void advance(float f) {
+    float h = 0.f;
+    for (auto& m : modes_) {
+      const float y = m.b0 * f + m.s1;
+      m.s1 = -m.a1 * y + m.s2;           // b1 = 0
+      m.s2 = m.b2 * f - m.a2 * y;
+      h += m.s1;
+    }
+    hist_ = h;
+  }
+  // Rough energy measure for sleeping.
+  float activity() const {
+    float a = 0.f;
+    for (const auto& m : modes_) a += std::fabs(m.s1) + std::fabs(m.s2);
+    return a;
+  }
+  int modeCount() const { return static_cast<int>(modes_.size()); }
+
+  // |Y| at a frequency, for tests and documentation.
+  float magnitude(float hz) const {
+    double re = 0, im = 0;
+    const double w = 2 * 3.141592653589793 * hz;
+    for (const auto& m : modes_) {
+      const double wk = 2 * 3.141592653589793 * m.hz, mass = m.q / (wk * m.peak);
+      // s/(m (s² + wk/Q s + wk²)), s = jw
+      const double dr = wk * wk - w * w, di = w * wk / m.q;
+      const double nr = 0, ni = w / mass;
+      const double d2 = dr * dr + di * di;
+      re += (nr * dr + ni * di) / d2;
+      im += (ni * dr - nr * di) / d2;
+    }
+    return static_cast<float>(std::sqrt(re * re + im * im)) * coupling_;
+  }
+
+ private:
+  struct Mode {
+    float hz, q, peak;
+    float b0 = 0, b2 = 0, a1 = 0, a2 = 0, s1 = 0, s2 = 0;
+  };
+
+  void add(const BridgeMode& b) {
+    if (b.hz <= 0.f || b.hz >= 0.45f * fs_ || b.peak <= 0.f) return;
+    Mode m;
+    m.hz = b.hz;
+    m.q = b.q;
+    m.peak = b.peak;
+    modes_.push_back(m);
+  }
+
+  void updateCoefficients() {
+    y0_ = 0.f;
+    for (auto& m : modes_) {
+      const double w = 2 * 3.141592653589793 * m.hz;
+      const double mass = m.q / (w * m.peak);
+      const double K = w / std::tan(w / (2.0 * fs_));  // pre-warp at the mode
+      const double a = w / m.q, b = w * w;
+      const double a0 = K * K + a * K + b;
+      const double g = coupling_ / mass;
+      m.b0 = static_cast<float>(g * K / a0);
+      m.b2 = -m.b0;
+      m.a1 = static_cast<float>((2 * b - 2 * K * K) / a0);
+      m.a2 = static_cast<float>((K * K - a * K + b) / a0);
+      y0_ += m.b0;
+    }
+  }
+
+  std::vector<Mode> modes_;
+  float fs_ = 96000.f, y0_ = 0.f, coupling_ = 1.f, hist_ = 0.f;
+};
+
+}  // namespace sm

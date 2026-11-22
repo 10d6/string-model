@@ -59,7 +59,7 @@ std::vector<float> resampleIr(const float* x, int n, double from, double to) {
 }  // namespace
 
 struct StringModel : Synth {
-  Param autoChange, sustainSpeed;
+  Param autoChange, sustainSpeed, coupling, chordWindow, rollTime;
   Param instrument, dynamics, velSens, pressure, atPressure, contact, bite, legato, bowChange, noise, friction;
   Param vibDepth, vibRate, vibDelay, shiftTime, intonation, output, roomMix, roomSpace;
   Param bendRange, a4;
@@ -75,14 +75,17 @@ struct StringModel : Synth {
     legato = b.add("bow.legato").name("Legato Slurs").toggle().def(1).group("Bow");
     bowChange = b.add("bow.change").name("Bow Change").range(0.008, 0.2).def(0.02).unit("s").smoothing(0).group("Bow");
     autoChange = b.add("bow.auto").name("Auto Bow Change").toggle().def(1).group("Bow");
-    sustainSpeed = b.add("bow.sustain").name("Long-Note Bow Speed").range(0.25, 1).def(0.4).smoothing(0).group("Bow");
+    sustainSpeed = b.add("bow.sustain").name("Long-Note Bow Speed").range(0.25, 1).def(0.6).smoothing(0).group("Bow");
     noise = b.add("bow.noise").name("Rosin Noise").range(0, 0.5).def(0.12).smoothing(0).group("Bow");
     friction = b.add("bow.friction").name("Friction Model").choices({"Thermal", "Classic"}).group("Bow");
+    chordWindow = b.add("chord.window").name("Chord Window").range(0, 0.08).def(0.035).unit("s").smoothing(0).group("Bow");
+    rollTime = b.add("chord.roll").name("Chord Roll").range(0.02, 0.2).def(0.06).unit("s").smoothing(0).group("Bow");
     vibDepth = b.add("vib.depth").name("Vibrato Depth").range(0, 60).def(16).unit("ct").smoothing(0).group("Left Hand");
     vibRate = b.add("vib.rate").name("Vibrato Rate").range(3, 9).def(5.5).unit("Hz").smoothing(0).group("Left Hand");
     vibDelay = b.add("vib.delay").name("Vibrato Delay").range(0, 1).def(0.25).unit("s").smoothing(0).group("Left Hand");
     shiftTime = b.add("finger.shift").name("Shift Time").range(0, 0.3).def(0.04).unit("s").smoothing(0).group("Left Hand");
     intonation = b.add("finger.intonation").name("Intonation").range(0, 1).def(0.8).smoothing(0).group("Left Hand");
+    coupling = b.add("body.coupling").name("Body Coupling").range(0, 2).def(1).smoothing(0).group("Instrument");
     output = b.add("out.mode").name("Output").choices({"Library Mic", "Library Mic (Smooth)", "Pickup"}).def(1).group("Output");
     roomMix = b.add("room.mix").name("Room").range(0, 100).def(20).unit("%").group("Output");
     roomSpace = b.add("room.space").name("Space").choices({"Room", "Chamber", "Hall", "Cathedral", "Plate"}).def(2).group("Output");
@@ -167,6 +170,8 @@ struct StringModel : Synth {
     pc_.bowChange = ctx.get(bowChange);
     pc_.autoChange = ctx.on(autoChange);
     pc_.sustainSpeed = ctx.get(sustainSpeed);
+    pc_.chordWindow = ctx.get(chordWindow);
+    pc_.rollTime = ctx.get(rollTime);
     pc_.vibDepth = ctx.get(vibDepth);
     pc_.vibRate = ctx.get(vibRate);
     pc_.vibDelay = ctx.get(vibDelay);
@@ -175,6 +180,7 @@ struct StringModel : Synth {
     ic_.friction = ctx.choice(friction) == 1 ? sm::FrictionModel::Classic : sm::FrictionModel::Thermal;
     ic_.noise = ctx.get(noise);
     ic_.intonation = ctx.get(intonation);
+    ic_.coupling = ctx.get(coupling);
     const int mode = ctx.choice(output);
     const float bendSt = ctx.get(bendRange);
     const float gain = inst_.def().outputGain;
