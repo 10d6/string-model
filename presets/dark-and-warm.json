@@ -1,0 +1,11 @@
+{
+  "synthkit": 1,
+  "synth": "string-model",
+  "patchVersion": 1,
+  "name": "Dark & Warm",
+  "params": {
+    "body.hill": 2000,
+    "bow.contact": -0.3,
+    "room.mix": 28
+  }
+}

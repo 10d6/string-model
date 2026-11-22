@@ -71,6 +71,8 @@ struct InstrumentControls {
   float noise = 0.12f;       // rosin noise during slip
   float intonation = 0.8f;   // 0..1: how much the player corrects flattening
   float coupling = 1.f;      // bridge admittance scale (0 = rigid bridge, no sympathy)
+  float hillHz = 2600.f;     // bridge hill centre (admittance; the radiation follows in the synth)
+  float mute = 0.f;          // 0..1: the mute's mass on the bridge
 };
 
 class Instrument {
@@ -180,6 +182,8 @@ class Instrument {
 
   void controlTick(const PerformerControls& pc, const InstrumentControls& ic) {
     bridge_.setCoupling(ic.coupling);
+    // A mute moves the hill to ~65% and weakens it (KB §11.2) [T level].
+    bridge_.setHill(ic.hillHz * (1.f - 0.35f * ic.mute), 1.f - 0.4f * ic.mute);
     perf_.controlTick(pc, kControl / host_);
     perf_.strings(target_, pc);
     const float beta = perf_.beta();

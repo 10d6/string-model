@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "../model/Instrument.h"
+#include "../model/Radiation.h"
 #include "ir/ViolinIR.h"
 
 using namespace sk;
@@ -59,7 +60,7 @@ std::vector<float> resampleIr(const float* x, int n, double from, double to) {
 }  // namespace
 
 struct StringModel : Synth {
-  Param autoChange, sustainSpeed, coupling, chordWindow, rollTime;
+  Param autoChange, sustainSpeed, coupling, chordWindow, rollTime, hill, mute, resonance, width;
   Param instrument, dynamics, velSens, pressure, atPressure, contact, bite, legato, bowChange, noise, friction;
   Param vibDepth, vibRate, vibDelay, shiftTime, intonation, output, roomMix, roomSpace;
   Param bendRange, a4;
@@ -86,7 +87,11 @@ struct StringModel : Synth {
     shiftTime = b.add("finger.shift").name("Shift Time").range(0, 0.3).def(0.04).unit("s").smoothing(0).group("Left Hand");
     intonation = b.add("finger.intonation").name("Intonation").range(0, 1).def(0.8).smoothing(0).group("Left Hand");
     coupling = b.add("body.coupling").name("Body Coupling").range(0, 2).def(1).smoothing(0).group("Instrument");
-    output = b.add("out.mode").name("Output").choices({"Library Mic", "Library Mic (Smooth)", "Pickup"}).def(1).group("Output");
+    hill = b.add("body.hill").name("Bridge Hill").range(1800, 3400).log().def(2600).unit("Hz").smoothing(0).group("Instrument");
+    mute = b.add("body.mute").name("Mute").toggle().def(0).group("Instrument");
+    resonance = b.add("body.resonance").name("Body Resonance").range(0, 1).def(1).smoothing(0).group("Instrument");
+    output = b.add("out.mode").name("Output").choices({"Library Mic", "Library Mic (Smooth)", "Pickup", "Modelled"}).def(3).group("Output");
+    width = b.add("out.width").name("Stereo Width").range(0, 1).def(1).smoothing(0).group("Output");
     roomMix = b.add("room.mix").name("Room").range(0, 100).def(20).unit("%").group("Output");
     roomSpace = b.add("room.space").name("Space").choices({"Room", "Chamber", "Hall", "Cathedral", "Plate"}).def(2).group("Output");
   }
@@ -98,6 +103,13 @@ struct StringModel : Synth {
     bendRange = info.param("bendRange");
     a4 = info.param("sk.a4");
     inst_.prepare(sr_);
+    {
+      const sm::InstrumentDef& d = inst_.def();
+      rad_.prepare(static_cast<float>(sr_), d.radiationHz, d.radiationDb, d.radiationCount, d.bodySeed ^ 0x9e3779b9u, d.hill.hz,
+                   d.radiationLowCut);
+    }
+    muteSmooth_ = 0.f;
+    radTick_ = 0;
     // Body: the CC0 library-mic responses (bridge force -> recording).
     auto l = resampleIr(sm::ir::kViolinLeft, sm::ir::kViolinLeftLen, sm::ir::kViolinRate, sr_);
     auto r = resampleIr(sm::ir::kViolinRight, sm::ir::kViolinRightLen, sm::ir::kViolinRate, sr_);
@@ -181,6 +193,14 @@ struct StringModel : Synth {
     ic_.noise = ctx.get(noise);
     ic_.intonation = ctx.get(intonation);
     ic_.coupling = ctx.get(coupling);
+    ic_.hillHz = ctx.get(hill);
+    // The mute goes on over ~80 ms (it's put on by hand), on the samples'
+    // own clock below.
+    const float muteTarget = ctx.on(mute) ? 1.f : 0.f;
+    sm::RadiationSettings rs;
+    rs.hillHz = ctx.get(hill);
+    rs.resonance = ctx.get(resonance);
+    rs.width = ctx.get(width);
     const int mode = ctx.choice(output);
     const float bendSt = ctx.get(bendRange);
     const float gain = inst_.def().outputGain;
@@ -191,9 +211,19 @@ struct StringModel : Synth {
       while (qi < queued_ && queue_[qi].sample <= pos) handle(queue_[qi++]);
       bendSmooth_ += (pitchBend_ - bendSmooth_) * 0.004f;
       pc_.bend = bendSmooth_ * bendSt;
+      if (radTick_ == 0) {
+        muteSmooth_ += (muteTarget - muteSmooth_) * 0.18f;  // per 16 samples: ~80 ms at 48 kHz
+        if (std::fabs(muteTarget - muteSmooth_) < 1e-3f) muteSmooth_ = muteTarget;
+        ic_.mute = muteSmooth_;
+        rs.mute = muteSmooth_;
+        rad_.control(rs);
+      }
+      radTick_ = (radTick_ + 1) & 15;
       const float force = inst_.process(pc_, ic_) * gain;
       float l = 0.f, r = 0.f;
-      if (mode == 0) {
+      if (mode == 3) {
+        rad_.process(force * inst_.def().radiationGain, l, r);
+      } else if (mode == 0) {
         stereoIr_.processMono(force, l, r);
       } else if (mode == 1) {
         smoothIr_.processMono(force, l, r);
@@ -236,6 +266,9 @@ struct StringModel : Synth {
   sm::PerformerControls pc_;
   sm::InstrumentControls ic_;
   wa::Convolver stereoIr_, smoothIr_;
+  sm::Radiation rad_;
+  float muteSmooth_ = 0.f;
+  int radTick_ = 0;
   dsp::Reverb reverb_;
   MidiEvent queue_[kQueue];
   int queued_ = 0, blockPos_ = 0;
