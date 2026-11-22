@@ -26,9 +26,9 @@ struct InstrumentDef {
   float denseFrom, denseTo, denseSpacing;
   uint32_t bodySeed;
   float forceTrim[4];  // per-string force calibration (tools/calibrate_force.py) [T]
-  // Open strings are tuned while bowing, so at rest they sit a little sharp:
-  // about 60% of the flattening measured under the bow at mf (full
-  // compensation would leave them too sharp to ring with stopped notes) [T].
+  // The bow flattens an open string, and no finger can correct it: the
+  // performer raises a bowed open string by this much, only while the bow is
+  // on it (unbowed open strings stay at true pitch to ring in sympathy) [T].
   float openTuneCents[4];
   // Radiation (Radiation.h): the calibration target and its measured hill,
   // the low cut below the lowest air mode, and a gain matching the
@@ -93,8 +93,9 @@ inline const InstrumentDef& violin() {
       0x5717a1u,
       // The steel E needed ~+0.2 pressure (x1.22) to sit mid-window.
       {1.f, 1.f, 1.f, 1.22f},
-      // Measured under the bow at mf: G -11, D -6, A -15, E -20 cents.
-      {7.f, 4.f, 9.f, 12.f},
+      // Full compensation of the flattening under the bow (enhanced friction,
+      // two-point bow), averaged over dynamics 0.15-0.85 (tools/open_strings.py).
+      {15.5f, 11.5f, 14.f, 16.f},
       data::kViolinRadiationHz, data::kViolinRadiationDb, data::kViolinRadiationCount,
       230.f,  // below A0 (~280 Hz) the violin radiates little; weak at the open G (KB §12.7)
       1.19f,  // same loudness (300 Hz-5 kHz) as the Library Mic (Smooth) output

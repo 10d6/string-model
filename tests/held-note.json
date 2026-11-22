@@ -18,20 +18,21 @@
   "levelAt": [
    {
     "t": 3,
-    "above": -36
+    "above": -37.5
    },
    {
     "t": 6,
-    "above": -36
+    "above": -37.5
    },
    {
     "t": 9,
-    "above": -36
+    "above": -37.5
    },
    {
     "t": 11.9,
-    "above": -36
+    "above": -37.5
    }
   ]
- }
+ },
+ "note": "Open A held 12 s. Floor -37.5 dB: in tune (since the open-string allowance fix) its partials that coincide with the other open strings' are 2-4 dB lower, absorbed through the bridge."
 }

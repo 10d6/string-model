@@ -137,6 +137,7 @@ class Performer {
     keyCenter_ = 1;
     meter_ = -1.f;
     liftedAt_ = -1.f;
+    for (float& a : openAllow_) a = 0.f;
     vibMeterK_ = 1.f;
     vibShapeK_ = 1.f;
   }
@@ -354,7 +355,14 @@ class Performer {
       const bool stopped = stopped_[s] || (lead && std::fabs(c.bend) > 0.01f);
       // Open strings are tuned a little sharp at rest (InstrumentDef): the bow
       // pulls them down. Plucked, there is no bow, so they sound at pitch.
-      float tune = stopped || art_ == kPizzicato ? 0.f : def_->openTuneCents[s] * 0.01f;
+      // The bow flattens a string it's on; an open string can't be corrected
+      // by the finger, so it carries an allowance while (and only while) the
+      // bow is on it (openAllow_). Unbowed open strings sit at true pitch, so
+      // they ring in sympathy with stopped notes.
+      // Harmonics are bowed much lighter (updateForceFactors), so they flatten
+      // less: about half the allowance (natural harmonics within ±3 cents) [T].
+      const float allow = touchQ_[s] > 0.f ? 0.55f : 1.f;
+      float tune = stopped ? 0.f : def_->openTuneCents[s] * 0.01f * openAllow_[s] * allow;
       // Open strings in pure fifths around A (G -3.9, D -2.0, E +2.0 cents).
       if (!stopped) tune += 0.01f * c.intonStyle * openPureCents(s);
       const float noteHz = mtof(n + tune, c.a4);
@@ -397,6 +405,12 @@ class Performer {
     dynIn_ += (c.dynamics - dynIn_) * k;
     pressureIn_ += (c.pressure - pressureIn_) * k;
     contactIn_ += (c.contact - contactIn_) * k;
+    // Open-string bow allowance: eases in and out with the bow (~30 ms).
+    const float ka = 1.f - std::exp(-dtControl / 0.03f);
+    for (int st = 0; st < 4; ++st) {
+      const float want = bowed_[st] && bowing_ && art_ != kPizzicato ? 1.f : 0.f;
+      openAllow_[st] += (want - openAllow_[st]) * ka;
+    }
     computeTargets(c);
     const float d = dyn_;
     const float age = noteAge_ - c.vibDelay;
@@ -1058,6 +1072,7 @@ class Performer {
   float pcWeight_[12]{};
   int keyCenter_ = 1;  // D major until notes say otherwise
   float meter_ = -1.f, gapRaw_ = 1.f, liftedAt_ = -1.f, vibMeterK_ = 1.f;
+  float openAllow_[4]{};  // 0..1: the bow-flattening allowance on each open string
   float templateForce_ = -1.f, tremPhase_ = 0.f, tremRateJit_ = 1.f, tremForceJit_ = 1.f;
   float pluckStart_[4]{-1.f, -1.f, -1.f, -1.f}, pluckF_[4]{}, pluckRise_[4]{}, pluckRel_[4]{}, pluckDir_[4]{1, 1, 1, 1};
   float pluckCos_[4]{1, 1, 1, 1}, pluckSin_[4]{};
