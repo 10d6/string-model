@@ -60,13 +60,15 @@ std::vector<float> resampleIr(const float* x, int n, double from, double to) {
 }  // namespace
 
 struct StringModel : Synth {
-  Param autoChange, sustainSpeed, coupling, chordWindow, rollTime, hill, mute, resonance, width, releaseMode, slideNoise, stringSel, keyswitches;
+  Param autoChange, sustainSpeed, coupling, chordWindow, rollTime, hill, mute, resonance, width, releaseMode, slideNoise, stringSel, keyswitches, artic, tremRate;
   Param instrument, dynamics, velSens, pressure, atPressure, contact, bite, legato, bowChange, noise, friction;
   Param vibDepth, vibRate, vibDelay, shiftTime, intonation, output, roomMix, roomSpace;
   Param bendRange, a4;
 
   void defineParams(ParamBuilder& b) override {
     instrument = b.add("instrument").name("Instrument").choices({"Violin"}).group("Instrument");
+    artic = b.add("artic").name("Articulation").choices({"Arco", "Martelé", "Spiccato", "Tremolo", "Pizzicato", "Harmonics"}).def(0).group("Instrument");
+    tremRate = b.add("artic.tremRate").name("Tremolo Rate").range(6, 18).def(12.2).unit("/s").smoothing(0).group("Bow");
     dynamics = b.add("bow.dynamics").name("Dynamics").range(0, 1).def(0.55).smoothing(0).group("Bow").cc(1).cc(11);
     velSens = b.add("bow.velSens").name("Velocity → Dynamics").range(0, 1).def(0.7).smoothing(0).group("Bow");
     pressure = b.add("bow.pressure").name("Pressure").range(-1, 1).def(0).smoothing(0).group("Bow");
@@ -87,7 +89,7 @@ struct StringModel : Synth {
     vibDelay = b.add("vib.delay").name("Vibrato Delay").range(0, 1).def(0.25).unit("s").smoothing(0).group("Left Hand");
     shiftTime = b.add("finger.shift").name("Shift Time").range(0, 0.3).def(0.04).unit("s").smoothing(0).group("Left Hand");
     stringSel = b.add("string.select").name("String").choices({"Auto", "G", "D", "A", "E"}).def(0).group("Left Hand");
-    keyswitches = b.add("string.keys").name("String Keyswitches").toggle().def(1).group("Left Hand");
+    keyswitches = b.add("string.keys").name("Keyswitches").toggle().def(1).group("Left Hand");
     slideNoise = b.add("finger.noise").name("Slide Noise").range(0, 1).def(0.4).smoothing(0).group("Left Hand");
     intonation = b.add("finger.intonation").name("Intonation").range(0, 1).def(0.8).smoothing(0).group("Left Hand");
     coupling = b.add("body.coupling").name("Body Coupling").range(0, 2).def(1).smoothing(0).group("Instrument");
@@ -143,10 +145,15 @@ struct StringModel : Synth {
     blockPos_ = 0;
     const bool keys = ctx.on(keyswitches);
     for (auto& e : ctx.in()) {
-      // String keyswitches: C1 Auto, C#1 G, D1 D, D#1 A, E1 E. They set the
-      // String parameter (the page and host follow) and don't sound.
-      if (keys && (e.isNoteOn() || e.isNoteOff()) && e.note >= kKeyswitchLow && e.note < kKeyswitchLow + 5) {
-        if (e.isNoteOn()) ctx.setParam(stringSel, static_cast<float>(e.note - kKeyswitchLow));
+      // Keyswitches set a parameter (the page and host follow) and don't sound:
+      // C1 Auto, C#1 G, D1 D, D#1 A, E1 E (String);
+      // F1 Arco, F#1 Martelé, G1 Spiccato, G#1 Tremolo, A1 Pizzicato, A#1 Harmonics.
+      if (keys && (e.isNoteOn() || e.isNoteOff()) && e.note >= kKeyswitchLow && e.note < kKeyswitchLow + 11) {
+        if (e.isNoteOn()) {
+          const int k = e.note - kKeyswitchLow;
+          if (k < 5) ctx.setParam(stringSel, static_cast<float>(k));
+          else ctx.setParam(artic, static_cast<float>(k - 5));
+        }
         continue;
       }
       if (queued_ < kQueue) queue_[queued_++] = e;
@@ -194,6 +201,8 @@ struct StringModel : Synth {
     pc_.autoChange = ctx.on(autoChange);
     pc_.releaseMode = ctx.choice(releaseMode);
     pc_.forcedString = ctx.choice(stringSel) - 1;
+    pc_.articulation = ctx.choice(artic);
+    pc_.tremoloRate = ctx.get(tremRate);
     pc_.sustainSpeed = ctx.get(sustainSpeed);
     pc_.chordWindow = ctx.get(chordWindow);
     pc_.rollTime = ctx.get(rollTime);

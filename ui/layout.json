@@ -11,6 +11,10 @@
           "type": "menu"
         },
         {
+          "param": "artic",
+          "type": "menu"
+        },
+        {
           "param": "body.coupling"
         },
         {
@@ -81,6 +85,9 @@
         },
         {
           "param": "bow.legato"
+        },
+        {
+          "param": "artic.tremRate"
         }
       ]
     },

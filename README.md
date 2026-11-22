@@ -23,6 +23,18 @@ How it works: [docs/MODEL.md](docs/MODEL.md). Roadmap: [docs/PLAN.md](docs/PLAN.
 | Keys pressed together | double stop (2) or rolled chord (3–4) |
 | Key-up speed | Release Auto: a quick release stops the bow on the string, a gentle one lifts it |
 | C1, C#1, D1, D#1, E1 | keyswitches: string Auto, G, D, A, E (sul G, sul D…) |
+| F1, F#1, G1, G#1, A1, A#1 | keyswitches: articulation Arco, Martelé, Spiccato, Tremolo, Pizzicato, Harmonics |
+
+### Articulations
+
+| | |
+|---|---|
+| Arco | the normal bowed sound: everything above |
+| Martelé | the bow pinches, then a fast accented stroke that stops on the string |
+| Spiccato | the bow is thrown and bounces off: short, light notes |
+| Tremolo | fast bow changes on one note (Tremolo Rate, ~12 per second) |
+| Pizzicato | plucked; key-up as with the bow (a quick release damps it with the hand) |
+| Harmonics | flageolet: a natural harmonic if the note has one, else an artificial one (stopped note + a touch a fourth, a fifth or an octave above) |
 
 ## Playing it
 

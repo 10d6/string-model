@@ -1,0 +1,43 @@
+{
+ "patch": "init",
+ "length": 5,
+ "params": {
+  "room.mix": 0,
+  "artic": 3,
+  "vib.depth": 0
+ },
+ "events": [
+  {
+   "t": 0,
+   "on": 69,
+   "vel": 80
+  },
+  {
+   "t": 2.0,
+   "off": 69
+  },
+  {
+   "t": 2.2,
+   "on": 64,
+   "vel": 110
+  },
+  {
+   "t": 3.4,
+   "off": 64
+  }
+ ],
+ "expect": {
+  "soundBy": 0.1,
+  "silentAfter": 4.8,
+  "levelAt": [
+   {
+    "t": 1.0,
+    "above": -45
+   },
+   {
+    "t": 2.9,
+    "above": -45
+   }
+  ]
+ }
+}

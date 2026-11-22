@@ -61,7 +61,13 @@ struct PerformerControls {
   int releaseMode = 0;
   int forcedString = -1;      // -1 auto, else 0..3: play on this string when it reaches the note
   float slideNoise = 0.4f;    // 0..1: winding noise under a sliding finger
+  // Articulation for new notes (KB §11.2, §11.5): 0 Arco, 1 Martelé,
+  // 2 Spiccato, 3 Tremolo, 4 Pizzicato, 5 Harmonics.
+  int articulation = 0;
+  float tremoloRate = 12.2f;  // bow reversals per second (VSCO solo violin median, KB §11.2)
 };
+
+enum Articulation { kArco = 0, kMartele, kSpiccato, kTremolo, kPizzicato, kHarmonics };
 
 struct StringTarget {
   float hz = 440.f;        // sounding pitch incl. vibrato and bend
@@ -70,6 +76,8 @@ struct StringTarget {
   float force = 0.f;       // N
   float damp = 0.f;        // 0..1: the bow resting on the string as a damper (a "stop" release)
   float slide = 0.f;       // m/s: the stopping finger's speed along the string (shifts)
+  float touchQ = 0.f;      // harmonics: touch point, fraction of the vibrating length from the finger end (0 = none)
+  float touchR = 0.f;      // touch resistance / Z0
 };
 
 class Performer {
@@ -102,7 +110,13 @@ class Performer {
       offTime_[s] = 0.f;
       fingerOffAt_[s] = 0.f;
       fFactor_[s] = 1.f;
+      pluckStart_[s] = -1.f;
+      pluckNow_[s] = 0.f;
+      touchQ_[s] = 0.f;
     }
+    art_ = kArco;
+    muting_ = false;
+    tremPhase_ = 0.f;
     str_ = 2;
     chordN_ = 0;
     stopping_ = false;
@@ -130,10 +144,20 @@ class Performer {
     stopping_ = false;
     damp_ = 0.f;
     for (float& t : fingerOffAt_) t = 0.f;
-    // Keys pressed together: a double stop or a rolled chord.
+    muting_ = false;
+    // Keys pressed together: a double stop or a rolled chord (a strum, plucked).
     if (nHeld_ >= 2 && tryChord(c)) return;
     chordN_ = 0;
-    const bool slur = bowing_ && c.legato && note_ >= 0 && !wasStopping;
+    if (c.articulation == kPizzicato) {
+      art_ = kPizzicato;
+      pluckNote(note, vel, c, 0.f);
+      return;
+    }
+    // Martelé and spiccato strokes are separate by nature; tremolo and
+    // harmonics slur like arco.
+    const bool canSlur = c.articulation == kArco || c.articulation == kTremolo || c.articulation == kHarmonics;
+    const bool slur = bowing_ && c.legato && note_ >= 0 && !wasStopping && canSlur && art_ == c.articulation;
+    if (!slur) art_ = c.articulation;
     play(note, vel, slur, c);
   }
 
@@ -204,16 +228,27 @@ class Performer {
         stopping_ = false;
         lift();
       }
+    } else if (muting_) {
+      // The hand damps a plucked string, then lets go after 200 ms.
+      damp_ = std::min(1.f, damp_ + dt / 0.015f);
+      if (now_ - muteStart_ > 0.2f) muting_ = false;
     } else if (damp_ > 0.f) {
       damp_ = std::max(0.f, damp_ - dt / 0.02f);
     }
-    const float dv = want - vb_;
-    const float step = accel * dt;
-    vb_ += std::clamp(dv, -step, step);
+    // Bow-stroke templates (Demoucron, KB §11.5) set the bow's speed directly.
+    templateForce_ = -1.f;
+    if (bowing_ && (art_ == kMartele || art_ == kSpiccato || art_ == kTremolo)) strokeTemplate(c, dt, want);
+    if (templateForce_ >= 0.f) {
+      vb_ = want;  // the template's speed is already smooth
+    } else {
+      const float dv = want - vb_;
+      const float step = accel * dt;
+      vb_ += std::clamp(dv, -step, step);
+    }
     // Bow position along the hair; change bow at the ends.
     bowPos_ += vb_ * dt / def_->bowLength;
     if (!c.autoChange) bowPos_ = std::clamp(bowPos_, 0.1f, 0.9f);  // never runs out
-    if (bowing_ && c.autoChange) {
+    if (bowing_ && c.autoChange && art_ == kArco) {
       if (dir_ > 0 && bowPos_ > 0.97f) bowChange(c);
       else if (dir_ < 0 && bowPos_ < 0.03f) bowChange(c);
     }
@@ -233,7 +268,8 @@ class Performer {
     accent_ *= accentDecay_;
     const float fTarget = fT_ * dip * (1.f + accent_);
     for (int s = 0; s < 4; ++s) {
-      const float goal = (bowed_[s] && bowing_) ? std::min(fTarget * fFactor_[s], def_->forceMax) : 0.f;
+      const float base = templateForce_ >= 0.f ? templateForce_ : fTarget;
+      const float goal = (bowed_[s] && bowing_) ? std::min(base * fFactor_[s], def_->forceMax) : 0.f;
       const float rate = goal > force_[s] ? landRate_ : liftRate_;
       force_[s] += (goal - force_[s]) * rate;
       if (force_[s] < 1e-4f && goal == 0.f) force_[s] = 0.f;
@@ -248,8 +284,27 @@ class Performer {
     }
     for (int s = 0; s < 4; ++s)
       if (shiftT_[s] < 1.f) shiftT_[s] = std::min(1.f, shiftT_[s] + dt / shiftDur_[s]);
+    // Plucks: the finger loads the string (force rises over 10-25 ms), then
+    // slips off (falls in 1-2.5 ms) (KB §11.2 "Pizzicato").
+    for (int s = 0; s < 4; ++s) {
+      pluckNow_[s] = 0.f;
+      if (pluckStart_[s] < 0.f || now_ < pluckStart_[s]) continue;
+      const float t = now_ - pluckStart_[s];
+      if (t < pluckRise_[s]) {
+        const float x = std::sin(1.5707963f * t / pluckRise_[s]);
+        pluckNow_[s] = pluckF_[s] * x * x;
+      } else if (t < pluckRise_[s] + pluckRel_[s]) {
+        const float x = std::cos(1.5707963f * (t - pluckRise_[s]) / pluckRel_[s]);
+        pluckNow_[s] = pluckF_[s] * x * x;
+      } else {
+        pluckStart_[s] = -1.f;
+      }
+    }
     return vb_;
   }
+
+  // Per sample: the plucking finger's force on string s (N).
+  float pluckForce(int s) const { return pluckNow_[s] * pluckDir_[s]; }
 
   // At control rate: pitch, vibrato and force targets per string.
   void strings(StringTarget out[4], const PerformerControls& c) const {
@@ -258,8 +313,9 @@ class Performer {
       float n = currentFinger(s);
       if (lead && note_ >= 0) n += c.bend;
       const bool stopped = stopped_[s] || (lead && std::fabs(c.bend) > 0.01f);
-      // Open strings are tuned a little sharp at rest (InstrumentDef).
-      const float tune = stopped ? 0.f : def_->openTuneCents[s] * 0.01f;
+      // Open strings are tuned a little sharp at rest (InstrumentDef): the bow
+      // pulls them down. Plucked, there is no bow, so they sound at pitch.
+      const float tune = stopped || art_ == kPizzicato ? 0.f : def_->openTuneCents[s] * 0.01f;
       const float noteHz = mtof(n + tune, c.a4);
       float vib = 0.f;
       if (stopped && (lead || s == str_)) vib = vibCents_ * std::sin(6.2831853f * vibPhase_);
@@ -268,6 +324,8 @@ class Performer {
       out[s].stopped = stopped;
       out[s].force = force_[s];
       out[s].damp = (bowed_[s] || s == str_) ? damp_ : 0.f;
+      out[s].touchQ = touchQ_[s];
+      out[s].touchR = touchQ_[s] > 0.f ? kTouchR : 0.f;
       // Finger speed along the string during a shift: x = L (1 - 2^(-p/12)),
       // p semitones above the open string; dn/dt from the S-curve.
       out[s].slide = 0.f;
@@ -349,6 +407,17 @@ class Performer {
   void release(float relVel, const PerformerControls& c) {
     int mode = c.releaseMode;
     if (mode == 0) mode = relVel > 0.7f ? 2 : 1;  // a quick key-up stops the bow on the string
+    if (art_ == kPizzicato) {
+      // A plucked note rings on; "stop" damps it with the hand.
+      if (mode == 2) {
+        muting_ = true;
+        muteStart_ = now_;
+      }
+      if (mode == 3)
+        for (int s = 0; s < 4; ++s)
+          if (stopped_[s]) fingerOffAt_[s] = now_ + 0.04f;
+      return;
+    }
     if (mode == 2 && bowing_) {
       stopping_ = true;
       stopStart_ = now_;
@@ -428,6 +497,16 @@ class Performer {
     note_ = notes[n - 1];
     str_ = chordStr_[n - 1];
     vel_now_ = vel;
+    for (float& q : touchQ_) q = 0.f;
+    if (c.articulation == kPizzicato) {
+      // A plucked chord is strummed, low to high, ~12 ms apart.
+      art_ = kPizzicato;
+      for (int j = 0; j < n; ++j) startPluck(chordStr_[j], vel, 0.012f * static_cast<float>(j));
+      chordN_ = 0;
+      lift();
+      return true;
+    }
+    art_ = c.articulation == kHarmonics ? kArco : c.articulation;  // chords: no harmonics
     rollIdx_ = 0;
     rollStart_ = now_;
     applyChordContact();
@@ -470,12 +549,24 @@ class Performer {
   }
 
   void play(int note, float vel, bool slur, const PerformerControls& c) {
-    const int s = chooseString(note, slur, c.forcedString);
+    int s = chooseString(note, slur, c.forcedString);
     const float prevNote = note_ >= 0 ? static_cast<float>(note_) : static_cast<float>(note);
     vel_now_ = vel;
     note_ = note;
-    const float n = static_cast<float>(std::max(note, def_->strings[0].openNote - 7));
-    const bool open = note == def_->strings[s].openNote;
+    float n = static_cast<float>(std::max(note, def_->strings[0].openNote - 7));
+    // Harmonics: play the note as a natural or artificial harmonic; the
+    // finger stops the fundamental and a light touch picks the partial.
+    for (float& q : touchQ_) q = 0.f;
+    if (art_ == kHarmonics) {
+      int hs, stop;
+      float q;
+      if (findHarmonic(note, c.forcedString, hs, stop, q)) {
+        s = hs;
+        n = static_cast<float>(stop);
+        touchQ_[s] = q;
+      }
+    }
+    const bool open = static_cast<int>(n) == def_->strings[s].openNote;
     // Finger: shift on the same string while sounding; jump otherwise.
     const bool sounding = force_[s] > 0.f || (s == str_ && bowing_);
     if (sounding && slur) {
@@ -540,6 +631,9 @@ class Performer {
         body = std::pow(2.f, 1.5f * load);
       }
       fFactor_[s] = std::pow(z / def_->zRef, 1.39f) * pos * body * def_->forceTrim[s] * (count >= 2 ? 1.0f : 1.f);
+      // Harmonics: a much lighter bow; quarter touches lighter still. Through
+      // the synth: octaves within ~5 cents, thirds/quarters within ~15 [T].
+      if (touchQ_[s] > 0.f) fFactor_[s] *= touchQ_[s] < 0.3f ? 0.15f : 0.3f;
     }
   }
 
@@ -547,6 +641,114 @@ class Performer {
     const float t = shiftT_[s];
     const float sc = t * t * (3.f - 2.f * t);
     return fingerFrom_[s] + (fingerTo_[s] - fingerFrom_[s]) * sc;
+  }
+
+  // Bow-stroke templates, from Demoucron's measured strokes (KB §11.5).
+  // Sets `want` (bow velocity) and templateForce_ (base force before the
+  // per-string factors); t is the time since the stroke began.
+  void strokeTemplate(const PerformerControls& c, float dt, float& want) {
+    const float t = noteAge_, d = dyn_;
+    auto sin2 = [](float x) { const float v = std::sin(1.5707963f * x); return v * v; };
+    if (art_ == kMartele) {
+      // Pinch with the bow still, then a fast stroke while the force drops
+      // over 0.2 s, with the bow's ~13 Hz ripple; the bow stays on the string.
+      const float fp = 0.8f + 1.9f * d, tp = 0.06f * d, vm = 0.5f + 0.7f * d, T = 0.25f + 0.08f * d, A = 0.42f;
+      const float fmin = 0.25f + 0.2f * d;
+      if (t < tp) {
+        want = 0.f;
+        templateForce_ = fp;
+        return;
+      }
+      const float u = t - tp;
+      float v = 0.f;
+      if (u < A * T) v = vm * sin2(u / (A * T));
+      else if (u < T) v = vm * (1.f - sin2((u - A * T) / ((1.f - A) * T)));
+      else damp_ = std::min(1.f, damp_ + 2.f * dt / 0.015f);  // at rest on the string: it damps
+      want = dir_ * v;
+      const float drop = u < 0.2f ? 0.5f * (fp - fmin) * (1.f + std::cos(3.14159265f * u / 0.2f)) : 0.f;
+      const float ripple = 0.15f * fp * std::exp(-u / 0.08f) * std::cos(6.2831853f * 13.f * u);
+      templateForce_ = std::max(0.f, fmin + drop + ripple);
+    } else if (art_ == kSpiccato) {
+      // Thrown: a ~75 ms force bell (rise a little faster than the fall) with a
+      // half-sine stroke, then in the air. Demoucron measured 0.5 N (p) to 3 N
+      // (f) peaks; x0.4 maps them onto this string's force scale (at x1 the
+      // notes went 20-40 cents flat, a sign of crushing) [T].
+      const float tc = 0.075f, A = 0.45f, fm = 0.4f * (0.5f + 2.5f * std::pow(d, 1.5f));
+      const float vm = 0.08f + 0.7f * std::pow(d, 1.2f), tb = 0.14f;
+      float f = 0.f;
+      if (t < A * tc) f = fm * sin2(t / (A * tc));
+      else if (t < tc) f = fm * (1.f - sin2((t - A * tc) / ((1.f - A) * tc)));
+      want = t < tb ? dir_ * vm * std::sin(3.14159265f * t / tb) : 0.f;
+      templateForce_ = f;
+    } else {
+      // Tremolo: ~12 reversals/s, near-sinusoidal speed; down-bows lighter
+      // than up-bows (0.4 vs 0.6 N measured); timing and force jitter per stroke.
+      const float v0 = 0.15f + 0.35f * d;
+      const float before = tremPhase_;
+      tremPhase_ += 0.5f * c.tremoloRate * tremRateJit_ * dt;
+      if ((before < 0.5f && tremPhase_ >= 0.5f) || tremPhase_ >= 1.f) {
+        if (tremPhase_ >= 1.f) tremPhase_ -= 1.f;
+        tremRateJit_ = 1.f + 0.12f * bipolar();
+        tremForceJit_ = 1.f + 0.15f * bipolar();
+      }
+      const float v = v0 * std::sin(6.2831853f * tremPhase_);
+      want = dir_ * v;
+      templateForce_ = fT_ * (v * dir_ > 0.f ? 0.8f : 1.2f) * tremForceJit_;
+    }
+  }
+
+  // Pluck note on its string (pizzicato): the finger stops it, the bow is away.
+  void pluckNote(int note, float vel, const PerformerControls& c, float delay) {
+    const int s = chooseString(note, false, c.forcedString);
+    vel_now_ = vel;
+    note_ = note;
+    const float n = static_cast<float>(std::max(note, def_->strings[0].openNote - 7));
+    fingerFrom_[s] = fingerTo_[s] = n;
+    shiftT_[s] = 1.f;
+    stopped_[s] = note != def_->strings[s].openNote;
+    for (float& q : touchQ_) q = 0.f;
+    str_ = s;
+    noteAge_ = 0.f;
+    lift();
+    startPluck(s, vel, delay);
+  }
+
+  // Each pluck varies a little (KB §11.2: the same pluck every time sounds
+  // mechanical): force, rise, release and the pluck point [T].
+  void startPluck(int s, float vel, float delay) {
+    pluckStart_[s] = now_ + delay;
+    pluckF_[s] = (0.6f + 3.0f * std::pow(vel, 1.3f)) * (1.f + 0.1f * bipolar());
+    pluckRise_[s] = 0.012f + 0.006f * (1.f + bipolar());
+    // The release is a ramp: one as long as the period would cancel the
+    // fundamental (a sinc null), which made open E plucks weak and uneven. Keep
+    // it under ~0.35 period: 1-2.5 ms on the G string, ~0.5 ms on the E [T].
+    const float period = 1.f / mtof(fingerTo_[s], 440.f);
+    pluckRel_[s] = std::min(0.001f + 0.00075f * (1.f + bipolar()), (0.25f + 0.05f * (1.f + bipolar())) * period);
+    pluckDir_[s] = 1.f;
+    pluckBeta_ = 0.2f + 0.05f * bipolar();
+  }
+
+  // A harmonic for `note`: natural (an open string's 2nd, 3rd or 4th
+  // partial, touched at 1/2, 1/3, 1/4) if there is one, else artificial
+  // (a stopped note two octaves, a twelfth or an octave below, touched at
+  // 1/4, 1/3 or 1/2 of the stopped length), lowest position first.
+  bool findHarmonic(int note, int forced, int& s, int& stop, float& q) const {
+    static constexpr int kInterval[3] = {12, 19, 24};
+    static constexpr float kQ[3] = {0.5f, 1.f / 3.f, 0.25f};
+    int bestCost = 1 << 20;
+    for (int str = 0; str < 4; ++str) {
+      if (forced >= 0 && str != forced) continue;
+      const int open = def_->strings[str].openNote;
+      for (int k = 0; k < 3; ++k) {
+        const int st = note - kInterval[k];
+        const int pos = st - open;
+        if (pos < 0 || pos > 12) continue;
+        // Natural first (cost by partial), then artificial, two-octave first.
+        const int cost = pos == 0 ? k : 100 + pos * 4 + (2 - k);
+        if (cost < bestCost) bestCost = cost, s = str, stop = st, q = kQ[k];
+      }
+    }
+    return bestCost < (1 << 20);
   }
 
   void bowChange(const PerformerControls& c) {
@@ -582,6 +784,12 @@ class Performer {
       const float floorBeta = std::min(attackBeta, c.sustainBetaMin);
       beta = std::max(beta, floorBeta);
     }
+    if (art_ == kSpiccato) beta = 0.18f - 0.1f * d;   // Demoucron: 58 / 40 / 29 mm at p / mf / f
+    if (art_ == kPizzicato) beta = pluckBeta_;        // the pluck point
+    // A touched string vibrates in k segments, like a string 1/k as long:
+    // the bow goes k times closer to the bridge (relative), with less force
+    // (updateForceFactors). Measured: 1.99-4.00 x f0, in tune.
+    if (art_ == kHarmonics && touchQ_[str_] > 0.f) beta /= std::round(1.f / touchQ_[str_]);
     beta *= std::pow(2.f, -1.5f * contactIn_);
     beta = std::clamp(beta, 0.015f, 0.3f);
     // Base force on the players' line at the reference impedance; per-string
@@ -628,8 +836,14 @@ class Performer {
   float accel_ = 5.f, accelChange_ = 5.f, attackK_ = 10.f, accent_ = 0.f;
   float landRate_ = 0.01f, liftRate_ = 0.01f, accentDecay_ = 0.999f;
   float force_[4]{}, fFactor_[4]{1, 1, 1, 1}, offTime_[4]{}, fingerOffAt_[4]{};
-  bool stopping_ = false;
-  float stopStart_ = 0.f, damp_ = 0.f;
+  bool stopping_ = false, muting_ = false;
+  float stopStart_ = 0.f, damp_ = 0.f, muteStart_ = 0.f;
+  int art_ = kArco;
+  float templateForce_ = -1.f, tremPhase_ = 0.f, tremRateJit_ = 1.f, tremForceJit_ = 1.f;
+  float pluckStart_[4]{-1.f, -1.f, -1.f, -1.f}, pluckF_[4]{}, pluckRise_[4]{}, pluckRel_[4]{}, pluckDir_[4]{1, 1, 1, 1};
+  float pluckNow_[4]{}, pluckBeta_ = 0.2f;
+  float touchQ_[4]{};
+  static constexpr float kTouchR = 4.f;  // a light touch: R = 4 Z (KB: 1-10 Z) [T]
   bool bowed_[4]{};
   bool stopped_[4]{};
   float fingerFrom_[4]{}, fingerTo_[4]{}, shiftT_[4]{1, 1, 1, 1}, shiftDur_[4]{0.03f, 0.03f, 0.03f, 0.03f};

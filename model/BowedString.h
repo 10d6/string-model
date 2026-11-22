@@ -15,6 +15,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 #include "Delay.h"
@@ -50,9 +51,10 @@ class BowedString {
   void prepare(float fs, float lowestHz) {
     fs_ = fs;
     const int maxLen = static_cast<int>(fs / lowestHz) + 16;
-    for (Delay* d : {&toNut_, &fromNut_, &toBridge_, &fromBridge_}) d->prepare(maxLen);
+    for (Delay* d : lines()) d->prepare(maxLen);
     thermal.prepare(fs);
     smooth_ = 1.f - std::exp(-1.f / (0.001f * fs));  // 1 ms for delay-length steps
+    touchGlide_ = 1.f - std::exp(-1.f / (0.01f * fs));  // ~10 ms touch on/off (KB: 5-20 ms)
     reset();
   }
 
@@ -63,9 +65,10 @@ class BowedString {
   const StringDef& def() const { return def_; }
 
   void reset() {
-    for (Delay* d : {&toNut_, &fromNut_, &toBridge_, &fromBridge_}) d->clear();
+    for (Delay* d : lines()) d->clear();
     nutLP_.y = bridgeLP_.y = 0.f;
     torX_ = torY_ = 0.f;
+    touchR_ = 0.f;
     thermal.reset();
     classic.reset();
     level_ = 0.f;
@@ -92,9 +95,17 @@ class BowedString {
     const float dN = 0.5f * net - dB;
     tdN_ = dN;
     tdB_ = dB;
+    // The touch point (harmonics) splits the finger side at q of the
+    // vibrating length from the finger/nut end: the round trip finger ->
+    // touch -> finger, including the nut filter's delay, is q of the period,
+    // so the touched partial is in tune. Off, the split just sits mid-way.
+    const float tauN = nutLP_.delayAt(hz, fs_);
+    tdT_ = std::clamp(touchQ_ > 0.f ? 0.5f * (noteHz > 0.f ? fs_ / noteHz : period) * touchQ_ - 0.5f * tauN : 0.5f * dN, kMinD,
+                      dN - kMinD);
     if (first_) {
       dN_ = tdN_;
       dB_ = tdB_;
+      dT_ = tdT_;
       first_ = false;
     }
     betaActual_ = dB / (dN + dB);
@@ -108,6 +119,15 @@ class BowedString {
     // that the bow's one-way drag feeds and that barely decays.
     const float gLoop = std::pow(10.f, -3.f / (t60 * hz));
     gNut_ = gBridge_ = std::sqrt(gLoop);
+  }
+
+  // A light finger touch (harmonics, KB §11.2): at q of the vibrating length
+  // from the finger end (1/2, 1/3, 1/4...), with resistance rOverZ * Z0 (a
+  // light touch is about 1-10 Z, KB [T]); 0 = no touch. The resistance glides
+  // in over ~10 ms. Takes effect with the next setGeometry().
+  void setTouch(float q, float rOverZ) {
+    touchQ_ = q;
+    touchTarget_ = rOverZ;
   }
 
   float betaActual() const { return betaActual_; }
@@ -139,13 +159,21 @@ class BowedString {
   // compliance and rosin) instead of a friction junction: a resistance
   // R = damp * 2 Z0 at the bow point (2 Z0 absorbs best). A stopped bow damps
   // the string (KB §11.2); a rigid stick would only pin it.
-  float step(float vb, float fb, FrictionModel model, float noiseAmt, float noise, float damp = 0.f) {
+  // pluck (N): an external force at the junction point with the bow off (a
+  // plucking finger, KB §11.2 "Pizzicato").
+  float step(float vb, float fb, FrictionModel model, float noiseAmt, float noise, float damp = 0.f, float pluck = 0.f) {
     dN_ += (tdN_ - dN_) * smooth_;
     dB_ += (tdB_ - dB_) * smooth_;
+    dT_ += (tdT_ - dT_) * smooth_;
+    dT_ = std::clamp(dT_, kMinD, dN_ - kMinD);
+    const float dBT = dN_ - dT_;
+    touchR_ += (touchTarget_ - touchR_) * touchGlide_;
 
-    const float vinN = fromNut_.read(dN_);
+    const float vinN = fromTouch_.read(dBT);       // from the touch point toward the bow
     const float vinB = fromBridge_.read(dB_);
-    const float atNut = toNut_.read(dN_);
+    const float atTouchB = toTouch_.read(dBT);     // from the bow, arriving at the touch point
+    const float atNut = touchToNut_.read(dT_);
+    const float atTouchN = nutToTouch_.read(dT_);  // from the nut/finger, arriving at the touch point
     const float atBridge = toBridge_.read(dB_);
 
     // Contact velocity = vh + f/(2 Z0) + HP(f)/(2 ZR); the HP's instantaneous
@@ -160,8 +188,10 @@ class BowedString {
       r.f = -R * r.v;
       thermal.coolIdle();
     } else if (fb <= 0.f) {
-      // Bow off: the junction is transparent; the contact just cools.
-      r.v = vh;
+      // Bow off: the junction is transparent (or a plucking finger pushes);
+      // the contact just cools.
+      r.f = pluck;
+      r.v = vh + pluck / (2.f * zeff);
       thermal.coolIdle();
     } else if (model == FrictionModel::Thermal) {
       r = thermal.solve(vh, vb, fb, zeff, noiseAmt, noise);
@@ -176,13 +206,21 @@ class BowedString {
     const float inc = r.f / (2.f * def_.z0);
 
     const float reflNut = -gNut_ * nutLP_.process(atNut) + fingerNoise_;
+    // Touch junction: a resistance R between the two sides,
+    // v = 2Z (a1 + a2) / (2Z + R); each side gets v - its own incoming wave
+    // (R = 0: transparent).
+    const float R = touchR_ * def_.z0;
+    const float vt = 2.f * def_.z0 * (atTouchB + atTouchN) / (2.f * def_.z0 + R);
     toBridge_.write(vinN + inc);
-    toNut_.write(vinB + inc);
-    fromNut_.write(reflNut);
+    toTouch_.write(vinB + inc);
+    touchToNut_.write(vt - atTouchN);
+    nutToTouch_.write(reflNut);
+    fromTouch_.write(vt - atTouchB);
 
     arrive_ = gBridge_ * bridgeLP_.process(atBridge);
     lv_ = std::fabs(atBridge) + std::fabs(atNut);
     fb_ = fb;
+    pluck_ = pluck;
     return arrive_;
   }
 
@@ -194,9 +232,9 @@ class BowedString {
     const float force = def_.z0 * (arrive_ - refl);
     // Sleep when the bow is off and the string has died away.
     level_ = std::max(lv_, level_ * 0.9995f);
-    if (fb_ <= 0.f && level_ < 1e-7f) {
+    if (fb_ <= 0.f && pluck_ == 0.f && level_ < 1e-7f) {
       if (++quiet_ > 2048) {
-        for (Delay* d : {&toNut_, &fromNut_, &toBridge_, &fromBridge_}) d->clear();
+        for (Delay* d : lines()) d->clear();
         nutLP_.y = bridgeLP_.y = 0.f;
         torX_ = torY_ = 0.f;
         asleep_ = true;
@@ -219,12 +257,18 @@ class BowedString {
 
  private:
   static constexpr float kMinD = 2.f;
-  Delay toNut_, fromNut_, toBridge_, fromBridge_;
+  // The finger side is split at the touch point: bow -> touch -> nut and back.
+  Delay toTouch_, touchToNut_, nutToTouch_, fromTouch_, toBridge_, fromBridge_;
+  std::array<Delay*, 6> lines() {
+    return {&toTouch_, &touchToNut_, &nutToTouch_, &fromTouch_, &toBridge_, &fromBridge_};
+  }
   OnePoleLP nutLP_, bridgeLP_;
   StringDef def_{"", 69, 0.2f, 0.7f};
   LossDef loss_{2.f, 1.f, 7000.f, 9000.f, 4000.f};
   float fs_ = 96000.f, smooth_ = 0.01f, torA_ = 0.99f, torX_ = 0.f, torY_ = 0.f;
   float dN_ = 100.f, dB_ = 10.f, tdN_ = 100.f, tdB_ = 10.f, betaActual_ = 0.1f;
+  float dT_ = 50.f, tdT_ = 50.f, touchQ_ = 0.f, touchTarget_ = 0.f, touchR_ = 0.f, pluck_ = 0.f;
+  float touchGlide_ = 0.001f;
   float gNut_ = 0.99f, gBridge_ = 0.99f, level_ = 0.f, arrive_ = 0.f, lv_ = 0.f, fb_ = 0.f, fingerNoise_ = 0.f;
   int quiet_ = 0;
   bool asleep_ = true, first_ = true, slipping_ = false;
