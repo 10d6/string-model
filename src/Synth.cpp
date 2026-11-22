@@ -1,54 +1,240 @@
-// String Model. Start here: everything a synth can do is in synthkit/API.md.
-// This starter is one oscillator into a filter, with the kit's amp envelope,
-// LFO, mod matrix and voice modes.
+// String Model: a physically modelled bowed string instrument (violin first;
+// cello, viola and bass planned behind the Instrument switch).
+//
+// The whole instrument (strings, bow, gesture layer) is one object in the
+// synth, run in processGlobal: the strings will share a bridge (sympathetic
+// ringing, wolf notes), which per-note voices can't do sample by sample.
+// processEvents hands the notes and controllers to the instrument; the kit's
+// voices are silent placeholders that only track the keys. See docs/MODEL.md.
 #include <synthkit/synth.h>
+
+#include <algorithm>
+#include <cmath>
+#include <vector>
+
+#include "../model/Instrument.h"
+#include "ir/ViolinIR.h"
 
 using namespace sk;
 
 struct StringModel;
 
-struct StringModelVoice : Voice {
-  explicit StringModelVoice(StringModel& s) : synth(s) {}
-
-  void prepare(const PrepareInfo& info) override {
-    osc.prepare(static_cast<float>(info.sampleRate));
-    filter.prepare(static_cast<float>(info.sampleRate));
-  }
-  void start(const NoteOn& n, const StartInfo& s) override;
-  void render(VoiceContext& ctx, Buffer& out) override;
-
-  StringModel& synth;
-  dsp::Osc osc;
-  dsp::Svf filter;
+// The kit's voices only follow the keys (for the page's meter and lit keys);
+// they make no sound. The instrument plays every note itself.
+struct SilentVoice : Voice {
+  void start(const NoteOn&, const StartInfo&) override { held = true; }
+  void release() override { held = false; }
+  void render(VoiceContext&, Buffer&) override {}
+  bool active() const override { return held; }
+  bool held = false;
 };
+
+namespace {
+
+// Resample an impulse response with a windowed sinc (prepare time only).
+std::vector<float> resampleIr(const float* x, int n, double from, double to) {
+  if (std::fabs(from - to) < 1.0) return std::vector<float>(x, x + n);
+  const double ratio = to / from;
+  const int m = static_cast<int>(std::ceil(n * ratio));
+  std::vector<float> y(static_cast<std::size_t>(m), 0.f);
+  const double cutoff = std::min(1.0, ratio) * 0.97;  // of the lower Nyquist
+  const int half = 32;
+  for (int i = 0; i < m; ++i) {
+    const double t = i / ratio;  // position in source samples
+    const int c = static_cast<int>(std::floor(t));
+    double acc = 0;
+    for (int k = c - half + 1; k <= c + half; ++k) {
+      if (k < 0 || k >= n) continue;
+      const double d = t - k;
+      const double arg = 3.141592653589793 * d * cutoff;
+      const double sinc = d == 0 ? 1.0 : std::sin(arg) / arg;
+      const double w = 0.5 + 0.5 * std::cos(3.141592653589793 * d / half);
+      acc += x[k] * sinc * w * cutoff;
+    }
+    y[static_cast<std::size_t>(i)] = static_cast<float>(acc);
+  }
+  return y;
+}
+
+}  // namespace
 
 struct StringModel : Synth {
-  Param wave, cutoff, reso;
+  Param autoChange, sustainSpeed;
+  Param instrument, dynamics, velSens, pressure, atPressure, contact, bite, legato, bowChange, noise, friction;
+  Param vibDepth, vibRate, vibDelay, shiftTime, intonation, output, roomMix, roomSpace;
+  Param bendRange, a4;
 
   void defineParams(ParamBuilder& b) override {
-    wave = b.add("osc.wave").name("Wave").choices({"Saw", "Square", "Triangle", "Sine"}).group("Oscillator");
-    cutoff = b.add("filter.cutoff").name("Cutoff").range(20, 20000).log().def(3000).unit("Hz").modulatable().group("Filter")
-              .cc(74);   // a keyboard's brightness knob moves it (API.md §3)
-    reso = b.add("filter.reso").name("Resonance").range(0, 1).def(0.2).modulatable().group("Filter");
+    instrument = b.add("instrument").name("Instrument").choices({"Violin"}).group("Instrument");
+    dynamics = b.add("bow.dynamics").name("Dynamics").range(0, 1).def(0.55).smoothing(0).group("Bow").cc(1).cc(11);
+    velSens = b.add("bow.velSens").name("Velocity → Dynamics").range(0, 1).def(0.7).smoothing(0).group("Bow");
+    pressure = b.add("bow.pressure").name("Pressure").range(-1, 1).def(0).smoothing(0).group("Bow");
+    atPressure = b.add("bow.atPressure").name("Aftertouch → Pressure").range(0, 1).def(0.5).smoothing(0).group("Bow");
+    contact = b.add("bow.contact").name("Contact Point").range(-1, 1).def(0).smoothing(0).group("Bow").cc(74);
+    bite = b.add("bow.bite").name("Attack Bite").range(0, 1).def(0.3).smoothing(0).group("Bow");
+    legato = b.add("bow.legato").name("Legato Slurs").toggle().def(1).group("Bow");
+    bowChange = b.add("bow.change").name("Bow Change").range(0.008, 0.2).def(0.02).unit("s").smoothing(0).group("Bow");
+    autoChange = b.add("bow.auto").name("Auto Bow Change").toggle().def(1).group("Bow");
+    sustainSpeed = b.add("bow.sustain").name("Long-Note Bow Speed").range(0.25, 1).def(0.4).smoothing(0).group("Bow");
+    noise = b.add("bow.noise").name("Rosin Noise").range(0, 0.5).def(0.12).smoothing(0).group("Bow");
+    friction = b.add("bow.friction").name("Friction Model").choices({"Thermal", "Classic"}).group("Bow");
+    vibDepth = b.add("vib.depth").name("Vibrato Depth").range(0, 60).def(16).unit("ct").smoothing(0).group("Left Hand");
+    vibRate = b.add("vib.rate").name("Vibrato Rate").range(3, 9).def(5.5).unit("Hz").smoothing(0).group("Left Hand");
+    vibDelay = b.add("vib.delay").name("Vibrato Delay").range(0, 1).def(0.25).unit("s").smoothing(0).group("Left Hand");
+    shiftTime = b.add("finger.shift").name("Shift Time").range(0, 0.3).def(0.04).unit("s").smoothing(0).group("Left Hand");
+    intonation = b.add("finger.intonation").name("Intonation").range(0, 1).def(0.8).smoothing(0).group("Left Hand");
+    output = b.add("out.mode").name("Output").choices({"Library Mic", "Library Mic (Smooth)", "Pickup"}).def(1).group("Output");
+    roomMix = b.add("room.mix").name("Room").range(0, 100).def(20).unit("%").group("Output");
+    roomSpace = b.add("room.space").name("Space").choices({"Room", "Chamber", "Hall", "Cathedral", "Plate"}).def(2).group("Output");
   }
 
-  std::unique_ptr<Voice> makeVoice() override { return std::make_unique<StringModelVoice>(*this); }
+  std::unique_ptr<Voice> makeVoice() override { return std::make_unique<SilentVoice>(); }
+
+  void prepare(const PrepareInfo& info) override {
+    sr_ = info.sampleRate;
+    bendRange = info.param("bendRange");
+    a4 = info.param("sk.a4");
+    inst_.prepare(sr_);
+    // Body: the CC0 library-mic responses (bridge force -> recording).
+    auto l = resampleIr(sm::ir::kViolinLeft, sm::ir::kViolinLeftLen, sm::ir::kViolinRate, sr_);
+    auto r = resampleIr(sm::ir::kViolinRight, sm::ir::kViolinRightLen, sm::ir::kViolinRate, sr_);
+    auto m = resampleIr(sm::ir::kViolinMonoSmooth, sm::ir::kViolinMonoSmoothLen, sm::ir::kViolinRate, sr_);
+    // The IRs are peak-normalised; scale so their sum keeps a level that is
+    // independent of the sample rate.
+    const float rateGain = static_cast<float>(48000.0 / sr_);
+    for (auto* v : {&l, &r, &m})
+      for (float& x : *v) x *= rateGain;
+    const std::size_t n = std::max(l.size(), r.size());
+    l.resize(n, 0.f);
+    r.resize(n, 0.f);
+    const float* st[2] = {l.data(), r.data()};
+    stereoIr_.setImpulse(st, 2, static_cast<int>(n), sr_, false);
+    const float* mo[1] = {m.data()};
+    smoothIr_.setImpulse(mo, 1, static_cast<int>(m.size()), sr_, false);
+    reverb_.prepare(sr_, 1200);
+    queued_ = 0;
+    blockPos_ = 0;
+    pitchBend_ = 0.f;
+    pressureAt_ = 0.f;
+  }
+
+  void processEvents(EventContext& ctx) override {
+    // Anything left from the last host block (shouldn't happen) applies now.
+    for (int i = 0; i < queued_; ++i) queue_[i].sample = 0;
+    blockPos_ = 0;
+    for (auto& e : ctx.in()) {
+      if (queued_ < kQueue) queue_[queued_++] = e;
+      ctx.out(e);  // the silent voices follow the keys
+    }
+    // Keep the queue sorted by sample (insertion sort, small n).
+    for (int i = 1; i < queued_; ++i) {
+      MidiEvent e = queue_[i];
+      int j = i - 1;
+      while (j >= 0 && queue_[j].sample > e.sample) {
+        queue_[j + 1] = queue_[j];
+        --j;
+      }
+      queue_[j + 1] = e;
+    }
+  }
+
+  void handle(const MidiEvent& e) {
+    auto& p = inst_.performer();
+    if (e.isNoteOn()) {
+      p.noteOn(e.note, e.vel, pc_);
+    } else if (e.isNoteOff()) {
+      p.noteOff(e.note, pc_);
+    } else if (e.type == MidiEvent::Type::PitchBend) {
+      pitchBend_ = e.value;
+    } else if (e.type == MidiEvent::Type::ChannelPressure || e.type == MidiEvent::Type::PolyPressure) {
+      pressureAt_ = e.value;
+    } else if (e.type == MidiEvent::Type::CC && (e.cc == 120 || e.cc == 123)) {
+      p.allNotesOff();
+    }
+  }
+
+  void processGlobal(GlobalContext& ctx, Buffer& io) override {
+    // The instrument's inputs have no kit smoothing (smoothing(0)): they step
+    // at the controller's own sample, the same for any host block size, and
+    // the performer smooths them on its own fixed clock. Bowing is chaotic
+    // enough that block-dependent smoothing would change the notes.
+    pc_.dynamics = ctx.get(dynamics);
+    pc_.velSens = ctx.get(velSens);
+    pc_.pressure = std::clamp(ctx.get(pressure) + ctx.get(atPressure) * pressureAt_, -1.f, 1.f);
+    pc_.contact = ctx.get(contact);
+    pc_.bite = ctx.get(bite);
+    pc_.legato = ctx.on(legato);
+    pc_.bowChange = ctx.get(bowChange);
+    pc_.autoChange = ctx.on(autoChange);
+    pc_.sustainSpeed = ctx.get(sustainSpeed);
+    pc_.vibDepth = ctx.get(vibDepth);
+    pc_.vibRate = ctx.get(vibRate);
+    pc_.vibDelay = ctx.get(vibDelay);
+    pc_.shiftTime = ctx.get(shiftTime);
+    pc_.a4 = ctx.get(a4);
+    ic_.friction = ctx.choice(friction) == 1 ? sm::FrictionModel::Classic : sm::FrictionModel::Thermal;
+    ic_.noise = ctx.get(noise);
+    ic_.intonation = ctx.get(intonation);
+    const int mode = ctx.choice(output);
+    const float bendSt = ctx.get(bendRange);
+    const float gain = inst_.def().outputGain;
+
+    int qi = 0;
+    for (int i = 0; i < io.frames; ++i) {
+      const int pos = blockPos_ + i;
+      while (qi < queued_ && queue_[qi].sample <= pos) handle(queue_[qi++]);
+      bendSmooth_ += (pitchBend_ - bendSmooth_) * 0.004f;
+      pc_.bend = bendSmooth_ * bendSt;
+      const float force = inst_.process(pc_, ic_) * gain;
+      float l = 0.f, r = 0.f;
+      if (mode == 0) {
+        stereoIr_.processMono(force, l, r);
+      } else if (mode == 1) {
+        smoothIr_.processMono(force, l, r);
+      } else {
+        l = r = 0.5f * force;
+      }
+      io.left[i] += l;
+      io.right[i] += r;
+    }
+    // Drop the events handled in this sub-block.
+    if (qi > 0) {
+      for (int k = qi; k < queued_; ++k) queue_[k - qi] = queue_[k];
+      queued_ -= qi;
+    }
+    blockPos_ += io.frames;
+
+    // Room.
+    const Ramp mix = ctx.ramp(roomMix);
+    const int n = std::min(io.frames, 32);
+    bool on = false;
+    for (int i = 0; i < n; ++i) {
+      dryL_[i] = io.left[i];
+      dryR_[i] = io.right[i];
+      wetL_[i] = wetR_[i] = 0.f;
+      on = on || mix.at(i) > 0;
+    }
+    dsp::Reverb::Settings st{ctx.choice(roomSpace), 1.f, 1.f, 50.f, 8.f, 0.f, 90.f, 11000.f, on};
+    if (reverb_.process(st, dryL_, dryR_, wetL_, wetR_, n))
+      for (int i = 0; i < n; ++i) {
+        io.left[i] += mix.at(i) * 0.01f * kWet * wetL_[i];
+        io.right[i] += mix.at(i) * 0.01f * kWet * wetR_[i];
+      }
+  }
+
+ private:
+  static constexpr int kQueue = 512;
+  static constexpr float kWet = 0.12f;
+  double sr_ = 48000;
+  sm::Instrument inst_;
+  sm::PerformerControls pc_;
+  sm::InstrumentControls ic_;
+  wa::Convolver stereoIr_, smoothIr_;
+  dsp::Reverb reverb_;
+  MidiEvent queue_[kQueue];
+  int queued_ = 0, blockPos_ = 0;
+  float pitchBend_ = 0.f, bendSmooth_ = 0.f, pressureAt_ = 0.f;
+  float dryL_[32]{}, dryR_[32]{}, wetL_[32]{}, wetR_[32]{};
 };
-
-void StringModelVoice::start(const NoteOn&, const StartInfo& s) {
-  if (!s.sounding) {  // a fresh voice: start clean (a sounding one would click)
-    osc.reset(0);
-    filter.reset();
-  }
-}
-
-void StringModelVoice::render(VoiceContext& ctx, Buffer& out) {
-  static constexpr dsp::Osc::Wave waves[] = {dsp::Osc::Wave::Saw, dsp::Osc::Wave::Square, dsp::Osc::Wave::Triangle,
-                                             dsp::Osc::Wave::Sine};
-  osc.setWave(waves[ctx.choice(synth.wave)]);
-  osc.setFreq(static_cast<float>(ctx.pitchHz()));
-  filter.set(ctx.get(synth.cutoff), ctx.get(synth.reso));
-  for (int i = 0; i < out.frames; ++i) out.add(i, 0.3f * filter.process(osc.next()));
-}
 
 SK_SYNTH(StringModel)

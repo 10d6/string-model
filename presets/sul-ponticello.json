@@ -1,0 +1,12 @@
+{
+  "synthkit": 1,
+  "synth": "string-model",
+  "patchVersion": 1,
+  "name": "Sul Ponticello",
+  "params": {
+    "bow.contact": 0.85,
+    "bow.pressure": -0.2,
+    "vib.depth": 6,
+    "bow.noise": 0.2
+  }
+}

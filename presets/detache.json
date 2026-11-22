@@ -1,0 +1,12 @@
+{
+  "synthkit": 1,
+  "synth": "string-model",
+  "patchVersion": 1,
+  "name": "D\u00e9tach\u00e9",
+  "params": {
+    "bow.legato": 0,
+    "bow.change": 0.015,
+    "vib.depth": 10,
+    "bow.bite": 0.45
+  }
+}

@@ -52,6 +52,12 @@ cmake -S . -B build -G Ninja && cmake --build build
 ./build/stringmodel_render --params
 python3 synthkit/tools/stress.py build/stringmodel_render 300   # random playing: every note must stop (API.md §10)
 
+# the model, offline (docs/MODEL.md)
+./build/string_lab sweep 1 62 0.13                 # Schelleng map, open D
+./build/string_lab tone 2 71 0.3 1.2 0.05 x.wav    # one stroke: pitch, slips/period, temperature
+./build/instrument_lab hold 69 12 0.7              # held note: bow changes, dips, attack time
+python3 tools/analyze.py build/renders/legato-scale.wav   # spectrogram, level, pitch per note
+
 # browser page (API.md §11)
 cmake -S . -B build-web -G Ninja -DCMAKE_TOOLCHAIN_FILE=synthkit/cmake/wasm32-wasi.cmake && cmake --build build-web
 node synthkit/web/test/browser-test.cjs build-web/web/stringmodel.html build-web/test tests/chord.json
@@ -60,6 +66,20 @@ node synthkit/web/test/bench-web.cjs build-web/web/stringmodel.html tests/chord.
 # plugins (API.md §12)
 cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$PWD/build-web/web && cmake --build build-plugin
 ```
+
+## This synth
+
+- Read `docs/MODEL.md` before changing the model and `docs/PLAN.md` for the
+  phases. Physics claims come from 10d6/instrument-research's KB (cite §).
+- `model/` stays free of synthkit (plain C++20) so the labs can test it.
+- The instrument runs in `processGlobal`; the kit's voices are silent key
+  trackers. Don't move sound into voices: the strings will share a bridge.
+- Parameters the instrument reads use `smoothing(0)` and are smoothed in the
+  performer on its own clock: bowing is chaotic, so kit smoothing (per
+  control block) makes renders depend on the host block size.
+- After changing the string or friction, rerun `string_lab sweep` and check
+  the Schelleng map still holds Demoucron's pp/mf/ff points, and update
+  MODEL.md.
 
 ## CI
 

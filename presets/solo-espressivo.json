@@ -1,0 +1,13 @@
+{
+  "synthkit": 1,
+  "synth": "string-model",
+  "patchVersion": 1,
+  "name": "Solo Espressivo",
+  "params": {
+    "vib.depth": 28,
+    "vib.rate": 6.2,
+    "vib.delay": 0.15,
+    "bow.velSens": 0.6,
+    "room.mix": 28
+  }
+}
