@@ -130,10 +130,16 @@
           "param": "vib.delay"
         },
         {
+          "param": "vib.shape"
+        },
+        {
           "param": "finger.shift"
         },
         {
           "param": "finger.intonation"
+        },
+        {
+          "param": "finger.style"
         },
         {
           "param": "finger.noise"

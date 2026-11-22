@@ -422,6 +422,56 @@ the wanted period, and the finger moves to correct it. The correction is
 the motion is steadily periodic (±4%). Open strings stay flat, as on a real
 violin.
 
+### Player habits (instrument-research `player_technique_and_responsiveness.md`)
+
+What players measurably do, so a keyboard sounds like a musician without
+extra controls. Each one has an amount, on at moderate settings by default.
+
+**`Intonation Style`** (0 equal temperament … 1 expressive, default 0.7;
+player doc §3.2). It sets the target that the intonation loop above aims for:
+- **Open strings in pure fifths** around A: G −3.9, D −2.0, E +2.0 cents.
+- **Stopped notes by fifths from the open strings** (Pythagorean). A fifth is
+  1.955 cents wide, so each note's place on the chain of fifths sets its
+  tuning. This raises leading tones in the usual keys: C# +7.8 in D, G# +9.8
+  in A. Notes matching an open string match it exactly, so it rings in
+  sympathy (player doc: the player's tuning cue).
+- **Which spelling.** A note's place on the chain depends on the key. The key
+  comes from a decaying count of recent pitch classes (~7 notes) against the
+  Krumhansl–Kessler major profile. Each note is spelled within 5 fifths flat
+  to 6 sharp of the key's centre, so minor-key leading tones are sharps.
+- **Double stops and chords pure** against one reference note: an open
+  string if the chord has one, else the lowest note at its melodic tuning.
+  Major thirds come out 13.7 cents narrow, minor sixths 13.7 wide, fifths
+  2 wide.
+- **Measured** with Intonation Style 1, vibrato off, against Intonation
+  Style 0:
+  - D-major scale: E +3, F# +6, G −4, B +4, C# +8 cents.
+  - D–F# third: −13; E–C and F#–D sixths: +14.
+  - The open strings sound ~6–8 cents flat under the bow at mf in both
+    modes: the bow's flattening, not this control.
+- **Measured behaviour, not lore:** the player doc's rule that a crescendo
+  shouldn't speed up the bow is teaching advice. Demoucron measured bow speed
+  rising 10 → 50 cm/s across crescendos (KB §11.5), as the assistant already
+  does, so it was not adopted.
+
+**`Vibrato Shaping`** (0 the same on every note … 1 by context, default 0.7;
+player doc §3.1, KB ref 65 / P15):
+- **Register:** wider higher up, ×(1 + 0.25 per octave above A4), from 0.8×
+  to 1.35×.
+- **Fast passages:** narrower. If the key came within ~0.12 s of the last
+  one, the vibrato is ~30%. It opens up over 0.5 s if the note is held, so a
+  long note ending a run gets its full vibrato.
+- **Long strokes:** it keeps widening, by 25% over the first 1.5 s.
+- **Measured** (5–95% pitch range, Shaping 0 vs 0.7):
+  - B4 at 0.5–1 s: 15 vs 13 cents; later: 15 vs 15.
+  - B6: 15 vs 18.
+  - B4 straight after a run, at 0.2–0.5 s: 7 vs 5; at 0.7–1.3 s: 17 vs 15.
+- Rate on weak beats and phrase position need the meter: PR C.
+
+**Double stops** put more weight on the lower string: ×1.12 lower, ×0.9
+upper (player doc §2.6) [T]. In `instrument_lab chord`, both strings of
+D–A, G–D, A–E and E–C slip once per period.
+
 ## Articulations (KB §11)
 
 `Articulation` (Arco / Martelé / Spiccato / Tremolo / Pizzicato / Harmonics),
