@@ -56,6 +56,7 @@ class ThermalFriction {
       invSqrtTau_[k] = 1.f / std::sqrt(tau);
       tau *= kRatio;
     }
+    idleDecay_ = std::exp(-dt_ / 0.05f);  // ~50 ms cooling with the bow off [T]
     reset();
   }
   void reset() {
@@ -64,6 +65,18 @@ class ThermalFriction {
   }
 
   float temperature() const { return temp_; }
+
+  // Bow off the string: the contact cools toward ambient. A cheap stand-in for
+  // update() with no power (the full network isn't needed until the bow lands).
+  void coolIdle() {
+    if (temp_ == 0.f) return;
+    temp_ *= idleDecay_;
+    for (float& u : u_) u *= idleDecay_;
+    if (temp_ < 1e-3f) {
+      temp_ = 0.f;
+      for (float& u : u_) u = 0.f;
+    }
+  }
 
   float mu() const {
     // Smooth piecewise-linear: full drop by tDrop, rounded at both ends.
@@ -127,7 +140,7 @@ class ThermalFriction {
   static constexpr float kRatio = 5.f;
   static constexpr float kLnRatio = 1.6094379f;  // ln 5
   float tau_[kBranches]{}, relax_[kBranches]{}, invSqrtTau_[kBranches]{}, u_[kBranches]{};
-  float temp_ = 0.f, dt_ = 1.f / 96000.f;
+  float temp_ = 0.f, dt_ = 1.f / 96000.f, idleDecay_ = 0.9998f;
 };
 
 // Hyperbolic friction curve mu = muD + (muS - muD) v0 / (v0 + |u|) with the

@@ -3,8 +3,10 @@
 //   nut/finger  <-- dN -->  [bow junction]  <-- dB -->  bridge
 //
 // Four one-way fractional delay lines carry velocity waves. Losses are lumped
-// into the two terminations: -g * one-pole low-pass at the nut (or finger) and
-// at the bridge. Torsion is folded into an effective impedance at the bow
+// into the two terminations: -g * one-pole low-pass at the nut (or finger),
+// and g * one-pole low-pass on the wave arriving at the bridge, which then
+// meets the moving bridge (Bridge.h): reflected r = u - a.
+// Torsion is folded into an effective impedance at the bow
 // (1/Zeff = 1/Z0 + 1/ZR, KB §3.6). The torsional share of the bow's push is a
 // high-passed resistance: torsion has fixed ends too, so it can't absorb a
 // steady push (a pure resistance would let the bow spin the string forever).
@@ -92,11 +94,14 @@ class BowedString {
     betaActual_ = dB / (dN + dB);
     // Torsion high-pass y = a (y1 + x - x1), corner at 2 x the pitch [T].
     torA_ = std::exp(-2.f * 3.14159265f * 2.f * hz / fs_);
-    // Loop gain at the fundamental for the wanted T60.
+    // Loop gain for the wanted T60 of the low partials. The low-passes take a
+    // little more from higher fundamentals, so high notes decay faster (as
+    // with a constant Q). The gain is NOT raised to make up for that: the
+    // loop's gain at DC (g) must not exceed the fundamental's, or the
+    // waveguide holds a DC wave (a uniform slope a fixed string can't have)
+    // that the bow's one-way drag feeds and that barely decays.
     const float gLoop = std::pow(10.f, -3.f / (t60 * hz));
-    const float lpGain = nutLP_.gainAt(hz, fs_) * bridgeLP_.gainAt(hz, fs_);
-    const float g = std::min(gLoop / std::max(lpGain, 1e-3f), 0.99995f);
-    gNut_ = gBridge_ = std::sqrt(g);
+    gNut_ = gBridge_ = std::sqrt(gLoop);
   }
 
   float betaActual() const { return betaActual_; }
@@ -104,14 +109,27 @@ class BowedString {
   float temperature() const { return thermal.temperature(); }
   bool slipping() const { return slipping_; }
 
-  // One sample. vb: bow velocity (m/s), fb: bow force (N, 0 = bow off).
-  // Returns the transverse force on the bridge (N).
+  // One sample on a rigid bridge (the labs): step() then finish(0).
   float process(float vb, float fb, FrictionModel model, float noiseAmt, float noise) {
     if (asleep_) {
       if (fb <= 0.f) return 0.f;
-      asleep_ = false;
-      quiet_ = 0;
+      wake();
     }
+    step(vb, fb, model, noiseAmt, noise);
+    return finish(0.f);
+  }
+
+  void wake() {
+    if (!asleep_) return;
+    asleep_ = false;
+    quiet_ = 0;
+  }
+
+  // First half of a sample: the bow junction and the nut end. Returns the
+  // velocity wave arriving at the bridge (after the string's own losses);
+  // the caller solves the bridge and calls finish() with its velocity.
+  // vb: bow velocity (m/s), fb: bow force (N, 0 = bow off).
+  float step(float vb, float fb, FrictionModel model, float noiseAmt, float noise) {
     dN_ += (tdN_ - dN_) * smooth_;
     dB_ += (tdB_ - dB_) * smooth_;
 
@@ -125,7 +143,11 @@ class BowedString {
     const float vh = vinN + vinB + torA_ * (torY_ - torX_) / (2.f * def_.zr);
     const float zeff = 1.f / (1.f / def_.z0 + torA_ / def_.zr);
     JunctionResult r;
-    if (model == FrictionModel::Thermal) {
+    if (fb <= 0.f) {
+      // Bow off: the junction is transparent; the contact just cools.
+      r.v = vh;
+      thermal.coolIdle();
+    } else if (model == FrictionModel::Thermal) {
       r = thermal.solve(vh, vb, fb, zeff, noiseAmt, noise);
       thermal.update(r, vb, fb);
     } else {
@@ -138,22 +160,29 @@ class BowedString {
     const float inc = r.f / (2.f * def_.z0);
 
     const float reflNut = -gNut_ * nutLP_.process(atNut);
-    const float reflBridge = -gBridge_ * bridgeLP_.process(atBridge);
-
     toBridge_.write(vinN + inc);
     toNut_.write(vinB + inc);
     fromNut_.write(reflNut);
-    fromBridge_.write(reflBridge);
 
-    const float force = def_.z0 * (atBridge - reflBridge);
+    arrive_ = gBridge_ * bridgeLP_.process(atBridge);
+    lv_ = std::fabs(atBridge) + std::fabs(atNut);
+    fb_ = fb;
+    return arrive_;
+  }
 
+  // Second half: the bridge moves at u (m/s). Reflects r = u - a and returns
+  // the force on the bridge, Z (a - r) = Z (2a - u).
+  float finish(float u) {
+    const float refl = u - arrive_;
+    fromBridge_.write(refl);
+    const float force = def_.z0 * (arrive_ - refl);
     // Sleep when the bow is off and the string has died away.
-    const float lv = std::fabs(atBridge) + std::fabs(atNut);
-    level_ = std::max(lv, level_ * 0.9995f);
-    if (fb <= 0.f && level_ < 1e-7f) {
+    level_ = std::max(lv_, level_ * 0.9995f);
+    if (fb_ <= 0.f && level_ < 1e-7f) {
       if (++quiet_ > 2048) {
         for (Delay* d : {&toNut_, &fromNut_, &toBridge_, &fromBridge_}) d->clear();
         nutLP_.y = bridgeLP_.y = 0.f;
+        torX_ = torY_ = 0.f;
         asleep_ = true;
       }
     } else {
@@ -161,6 +190,10 @@ class BowedString {
     }
     return force;
   }
+
+  float z0() const { return def_.z0; }
+  // Recent peak wave amplitude at the ends (m/s), 0 when asleep.
+  float level() const { return asleep_ ? 0.f : level_; }
 
   ThermalFriction thermal;
   ClassicFriction classic;
@@ -173,7 +206,7 @@ class BowedString {
   LossDef loss_{2.f, 1.f, 7000.f, 9000.f, 4000.f};
   float fs_ = 96000.f, smooth_ = 0.01f, torA_ = 0.99f, torX_ = 0.f, torY_ = 0.f;
   float dN_ = 100.f, dB_ = 10.f, tdN_ = 100.f, tdB_ = 10.f, betaActual_ = 0.1f;
-  float gNut_ = 0.99f, gBridge_ = 0.99f, level_ = 0.f;
+  float gNut_ = 0.99f, gBridge_ = 0.99f, level_ = 0.f, arrive_ = 0.f, lv_ = 0.f, fb_ = 0.f;
   int quiet_ = 0;
   bool asleep_ = true, first_ = true, slipping_ = false;
 };
