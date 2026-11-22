@@ -41,6 +41,14 @@ struct InstrumentDef {
   float scaleLength;      // m, nut to bridge (for the finger's speed along the string)
   float winding[4];       // 0..1 per string: how much a sliding finger rubs a winding (0 = plain)
   float windingPitch;     // m between turns of the winding
+  // Pizzicato's second (vertical) polarisation, KB §4/§11.2: weakly coupled
+  // to the bridge, so it rings on after the horizontal one has given its
+  // energy to the body (the two-stage decay). Fitted to VSCO-2-CE solo
+  // violin pizzicato (docs/MODEL.md) [T].
+  float vertT60 = 2.5f;          // x the string's own T60
+  float vertGain = 1.f;          // its bridge force into the output, x the horizontal's
+  float vertDetuneCents = 1.5f;  // slightly different stiffness/termination: slow beating
+  float pluckAngleMin = 0.25f, pluckAngleMax = 0.8f;  // rad from the bowing plane
 };
 
 inline const InstrumentDef& violin() {

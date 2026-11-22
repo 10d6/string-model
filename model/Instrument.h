@@ -106,6 +106,11 @@ class Instrument {
     for (int s = 0; s < 4; ++s) {
       str_[s].prepare(fs_, 40.f);
       str_[s].setDef(def_->strings[s], def_->loss);
+      LossDef lv = def_->loss;
+      lv.openT60 *= def_->vertT60;
+      lv.stoppedT60 *= def_->vertT60;
+      vert_[s].prepare(fs_, 40.f);
+      vert_[s].setDef(def_->strings[s], lv);
     }
     perf_.prepare(host_, *def_);
     bridge_.prepare(fs_, def_->modes, def_->modeCount, def_->hill, def_->bodySeed, def_->denseFrom, def_->denseTo,
@@ -116,6 +121,8 @@ class Instrument {
 
   void reset() {
     for (auto& s : str_) s.reset();
+    for (auto& s : vert_) s.reset();
+    for (float& p : pluckV_) p = 0.f;
     perf_.reset();
     dec_.reset();
     for (int s = 0; s < 4; ++s) {
@@ -139,7 +146,10 @@ class Instrument {
     if (tick_ == 0) controlTick(pc, ic);
     tick_ = (tick_ + 1) % kControl;
     const float vb = perf_.tickSample(pc);
-    for (int s = 0; s < 4; ++s) pluck_[s] = perf_.pluckForce(s);
+    for (int s = 0; s < 4; ++s) {
+      pluck_[s] = perf_.pluckForce(s);
+      pluckV_[s] = perf_.pluckForceVertical(s);
+    }
     float x[4];
     for (int k = 0; k < os_; ++k) x[k] = internalSample(vb, ic);
     const float y = dec_.process(x);
@@ -194,7 +204,7 @@ class Instrument {
       }
       prevSlip_[s] = sl;
     }
-    if (!any && (!coupled || bridge_.activity() < 1e-12f)) {
+    if (!any && (!coupled || bridge_.activity() < 1e-12f) && vertAsleep()) {
       uPrev_ = 0.f;
       return 0.f;
     }
@@ -208,7 +218,17 @@ class Instrument {
     const float force = S - zs * u;
     if (coupled) bridge_.advance(force);
     uPrev_ = u;
-    return force + kWindDirect * direct;
+    // Vertical polarisations (plucks only): on a rigid bridge, into the output.
+    float vert = 0.f;
+    for (int s = 0; s < 4; ++s) {
+      BowedString& v = vert_[s];
+      if (v.asleep() && pluckV_[s] == 0.f) continue;
+      v.wake();
+      // A damping hand or resting bow stops both polarisations.
+      v.step(0.f, 0.f, ic.friction, 0.f, 0.f, target_[s].damp, pluckV_[s]);
+      vert += v.finish(0.f);
+    }
+    return force + kWindDirect * direct + def_->vertGain * vert;
   }
 
   void controlTick(const PerformerControls& pc, const InstrumentControls& ic) {
@@ -227,6 +247,8 @@ class Instrument {
       const float openHz = 440.f * std::pow(2.f, (static_cast<float>(def_->strings[s].openNote) - 69.f) / 12.f);
       str_[s].setBowWidth(ic.bowWidth > 0.f ? static_cast<int>(std::lround(ic.bowWidth * fs_ / (2.f * def_->scaleLength * openHz))) : 0);
       str_[s].setGeometry(target_[s].hz * k, target_[s].noteHz * k, beta, target_[s].stopped, target_[s].slide);
+      const float kv = k * std::pow(2.f, def_->vertDetuneCents / 1200.f);
+      vert_[s].setGeometry(target_[s].hz * kv, target_[s].noteHz * kv, beta, target_[s].stopped, target_[s].slide);
       // Winding noise: the finger rubbing turns of winding at speed v gives a
       // band of noise around v / pitch (KB §11.2 "Shifts") [T level].
       const float v = target_[s].slide * def_->winding[s];
@@ -253,7 +275,13 @@ class Instrument {
   }
 
   const InstrumentDef* def_ = nullptr;
-  BowedString str_[4];
+  BowedString str_[4], vert_[4];  // vert_: the vertical polarisation (pizzicato)
+  float pluckV_[4]{};
+  bool vertAsleep() const {
+    for (int s = 0; s < 4; ++s)
+      if (!vert_[s].asleep() || pluckV_[s] != 0.f) return false;
+    return true;
+  }
   Performer perf_;
   Decimator dec_;
   Bridge bridge_;

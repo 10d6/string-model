@@ -314,7 +314,9 @@ class Performer {
   }
 
   // Per sample: the plucking finger's force on string s (N).
-  float pluckForce(int s) const { return pluckNow_[s] * pluckDir_[s]; }
+  // The pluck splits between the polarisations by its angle.
+  float pluckForce(int s) const { return pluckNow_[s] * pluckDir_[s] * pluckCos_[s]; }
+  float pluckForceVertical(int s) const { return pluckNow_[s] * pluckSin_[s]; }
 
   // At control rate: pitch, vibrato and force targets per string.
   void strings(StringTarget out[4], const PerformerControls& c) const {
@@ -738,6 +740,9 @@ class Performer {
     const float period = 1.f / mtof(fingerTo_[s], 440.f);
     pluckRel_[s] = std::min(0.001f + 0.00075f * (1.f + bipolar()), (0.25f + 0.05f * (1.f + bipolar())) * period);
     pluckDir_[s] = 1.f;
+    const float ang = def_->pluckAngleMin + (def_->pluckAngleMax - def_->pluckAngleMin) * 0.5f * (1.f + bipolar());
+    pluckCos_[s] = std::cos(ang);
+    pluckSin_[s] = std::sin(ang);
     pluckBeta_ = 0.2f + 0.05f * bipolar();
   }
 
@@ -874,6 +879,7 @@ class Performer {
   int art_ = kArco;
   float templateForce_ = -1.f, tremPhase_ = 0.f, tremRateJit_ = 1.f, tremForceJit_ = 1.f;
   float pluckStart_[4]{-1.f, -1.f, -1.f, -1.f}, pluckF_[4]{}, pluckRise_[4]{}, pluckRel_[4]{}, pluckDir_[4]{1, 1, 1, 1};
+  float pluckCos_[4]{1, 1, 1, 1}, pluckSin_[4]{};
   float pluckNow_[4]{}, pluckBeta_ = 0.2f;
   float touchQ_[4]{};
   static constexpr float kTouchR = 4.f;  // a light touch: R = 4 Z (KB: 1-10 Z) [T]
