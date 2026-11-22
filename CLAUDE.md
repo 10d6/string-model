@@ -61,6 +61,18 @@ python3 synthkit/tools/stress.py build/stringmodel_render 300 --tail 5   # rando
 python3 tools/calibrate_force.py                   # Helmholtz window vs the playability assistant
 ./build/radiation_lab                              # radiation vs its target, stereo difference per band
 python3 tools/analyze.py build/renders/legato-scale.wav   # spectrogram, level, pitch per note
+./build/string_lab guettler 1 62 0.1 enhanced     # attacks from rest: perfect / within 50 ms
+./build/radiation_lab character                    # body controls per third-octave band
+printf '2.5 69 1 .6\n2.95 69 0 .5\n3 74 1 .6\n4 74 0 .5\n' | ./build/bowing_lab 0.5 92 3 4   # bow direction, rebows
+
+# evaluation scripts (docs/EVALUATION.md has the reference numbers)
+python3 tools/open_strings.py                      # open strings in tune under the bow
+python3 tools/harmonics_tuning.py                  # natural/artificial harmonics
+python3 tools/intonation_check.py                  # Intonation Style: scale, double stops
+python3 tools/vibrato_extent.py                    # Vibrato Shaping
+python3 tools/pizz_decay.py "<VSCO>/Strings/Solo Violin/Pizz"   # two-stage decay vs recordings
+python3 tools/note_pitch.py tests/spiccato.json    # pitch per note of any scenario
+LAB_HF=1 tools/bow_change_gap.sh 69                # automatic bow change gap
 
 # browser page (API.md §11)
 cmake -S . -B build-web -G Ninja -DCMAKE_TOOLCHAIN_FILE=synthkit/cmake/wasm32-wasi.cmake -DCMAKE_BUILD_TYPE=Release && cmake --build build-web   # Release: without it the page is unoptimised (-O0)
@@ -90,11 +102,50 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
   the Schelleng map still holds Demoucron's pp/mf/ff points, and update
   MODEL.md. After changing the string, bridge or assistant, rerun
   `tools/calibrate_force.py`: every row should straddle 0 with margin.
+- After changing friction, string, bridge or the open-string allowance, also
+  run `tools/open_strings.py` and `tools/harmonics_tuning.py`; after changing
+  the performer's bowing rules, `bowing_lab` (no mid-note rebows); after
+  pizzicato or string changes, `tools/pizz_decay.py`. Compare with the
+  reference numbers in `docs/EVALUATION.md` and update them.
+- The performer's player habits (Intonation Style, Vibrato Shaping, Metric
+  Emphasis, Portamento) follow instrument-research's
+  `player_technique_and_responsiveness.md` (cite §). Model what players
+  measurably do, not what they say (docs/EVALUATION.md "Lessons").
+- Bowing is chaotic: judge changes over several notes/strings/dynamics,
+  A/B against a base build in a worktree, and keep margins in test
+  expectations. docs/EVALUATION.md has the techniques.
+
+## Working with the owner
+
+- **Branch from `origin/main` and open each PR against `main`.** Never stack
+  a PR on another unmerged branch: GitHub retargets a stacked PR only if the
+  branch below is deleted on merge, so #9 once merged into the Phase 6
+  branch instead of `main` and needed #10. If work depends on an open PR,
+  branch from it but target `main` (the PR then carries both commits).
+- A plain `git fetch origin` may not update `origin/main` in this clone:
+  use `git fetch origin main:refs/remotes/origin/main`.
+- GitHub through `gh api` (REST; GraphQL is blocked):
+  - open a PR: `gh api repos/10d6/string-model/pulls -f title=… -f head=BRANCH -f base=main -F body=@file`
+  - edit its text: `gh api -X PATCH repos/10d6/string-model/pulls/N -F body=@file`
+  - CI status: `gh api "repos/10d6/string-model/actions/runs?branch=BRANCH&per_page=1"`
+  - a job's log: `gh api repos/10d6/string-model/actions/jobs/ID/logs`
+  - re-run failed jobs: `gh api -X POST repos/10d6/string-model/actions/runs/ID/rerun-failed-jobs`
+  - milestone plugin build: `gh api -X POST repos/10d6/string-model/actions/workflows/ci.yml/dispatches -f ref=BRANCH -F 'inputs[plugins]=true'` (zips in the run's Artifacts)
+- The owner merges PRs, plays the Pages preview
+  (`https://10d6.github.io/string-model/pr/N/`), and listens to before/after
+  clips sent with each change. Describe changes in plain terms: what to
+  listen for, what was measured.
+- The owner's standing choices: plugin builds off for PRs; player habits on
+  at moderate defaults; mic placement is Phase 7 and the cello Phase 8
+  (docs/PLAN.md "Next").
+- New parameters go at the end of `defineParams` (API.md doesn't say whether
+  hosts key parameters by position); `ui/layout.json` places them on screen.
 
 ## CI
 
 Every PR: native checks, the browser page (Chromium test + browser-vs-native
-comparison) and a Pages preview linked on the PR. Plugin builds for Windows,
+comparison on `tests/chord.json`; chaotic passages diverge between the two
+builds, see `ci.yml`) and a Pages preview linked on the PR. Plugin builds for Windows,
 macOS and Linux (plugin check, pluginval, auval; a zip per OS) are off for
 PRs at the owner's request: they run for `v*` tags (which publish a release)
 and when CI is run by hand (Actions → CI → Run workflow, "plugins" ticked). The steps live in `synthkit/tools/ci/`.

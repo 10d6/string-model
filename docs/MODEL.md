@@ -61,11 +61,21 @@ terminations as −g × a one-pole low-pass.
     held by a static deflection, which in a waveguide is a DC wave in each
     segment.
   - Making the ends lossless only at DC made a ~5 Hz resonance.
-- **Open strings are tuned a little sharp at rest [T].** Violinists tune
-  while bowing, and bowing flattens (measured at mf: G −11, D −6, A −15,
-  E −20 cents). The open strings sit +7 / +4 / +9 / +12 cents at rest.
-  Bowed, they're within ~9 cents. That's 60% compensation; the full amount
-  would leave them too sharp to ring with the (corrected) stopped notes.
+- **Open strings carry a bow allowance while bowed [T].** Bowing flattens a
+  string, and no finger can correct an open one. Violinists tune while
+  bowing, so the performer raises an open string the bow is on by G +15.5,
+  D +11.5, A +14, E +16 cents (`openTuneCents`), easing in and out over
+  ~30 ms as the bow lands and leaves. Harmonics, bowed much lighter, get
+  0.55× of it. Unbowed open strings sit at true pitch, so they ring in
+  sympathy with stopped notes. `tools/open_strings.py`: within ±1 cent at
+  mf, ±3.4 from pp to ff.
+  - Until the open-strings PR the allowance (+7/+4/+9/+12) applied to every
+    open string. It was held to 60% so unbowed strings could still ring,
+    which left bowed open strings 4–10 cents flat.
+  - In tune, an open string's partials that coincide with another open
+    string's (D's 3rd = A's 2nd) come out 2–4 dB lower: they interact
+    through the bridge. Open notes are 0.7–1.9 dB quieter than before
+    (none of it with body coupling off).
 - **Torsion (KB §3.6):** the bow sees 1/Z_eff = 1/Z₀ + 1/Z_R, with Z_R ≈
   3.5 Z₀ [T]. The torsional part is **high-passed** at 2× the pitch. A pure
   resistance (the KB's "lumped Z_eff") lets a steady bow spin the string
@@ -419,8 +429,8 @@ after `Vibrato Delay`, with ±5% rate and ±15% depth drift per cycle.
 at mf here. On stopped notes, the time between slip onsets is compared with
 the wanted period, and the finger moves to correct it. The correction is
 `Intonation` × 1.6% of the error per period, within ±60 cents, and only while
-the motion is steadily periodic (±4%). Open strings stay flat, as on a real
-violin.
+the motion is steadily periodic (±4%). Open strings can't be corrected by
+a finger: they carry a fixed bow allowance instead (above).
 
 ### Player habits (instrument-research `player_technique_and_responsiveness.md`)
 
@@ -447,8 +457,8 @@ player doc §3.2). It sets the target that the intonation loop above aims for:
   Style 0:
   - D-major scale: E +3, F# +6, G −4, B +4, C# +8 cents.
   - D–F# third: −13; E–C and F#–D sixths: +14.
-  - The open strings sound ~6–8 cents flat under the bow at mf in both
-    modes: the bow's flattening, not this control.
+  - Open strings: at Intonation Style 1, the open D lands at −2 cents (its
+    pure-fifth target) since the open-string allowance fix (before: −10).
 - **Measured behaviour, not lore:** the player doc's rule that a crescendo
   shouldn't speed up the bow is teaching advice. Demoucron measured bow speed
   rising 10 → 50 cm/s across crescendos (KB §11.5), as the assistant already
@@ -515,6 +525,9 @@ between keys.
   - mid-phrase notes alternate;
   - no bow changes mid-note, except in a 3.4 s slurred passage, which
     rebows with Metric Emphasis at 0 too.
+  - limit: separate quarters through a 3/4 bar can land the next downbeat on
+    an up-bow (the bow is just past the 40% rule). Players hook two up-bows
+    or re-take there (`bowing_lab`; docs/PLAN.md "Ideas").
 - **Leading tones** rise up to +3 cents more on weak notes (player doc §3.2),
   scaled by `Intonation Style`.
 - **Vibrato rate** goes ×(1 + 0.12 · Shaping · (0.5 − strength)): faster on
@@ -750,7 +763,18 @@ python3 tools/combine_target.py <library csv> <measured csv> <out csv>          
   env: LAB_HF=1 (measure above 1 kHz), LAB_DYN, LAB_PRESSURE, LAB_COUPLING, LAB_MUTE, LAB_STRING, LAB_CHANGE, LAB_FLOOR,
        LAB_WIDTH, LAB_SUSTAIN, LAB_BMIN, LAB_MINACC, LAB_TRACE=from,to
 python3 tools/analyze.py render.wav [out.png]                        # spectrogram, level, pitch per note
+./build/string_lab guettler <string> <note> <beta> [classic|enhanced]  # attacks from rest (Guettler plane)
+  env: LAB_WIDTH=<samples> LAB_SHARE, LAB_HFLOOR LAB_HSPEED LAB_TDROPE (enhanced friction)
+./build/radiation_lab character [a0 nasal brilliance softness voice%] # body controls per band
+./build/bowing_lab <metric> [bpm num den] < events                   # bow direction per note, mid-note rebows
+  instrument_lab env also: LAB_FRICTION=0|1|2, LAB_BOWWIDTH=<m>, LAB_AVARY
+python3 tools/open_strings.py | harmonics_tuning.py | intonation_check.py | vibrato_extent.py
+python3 tools/pizz_decay.py <VSCO Pizz dir>                          # two-stage decay vs recordings
+python3 tools/note_pitch.py <scenario> [wav]                         # pitch per note, peak below
+LAB_HF=1 tools/bow_change_gap.sh [note]                              # automatic bow change gap
 ```
+
+What each check should show, and the latest numbers: [EVALUATION.md](EVALUATION.md).
 
 ## Known limits (next phases)
 
@@ -760,8 +784,15 @@ python3 tools/analyze.py render.wav [out.png]                        # spectrogr
 - The enhanced friction's constants are tuned here, not the paper's.
 - Spiccato is a fixed thrown stroke; sautillé bounces at the key tempo but
   there's no bow-bounce degree of freedom (ricochet, KB §11.1).
-- The bridge has one direction (bowing). There's no vertical admittance or
-  second polarisation yet.
+- The bridge has one direction (bowing). Pizzicato's vertical polarisation
+  is a separate string on a rigid bridge, straight to the output.
+- Body controls change the radiated sound only, not how the body loads the
+  strings (KB §5.8 "character vs ease": docs/PLAN.md "Ideas").
+- Bowing to the meter can land a downbeat on an up-bow after separate notes
+  in odd meters (above). Rules that need the next note (crossing lead,
+  phrase timing) aren't possible from a live keyboard without latency.
+- Browser and native renders diverge on chaotic passages (last-digit maths
+  differences grow); CI compares a well-behaved one (docs/EVALUATION.md).
 - The highest notes have few samples per slip even at 96 kHz (KB §6.4); they
   slip longer and flatten more (A6: ~30 cents uncorrected).
 - Cost: all four strings run while the bridge moves (two bow points on a
