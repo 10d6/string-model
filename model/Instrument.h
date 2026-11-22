@@ -138,6 +138,7 @@ class Instrument {
     if (tick_ == 0) controlTick(pc, ic);
     tick_ = (tick_ + 1) % kControl;
     const float vb = perf_.tickSample(pc);
+    for (int s = 0; s < 4; ++s) pluck_[s] = perf_.pluckForce(s);
     float x[4];
     for (int k = 0; k < os_; ++k) x[k] = internalSample(vb, ic);
     const float y = dec_.process(x);
@@ -168,7 +169,7 @@ class Instrument {
       const float fb = target_[s].force;
       const float damp = target_[s].damp;
       zs += st.z0();
-      active_[s] = !st.asleep() || fb > 0.f || bridgeMoving || damp > 0.f || windAmp_[s] > 0.f;
+      active_[s] = !st.asleep() || fb > 0.f || bridgeMoving || damp > 0.f || windAmp_[s] > 0.f || pluck_[s] != 0.f;
       if (!active_[s]) continue;
       any = true;
       st.wake();
@@ -182,7 +183,7 @@ class Instrument {
       if (windAmp_[s] > 0.f) wn = windAmp_[s] * windBp_[s].process(2.f * noise - 1.f);
       st.setFingerNoise(wn);
       direct += st.z0() * wn;
-      S += 2.f * st.z0() * st.step(vb, fb, ic.friction, ic.noise, noise, damp);
+      S += 2.f * st.z0() * st.step(vb, fb, ic.friction, ic.noise, noise, damp, pluck_[s]);
       // Intonation: slip onsets mark periods in Helmholtz motion.
       const bool sl = st.slipping();
       ++sinceSlip_[s];
@@ -220,6 +221,7 @@ class Instrument {
       if (!target_[s].stopped || ic.intonation <= 0.f) corr_[s] *= 0.995f;
       const float k = std::pow(2.f, corr_[s] / 1200.f);
       wantHz_[s] = target_[s].hz;
+      str_[s].setTouch(target_[s].touchQ, target_[s].touchR);
       str_[s].setGeometry(target_[s].hz * k, target_[s].noteHz * k, beta, target_[s].stopped, target_[s].slide);
       // Winding noise: the finger rubbing turns of winding at speed v gives a
       // band of noise around v / pitch (KB §11.2 "Shifts") [T level].
@@ -235,7 +237,10 @@ class Instrument {
 
   void onPeriod(int s, float period, const InstrumentControls& ic) {
     if (!target_[s].stopped || ic.intonation <= 0.f || target_[s].force <= 0.f) return;
-    const float want = fs_ / wantHz_[s];
+    // A touched (harmonic) string slips k times per fundamental period: the
+    // player tunes an artificial harmonic by ear the same way.
+    const float k = target_[s].touchQ > 0.f ? std::round(1.f / target_[s].touchQ) : 1.f;
+    const float want = fs_ / (wantHz_[s] * k);
     const float err = period / want;
     if (err < 0.96f || err > 1.04f) return;  // not steady one-slip-per-period motion
     // Flat (long period) -> raise the finger pitch. ~60 periods to settle.
@@ -251,6 +256,7 @@ class Instrument {
   bool active_[4]{};
   float uPrev_ = 0.f;
   BandPass windBp_[4];
+  float pluck_[4]{};
   float windAmp_[4]{};
   StringTarget target_[4];
   float host_ = 48000.f, fs_ = 96000.f;

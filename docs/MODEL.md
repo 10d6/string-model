@@ -352,6 +352,58 @@ the wanted period, and the finger moves to correct it. The correction is
 the motion is steadily periodic (±4%). Open strings stay flat, as on a real
 violin.
 
+## Articulations (KB §11)
+
+`Articulation` (Arco / Martelé / Spiccato / Tremolo / Pizzicato / Harmonics),
+also on keyswitches F1–A#1. Martelé, spiccato and tremolo replace the
+assistant's bow speed and force with a stroke template from Demoucron's
+measured strokes (KB §11.5); the per-string force factors (impedance,
+position, body load, trim) still apply on top. Templates set the bow speed
+directly (it is already smooth) and turn off the automatic bow change.
+
+- **Martelé.** The bow pinches, still, for 0–60 ms (more when loud) at
+  0.8–2.7 N; then a stroke of 0.25–0.33 s whose speed rises to 0.5–1.2 m/s
+  (42% of the stroke) and falls to rest, while the force drops to 0.25–0.45 N
+  over 0.2 s with the bow's ~13 Hz ripple. At rest the bow damps the string.
+  Separate strokes, never slurred. The pinch delays the first sound: ~60 ms
+  at soft velocities.
+- **Spiccato.** A ~75 ms force bell (rise 45%), a half-sine stroke of 0.14 s
+  with peak speed 0.08–0.78 m/s, then the bow is in the air. The bow sits
+  further from the bridge (β 0.18 → 0.08 from p to f). Demoucron's peak
+  forces (0.5–3 N) are scaled ×0.4 onto this string: at ×1 the notes went
+  20–40 cents flat (crushed). At ×0.4 they are within ~15 cents, most within 10.
+- **Tremolo.** Near-sinusoidal bow speed at `Tremolo Rate` reversals per
+  second (VSCO median 12.2/s, KB §11.2), ±12% rate and ±15% force jitter per
+  stroke; down-bows lighter than up-bows (×0.8 / ×1.2).
+- **Pizzicato.** The bow lifts and a force pulse acts at the pluck point
+  (β 0.2 ± 0.05, KB §11.2): it rises over 12–24 ms to 0.6–3.6 N (velocity),
+  then lets go. The release ramp is 1–2.5 ms but never longer than ~0.35 of
+  the period: a ramp as long as the period cancels the fundamental, which
+  made open-E plucks 10–20 dB weak and uneven. Force, rise, release and
+  point vary per pluck (KB §11.2: identical plucks sound mechanical). Keys
+  pressed together strum, 12 ms apart. Open strings sound at pitch (no
+  bow-flattening allowance). A quick key-up damps the string with the
+  hand; `Finger Off` lifts the finger. Plucked notes peak about as loud as
+  an mf bowed note. One polarisation only: the two-stage decay (KB §11.2)
+  waits for the vertical bridge admittance (Phase 6).
+- **Harmonics.** A light finger touches the string at 1/k of its vibrating
+  length from the nut-side end. In the waveguide the bow–nut segment is split
+  at that point by a resistive junction, R = 4·Z0, gliding in over ~10 ms:
+  v_t = 2Z(a1 + a2)/(2Z + R), with a1, a2 the incoming waves. It is
+  transparent at R = 0. The touch point allows for the nut filter's delay.
+  Each note uses a natural harmonic if one exists (an open string's 2nd,
+  3rd or 4th partial: touched at 1/2, 1/3, 1/4), else an artificial one: a
+  stopped note two octaves, a twelfth or an octave below, touched at 1/4,
+  1/3 or 1/2 of the stopped length, lowest position first.
+  - **Bowing a harmonic.** The string vibrates in k segments, like a string
+    1/k as long, so β is divided by k, and the force is ×0.3 (octaves and
+    twelfths) or ×0.15 (two octaves). With the arco force the motion falls
+    back toward the fundamental (D6 on the D string came out a series at
+    2.6 × f0); at force ×0.45–0.6 the harmonics were still 10–30 cents flat.
+  - **Intonation** aims for k slips per fundamental period.
+  - Measured through the synth (open and stopped, A5–B6): within ±5 cents,
+    the fundamental 33–65 dB down; B6 still ~15 cents flat.
+
 ## Output (KB §12)
 
 **Modelled (default): `model/Radiation.h`.** A bank of body modes driven by
@@ -456,7 +508,8 @@ python3 tools/analyze.py render.wav [out.png]                        # spectrogr
 
 ## Known limits (next phases)
 
-- No pizzicato, harmonics, spiccato, tremolo or martelé yet (Phases 4–5).
+- Pizzicato has one polarisation; no snap (Bartók) pizz, sautillé, ricochet, col legno or left-hand pizz yet.
+- Spiccato is a fixed thrown stroke; the bow doesn't bounce on its own.
 - The bridge has one direction (bowing). There's no vertical admittance or
   second polarisation yet.
 - The highest notes have few samples per slip even at 96 kHz (KB §6.4); they

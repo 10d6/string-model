@@ -18,7 +18,7 @@ details: [MODEL.md](MODEL.md).
   - CC 74 sets the contact point (tasto ↔ ponticello)
   - pitch bend moves the finger
   - overlapping keys slur
-  - keyswitches for articulations come with Phase 5.
+  - keyswitches choose the string (C1–E1) and the articulation (F1–A#1).
 - **The whole instrument runs in `processGlobal`**, so the strings can share
   a bridge. The kit's voices only track keys.
 - `model/` is plain C++20 with no synthkit dependency, so it can be tested
@@ -32,9 +32,9 @@ details: [MODEL.md](MODEL.md).
 | 1 | One bowed string you can hear: waveguide + thermal friction (+ classic for A/B), torsion, gesture layer with playability assistant, slurs/détaché/bow changes, vibrato, intonation, string choice, library-mic output, room | done (#1) |
 | 2 | Four strings on a shared bridge: modal bridge admittance Y(z) solved exactly with the strings, sympathetic ringing, fingers lifting off unused strings, double stops and rolled chords, force calibration against the coupled instrument, string DC-loss fix | done (#2, #3) |
 | 3 | Body and output: stereo modal radiation calibrated against real recordings (CC0), bridge hill, mute, body resonance, width; library-mic and pickup kept | done (#4) |
-| 4 | Gesture polish (**this PR**): release types (lift / stop on string / finger off, or by key-up speed), shifts with finger loss and winding noise, velocity-controlled slide speed, string keyswitches | |
-| 5 | Articulations: martelé, spiccato/sautillé (Demoucron's bow oscillator), tremolo, pizzicato (two polarisations), harmonics (touch junction), keyswitches | |
-| 6 | Refinement: enhanced rosin model for attacks (Woodhouse–Galluzzo 2025), finite-width bow noise, CPU work, a VST3 milestone build for Ableton | |
+| 4 | Gesture polish: release types (lift / stop on string / finger off, or by key-up speed), shifts with finger loss and winding noise, velocity-controlled slide speed, string keyswitches | done (#5) |
+| 5 | Articulations (**this PR**): martelé, spiccato and tremolo from Demoucron's measured strokes, pizzicato (force pulse at the pluck point; strummed chords), natural and artificial harmonics (touch junction), articulation keyswitches | |
+| 6 | Refinement: pizzicato's second polarisation (moved from Phase 5: the two-stage decay needs a vertical bridge admittance), sautillé (bouncing at the bow's own rate), enhanced rosin model for attacks (Woodhouse–Galluzzo 2025), finite-width bow noise, CPU work, a VST3 milestone build for Ableton | |
 | 7 | Mic placement and room: close / studio / overhead / room positions (KB §12.3–12.4), near-field sources and bow noise for close mics, the room fed by the body's power response (darker, smoother), the room's level per output | |
 | 8 | Cello: Kaplan string data, body with a strong ~175 Hz mode (the wolf note should appear by itself, plus a "wolf eliminator"), heavier bow. Then viola/bass | |
 
