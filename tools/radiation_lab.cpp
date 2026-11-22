@@ -24,8 +24,8 @@ int main(int argc, char** argv) {
       const float l = rad.responseDb(f, 0), r = rad.responseDb(f, 1);
       pw += 0.5 * (std::pow(10.0, l / 10) + std::pow(10.0, r / 10));
       tw += std::pow(10.0, rad.targetDb(f) / 10);
-      lr += (l - r) * (l - r);
-      s1 += l; s2 += l * l;
+      lr += static_cast<double>(l - r) * (l - r);
+      s1 += l; s2 += static_cast<double>(l) * l;
       ++n;
     }
     const double mean = s1 / n;
