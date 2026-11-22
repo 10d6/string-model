@@ -1,13 +1,37 @@
 {
   "theme": { "accent": "#9a4a1c" },
   "sections": [
-    { "title": "Oscillator", "controls": [ { "param": "osc.wave" } ] },
-    { "title": "Filter", "controls": [ { "param": "filter.cutoff", "size": "large" }, { "param": "filter.reso" } ] },
-    { "kit": "env1", "title": "Amp envelope" },
-    { "kit": "lfo1" },
-    { "kit": "modMatrix", "wide": true },
+    { "title": "Instrument", "controls": [ { "param": "instrument", "type": "menu" }, { "param": "out.mode", "type": "menu" } ] },
+    { "title": "Bow", "wide": true, "controls": [
+      { "param": "bow.dynamics", "size": "large" },
+      { "param": "bow.pressure", "size": "large" },
+      { "param": "bow.contact", "size": "large", "label": "Tasto ↔ Ponticello" },
+      { "param": "bow.velSens" },
+      { "param": "bow.atPressure" },
+      { "param": "bow.bite" },
+      { "param": "bow.change" },
+      { "param": "bow.noise" },
+      { "param": "bow.legato" }
+    ] },
+    { "title": "Left Hand", "controls": [
+      { "param": "vib.depth" }, { "param": "vib.rate" }, { "param": "vib.delay" },
+      { "param": "finger.shift" }, { "param": "finger.intonation" }
+    ] },
+    { "title": "Room", "controls": [ { "param": "room.mix" }, { "param": "room.space", "type": "menu" } ] },
+    { "title": "Model", "collapsed": true, "controls": [ { "param": "bow.friction" } ] },
     { "kit": "voices" },
     { "kit": "master" }
   ],
+  "paramInfo": {
+    "bow.dynamics": "Bow speed and bow–bridge distance together, as players do it (mod wheel, CC 11). Velocity adds to it per note.",
+    "bow.pressure": "Bow force relative to the playable window. Low: airy, surface sound. High: crunch and growl. Aftertouch adds to it.",
+    "bow.contact": "Where the bow meets the string: over the fingerboard (dark, soft) to near the bridge (glassy). CC 74.",
+    "bow.bite": "How hard notes start: higher means a faster bow acceleration and a stronger accent on loud notes.",
+    "bow.change": "Time for the bow to reverse when a new detached note starts.",
+    "bow.legato": "On: overlapping keys slur (same bow, the finger changes). Off: every note changes bow.",
+    "bow.friction": "Thermal: rosin friction set by contact temperature (Woodhouse). Classic: a friction curve with hysteresis.",
+    "finger.intonation": "How much the player corrects the pitch drop that heavy bowing causes on stopped notes. Open strings can't be corrected.",
+    "out.mode": "Library Mic: bridge force through a CC0 response measured from a solo-violin recording (body, mics and room). Pickup: the raw bridge force."
+  },
   "keyboard": true
 }

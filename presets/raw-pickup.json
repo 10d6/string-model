@@ -1,0 +1,10 @@
+{
+  "synthkit": 1,
+  "synth": "string-model",
+  "patchVersion": 1,
+  "name": "Raw Pickup",
+  "params": {
+    "out.mode": 2,
+    "room.mix": 0
+  }
+}
