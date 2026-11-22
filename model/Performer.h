@@ -660,18 +660,23 @@ class Performer {
       // From the air: alternate, unless the bow is nearly at one end.
       dir_ = bowPos_ > 0.8f ? -1.f : (bowPos_ < 0.2f ? 1.f : -dir_);
       // Bowing to the meter (player doc §2): a down-bow (frog to tip) on a
-      // strong beat, an up-bow on a pickup or off-beat, if there's a fifth of
-      // the bow left that way. With time in the air (80 ms+), the bow is
-      // re-taken to the frog or tip first.
+      // strong beat, an up-bow on a phrase's pickup, if 40% of the bow is
+      // left that way (with less, a long note would run out of bow and change
+      // mid-note: an unexpected extra note). With time in the air (80 ms+),
+      // the bow is re-taken first: to the frog for a down-bow, to the middle
+      // for a pickup up-bow, so the downbeat after it has most of the bow.
       // Strong beats only (the downbeat, a mid-bar beat); other beats alternate.
-      // A phrase starting on any beat after a rest (0.25 s+) starts down-bow.
+      // A phrase starting on any beat after a rest (0.25 s+) starts down-bow;
+      // one starting off the beat (a pickup) starts up-bow. Mid-phrase, other
+      // notes alternate.
       const float rest = now_ - liftedAt_;
       const bool down = meter_ >= 0.7f || (meter_ >= 0.5f && rest > 0.25f);
-      if (meter_ >= 0.f && c.metric > 0.05f && (down || meter_ <= 0.25f)) {
+      const bool up = meter_ <= 0.25f && rest > 0.25f;
+      if (meter_ >= 0.f && c.metric > 0.05f && (down || up)) {
         const float want = down ? 1.f : -1.f;
         const bool retake = rest > 0.08f;
-        if (retake) bowPos_ = want > 0.f ? 0.15f + 0.03f * bipolar() : 0.85f + 0.03f * bipolar();
-        if (retake || (want > 0.f ? bowPos_ < 0.8f : bowPos_ > 0.2f)) dir_ = want;
+        if (retake) bowPos_ = want > 0.f ? 0.15f + 0.03f * bipolar() : 0.5f + 0.03f * bipolar();
+        if (retake || (want > 0.f ? bowPos_ < 0.6f : bowPos_ > 0.4f)) dir_ = want;
       }
       vb_ = 0.f;
       bowing_ = true;
