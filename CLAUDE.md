@@ -63,7 +63,7 @@ python3 tools/calibrate_force.py                   # Helmholtz window vs the pla
 python3 tools/analyze.py build/renders/legato-scale.wav   # spectrogram, level, pitch per note
 
 # browser page (API.md §11)
-cmake -S . -B build-web -G Ninja -DCMAKE_TOOLCHAIN_FILE=synthkit/cmake/wasm32-wasi.cmake && cmake --build build-web
+cmake -S . -B build-web -G Ninja -DCMAKE_TOOLCHAIN_FILE=synthkit/cmake/wasm32-wasi.cmake -DCMAKE_BUILD_TYPE=Release && cmake --build build-web   # Release: without it the page is unoptimised (-O0)
 node synthkit/web/test/browser-test.cjs build-web/web/stringmodel.html build-web/test tests/chord.json
 node synthkit/web/test/bench-web.cjs build-web/web/stringmodel.html tests/chord.json   # browser speed
 

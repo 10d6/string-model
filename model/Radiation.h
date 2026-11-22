@@ -56,11 +56,23 @@ class Radiation {
     settings_ = RadiationSettings{};
     settings_.hillHz = baseHillHz;
     applySettings(settings_, true);
+    // The audio loop reads plain arrays (structure of arrays, padded to 4
+    // with silent modes) so it vectorises.
+    const std::size_t n = (modes_.size() + 3) & ~std::size_t(3);
+    for (auto* v : {&b0_, &a1_, &a2_, &s1_, &s2_, &rl_, &rr_}) v->assign(n, 0.f);
+    for (std::size_t k = 0; k < modes_.size(); ++k) {
+      b0_[k] = modes_[k].b0;
+      a1_[k] = modes_[k].a1;
+      a2_[k] = modes_[k].a2;
+    }
+    syncResidues();
     reset();
   }
 
   void reset() {
     for (auto& m : modes_) m.s1 = m.s2 = 0.f;
+    std::fill(s1_.begin(), s1_.end(), 0.f);
+    std::fill(s2_.begin(), s2_.end(), 0.f);
     for (auto& h : hp_) h.s1 = h.s2 = 0.f;
   }
 
@@ -75,20 +87,32 @@ class Radiation {
       m.rl += (m.tl - m.rl) * kGlide;
       m.rr += (m.tr - m.rr) * kGlide;
     }
+    syncResidues();
   }
 
   void process(float f, float& l, float& r) {
     for (auto& h : hp_) f = h.process(f);
-    float L = 0.f, R = 0.f;
-    for (auto& m : modes_) {
-      const float y = m.b0 * f + m.s1;
-      m.s1 = -m.a1 * y + m.s2;
-      m.s2 = -m.b0 * f - m.a2 * y;
-      L += m.rl * y;
-      R += m.rr * y;
+    float L[4] = {0.f, 0.f, 0.f, 0.f}, R[4] = {0.f, 0.f, 0.f, 0.f};
+    const std::size_t n = b0_.size();
+    float* __restrict s1 = s1_.data();
+    float* __restrict s2 = s2_.data();
+    const float* __restrict b0 = b0_.data();
+    const float* __restrict a1 = a1_.data();
+    const float* __restrict a2 = a2_.data();
+    const float* __restrict rl = rl_.data();
+    const float* __restrict rr = rr_.data();
+    for (std::size_t k = 0; k < n; k += 4) {
+      for (std::size_t j = 0; j < 4; ++j) {
+        const std::size_t i = k + j;
+        const float y = b0[i] * f + s1[i];
+        s1[i] = -a1[i] * y + s2[i];
+        s2[i] = -b0[i] * f - a2[i] * y;
+        L[j] += rl[i] * y;
+        R[j] += rr[i] * y;
+      }
     }
-    l = L * gain_;
-    r = R * gain_;
+    l = ((L[0] + L[1]) + (L[2] + L[3])) * gain_;
+    r = ((R[0] + R[1]) + (R[2] + R[3])) * gain_;
   }
 
   int modeCount() const { return static_cast<int>(modes_.size()); }
@@ -327,7 +351,15 @@ class Radiation {
     }
   }
 
+  void syncResidues() {
+    for (std::size_t k = 0; k < modes_.size() && k < rl_.size(); ++k) {
+      rl_[k] = modes_[k].rl;
+      rr_[k] = modes_[k].rr;
+    }
+  }
+
   std::vector<Mode> modes_;
+  std::vector<float> b0_, a1_, a2_, s1_, s2_, rl_, rr_;  // audio-loop copies (SoA)
   Biquad hp_[2];
   std::vector<float> tHz_, tDb_;
   RadiationSettings settings_;

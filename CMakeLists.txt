@@ -8,6 +8,11 @@ add_subdirectory(synthkit)
 include(CTest)
 
 synthkit_add_synth(stringmodel SOURCES src/Synth.cpp)
+# The browser build: WebAssembly SIMD (every current browser has it) lets the
+# radiation's 120 modes and other plain loops run four at a time.
+if(SYNTHKIT_WASM)
+  target_compile_options(stringmodel_synth PRIVATE -msimd128)
+endif()
 
 # Offline model experiments (no synthkit): one string, and the whole
 # instrument driven by a note list. See docs/MODEL.md.
