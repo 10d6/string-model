@@ -59,6 +59,7 @@ python3 synthkit/tools/stress.py build/stringmodel_render 300   # random playing
 ./build/instrument_lab chord 62 69                 # double stop: force and slip rate per string
 ./build/instrument_lab sympathy 67                 # each string's level: sympathetic ringing
 python3 tools/calibrate_force.py                   # Helmholtz window vs the playability assistant
+./build/radiation_lab                              # radiation vs its target, stereo difference per band
 python3 tools/analyze.py build/renders/legato-scale.wav   # spectrogram, level, pitch per note
 
 # browser page (API.md §11)
@@ -80,6 +81,11 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
 - Parameters the instrument reads use `smoothing(0)` and are smoothed in the
   performer on its own clock: bowing is chaotic, so kit smoothing (per
   control block) makes renders depend on the host block size.
+- The radiation target was measured against VSCO-2-CE recordings (CC0;
+  fetch with 10d6/instrument-research `tools/fetch_vsco.sh`, never commit
+  them). After changing the string's spectrum, rerun
+  `tools/radiation_target.py <Arco Vib dir> build/stringmodel_render - 3`:
+  every half-octave band should stay within about ±3 dB.
 - After changing the string or friction, rerun `string_lab sweep` and check
   the Schelleng map still holds Demoucron's pp/mf/ff points, and update
   MODEL.md. After changing the string, bridge or assistant, rerun

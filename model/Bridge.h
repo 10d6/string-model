@@ -44,16 +44,17 @@ class Bridge {
       r = r * 1664525u + 1013904223u;
       return static_cast<float>(r >> 8) * (1.f / 16777216.f);
     };
+    hill_ = hill;
     for (float f = denseFrom + spacing * uni(); f < denseTo; f += spacing * (0.5f + uni())) {
-      const float x = f / hill.hz;
-      // |hill(f)|: 2nd-order resonance magnitude, normalised to 1 at hill.hz.
-      const float den = std::sqrt((1.f - x * x) * (1.f - x * x) + (x / hill.q) * (x / hill.q));
-      const float shape = (x / hill.q) / den;
       const float q = std::max(8.f, 40.f * std::pow(denseFrom / f, 0.5f));
-      const float level = hill.peak * shape * (0.5f + uni());
-      add({f, q, level});
+      const float factor = 0.5f + uni();
+      const std::size_t before = modes_.size();
+      add({f, q, hill.peak * hillShape(f, hill.hz, hill.q) * factor});
+      if (modes_.size() > before) modes_.back().dense = factor;
     }
     coupling_ = 1.f;
+    hillHz_ = hill.hz;
+    hillLevel_ = 1.f;
     updateCoefficients();
     reset();
   }
@@ -61,6 +62,18 @@ class Bridge {
   void reset() {
     for (auto& m : modes_) m.s1 = m.s2 = 0.f;
     hist_ = 0.f;
+  }
+
+  // Move the bridge hill (KB §5.3): the dense band's levels follow the hill
+  // shape at its new centre; levelScale scales them (a mute adds mass to the
+  // bridge: the hill moves down and gets weaker). Control rate, on change.
+  void setHill(float hz, float levelScale) {
+    if (hz == hillHz_ && levelScale == hillLevel_) return;
+    hillHz_ = hz;
+    hillLevel_ = levelScale;
+    for (auto& m : modes_)
+      if (m.dense > 0.f) m.peak = hill_.peak * levelScale * hillShape(m.hz, hz, hill_.q) * m.dense;
+    updateCoefficients();
   }
 
   // Scale every mode's admittance (0 = a rigid bridge).
@@ -114,7 +127,15 @@ class Bridge {
   struct Mode {
     float hz, q, peak;
     float b0 = 0, b2 = 0, a1 = 0, a2 = 0, s1 = 0, s2 = 0;
+    float dense = 0;  // dense-band mode: its random level factor (0 = signature mode)
   };
+
+  // |hill(f)|: 2nd-order resonance magnitude, normalised to 1 at the centre.
+  static float hillShape(float f, float centre, float q) {
+    const float x = f / centre;
+    const float den = std::sqrt((1.f - x * x) * (1.f - x * x) + (x / q) * (x / q));
+    return (x / q) / den;
+  }
 
   void add(const BridgeMode& b) {
     if (b.hz <= 0.f || b.hz >= 0.45f * fs_ || b.peak <= 0.f) return;
@@ -143,7 +164,8 @@ class Bridge {
   }
 
   std::vector<Mode> modes_;
-  float fs_ = 96000.f, y0_ = 0.f, coupling_ = 1.f, hist_ = 0.f;
+  float fs_ = 96000.f, y0_ = 0.f, coupling_ = 1.f, hist_ = 0.f, hillHz_ = 0.f, hillLevel_ = 1.f;
+  BridgeMode hill_{2600.f, 3.f, 0.15f};
 };
 
 }  // namespace sm

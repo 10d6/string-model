@@ -1,29 +1,143 @@
 {
-  "theme": { "accent": "#9a4a1c" },
+  "theme": {
+    "accent": "#9a4a1c"
+  },
   "sections": [
-    { "title": "Instrument", "controls": [ { "param": "instrument", "type": "menu" }, { "param": "out.mode", "type": "menu" }, { "param": "body.coupling" } ] },
-    { "title": "Bow", "wide": true, "controls": [
-      { "param": "bow.dynamics", "size": "large" },
-      { "param": "bow.pressure", "size": "large" },
-      { "param": "bow.contact", "size": "large", "label": "Tasto ↔ Ponticello" },
-      { "param": "bow.velSens" },
-      { "param": "bow.atPressure" },
-      { "param": "bow.bite" },
-      { "param": "bow.change" },
-      { "param": "bow.sustain" },
-      { "param": "bow.auto" },
-      { "param": "bow.noise" },
-      { "param": "bow.legato" }
-    ] },
-    { "title": "Chords", "controls": [ { "param": "chord.window" }, { "param": "chord.roll" } ] },
-    { "title": "Left Hand", "controls": [
-      { "param": "vib.depth" }, { "param": "vib.rate" }, { "param": "vib.delay" },
-      { "param": "finger.shift" }, { "param": "finger.intonation" }
-    ] },
-    { "title": "Room", "controls": [ { "param": "room.mix" }, { "param": "room.space", "type": "menu" } ] },
-    { "title": "Model", "collapsed": true, "controls": [ { "param": "bow.friction" } ] },
-    { "kit": "voices" },
-    { "kit": "master" }
+    {
+      "title": "Instrument",
+      "controls": [
+        {
+          "param": "instrument",
+          "type": "menu"
+        },
+        {
+          "param": "body.coupling"
+        },
+        {
+          "param": "body.mute"
+        }
+      ]
+    },
+    {
+      "title": "Body",
+      "controls": [
+        {
+          "param": "out.mode",
+          "type": "menu"
+        },
+        {
+          "param": "body.hill",
+          "label": "Bridge Hill"
+        },
+        {
+          "param": "body.resonance"
+        },
+        {
+          "param": "out.width"
+        }
+      ]
+    },
+    {
+      "title": "Bow",
+      "wide": true,
+      "controls": [
+        {
+          "param": "bow.dynamics",
+          "size": "large"
+        },
+        {
+          "param": "bow.pressure",
+          "size": "large"
+        },
+        {
+          "param": "bow.contact",
+          "size": "large",
+          "label": "Tasto ↔ Ponticello"
+        },
+        {
+          "param": "bow.velSens"
+        },
+        {
+          "param": "bow.atPressure"
+        },
+        {
+          "param": "bow.bite"
+        },
+        {
+          "param": "bow.change"
+        },
+        {
+          "param": "bow.sustain"
+        },
+        {
+          "param": "bow.auto"
+        },
+        {
+          "param": "bow.noise"
+        },
+        {
+          "param": "bow.legato"
+        }
+      ]
+    },
+    {
+      "title": "Chords",
+      "controls": [
+        {
+          "param": "chord.window"
+        },
+        {
+          "param": "chord.roll"
+        }
+      ]
+    },
+    {
+      "title": "Left Hand",
+      "controls": [
+        {
+          "param": "vib.depth"
+        },
+        {
+          "param": "vib.rate"
+        },
+        {
+          "param": "vib.delay"
+        },
+        {
+          "param": "finger.shift"
+        },
+        {
+          "param": "finger.intonation"
+        }
+      ]
+    },
+    {
+      "title": "Room",
+      "controls": [
+        {
+          "param": "room.mix"
+        },
+        {
+          "param": "room.space",
+          "type": "menu"
+        }
+      ]
+    },
+    {
+      "title": "Model",
+      "collapsed": true,
+      "controls": [
+        {
+          "param": "bow.friction"
+        }
+      ]
+    },
+    {
+      "kit": "voices"
+    },
+    {
+      "kit": "master"
+    }
   ],
   "paramInfo": {
     "bow.dynamics": "Bow speed and bow–bridge distance together, as players do it (mod wheel, CC 11). Velocity adds to it per note.",
@@ -34,12 +148,16 @@
     "bow.sustain": "On held notes the bow slows after the attack and moves toward the bridge to keep the same loudness, so it lasts longer between bow changes. 1 keeps the attack speed.",
     "bow.auto": "On: a long note changes bow when the bow runs out (every few seconds, as a player would). Off: an endless bow.",
     "bow.legato": "On: overlapping keys slur (same bow, the finger changes). Off: every note changes bow.",
-"body.coupling": "How strongly the strings drive the bridge and body. It sets sympathetic ringing (open strings sound along with notes that match their harmonics) and how much the body loads the strings. 0: a rigid bridge.",
+    "body.coupling": "How strongly the strings drive the bridge and body. It sets sympathetic ringing (open strings sound along with notes that match their harmonics) and how much the body loads the strings. 0: a rigid bridge.",
     "chord.window": "Keys pressed within this time of each other are one chord: two notes become a double stop on neighbouring strings, three or four are rolled.",
     "chord.roll": "How long the bow stays on each pair of strings when it rolls across a three- or four-note chord.",
     "bow.friction": "Thermal: rosin friction set by contact temperature (Woodhouse). Classic: a friction curve with hysteresis.",
     "finger.intonation": "How much the player corrects the pitch drop that heavy bowing causes on stopped notes. Open strings can't be corrected.",
-    "out.mode": "Library Mic: bridge force through a CC0 response measured from a solo-violin recording (body, mics and room). Pickup: the raw bridge force."
+    "out.mode": "Modelled: a synthetic violin body in stereo, calibrated to real violin recordings (CC0), with the controls beside it. Library Mic: the bridge force through a response measured from a solo-violin recording (body, mics and room baked in). Pickup: the raw bridge force, like an electric violin.",
+    "body.hill": "The bridge's main resonance on the body (the 'bridge hill', around 2.6 kHz on a violin): lower is darker and warmer, higher is brighter. It moves the string's damping too, not just the tone.",
+    "body.mute": "A mute on the bridge: its extra mass lowers and weakens the bridge hill, so the tone goes veiled and quieter in the highs.",
+    "body.resonance": "The low body resonances' peaks and dips, which make some notes louder than their neighbours (around C#5-D5 especially). 1: as measured on a real violin. 0: smoothed out, for an even instrument. (Modelled output.)",
+    "out.width": "Stereo width of the body's upper range, where the two channels hear different patterns of resonances. 0: mono. (Modelled output.)"
   },
   "keyboard": true
 }

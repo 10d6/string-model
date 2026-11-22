@@ -5,6 +5,7 @@
 
 #include "../BowedString.h"
 #include "../Bridge.h"
+#include "../data/ViolinRadiation.h"
 
 namespace sm {
 
@@ -29,6 +30,14 @@ struct InstrumentDef {
   // about 60% of the flattening measured under the bow at mf (full
   // compensation would leave them too sharp to ring with stopped notes) [T].
   float openTuneCents[4];
+  // Radiation (Radiation.h): the calibration target and its measured hill,
+  // the low cut below the lowest air mode, and a gain matching the
+  // library-mic output's loudness.
+  const float* radiationHz;
+  const float* radiationDb;
+  int radiationCount;
+  float radiationLowCut;
+  float radiationGain;
 };
 
 inline const InstrumentDef& violin() {
@@ -74,6 +83,9 @@ inline const InstrumentDef& violin() {
       {1.f, 1.f, 1.f, 1.22f},
       // Measured under the bow at mf: G -11, D -6, A -15, E -20 cents.
       {7.f, 4.f, 9.f, 12.f},
+      data::kViolinRadiationHz, data::kViolinRadiationDb, data::kViolinRadiationCount,
+      230.f,  // below A0 (~280 Hz) the violin radiates little; weak at the open G (KB §12.7)
+      1.19f,  // same loudness (300 Hz-5 kHz) as the Library Mic (Smooth) output
   };
   return d;
 }

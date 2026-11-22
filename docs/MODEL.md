@@ -17,7 +17,8 @@ keys, CCs ─► Performer (gesture layer)            model/Performer.h
                        shared bridge: modal Y(z) ◄─┘        model/Bridge.h
                  │ bridge force (N), decimated              model/Instrument.h
                  ▼
-   body/output: CC0 library-mic response (convolution) or raw pickup
+   body/output: modelled radiation (stereo modes)      model/Radiation.h
+                or CC0 library-mic response (convolution), or raw pickup
                  ▼
    room (synthkit dsp::Reverb)                               src/Synth.cpp
 ```
@@ -301,19 +302,84 @@ the wanted period, and the finger moves to correct it. The correction is
 the motion is steadily periodic (±4%). Open strings stay flat, as on a real
 violin.
 
-## Output
+## Output (KB §12)
 
-- **Library Mic** (stereo) and **Library Mic (Smooth)** (mono, the default):
-  the CC0 bridge-force → recording responses measured from VSCO-2-CE solo
-  violin, from instrument-research `data/library_mic_responses`.
-  - They include that library's body, microphones and room.
-  - `tools/gen_ir.py` turns `data/violin/*.wav` into `src/ir/ViolinIR.h`.
-  - They're resampled from 48 kHz in `prepare`.
-  - The response has a strong peak around 540–590 Hz (+14 dB, near the
-    B1+ body mode) and a dip around 700–770 Hz (−9 dB). Fundamentals of
-    neighbouring notes in that range differ by up to ~12 dB. That's
-    measured, but the low-frequency resolution there is only about ¼ octave.
-- **Pickup:** the raw bridge force.
+**Modelled (default): `model/Radiation.h`.** A bank of body modes driven by
+the total bridge force (KB §12.3a):
+- 16 per octave from 180 Hz to 1 kHz (Q 22), and 24 per octave from 1 to
+  10 kHz (Q ~40, falling slowly), with a little random jitter: 120 modes.
+- Each is a peak-normalised band-pass. Each channel mixes the modes with its
+  own residues.
+- **Low band (below 600 Hz):** a monopole, the same residues left and right
+  (KB §5.5).
+- **High band (above 1.2 kHz):** each channel's residues get an independent
+  random sign and level (±4 dB), blended in between. Overlapping modes
+  interfere differently in each ear, so the response changes from semitone
+  to semitone and differs left and right ("directional tone colour"). Above
+  1 kHz, left and right differ by 4–9 dB RMS, and each has 3–6 dB of fine
+  structure per 1/3 octave.
+- **Low cut:** a 4th-order high-pass at 230 Hz. The violin radiates little
+  below its A0 air mode (~280 Hz) and is weak at the open G (KB §12.7).
+
+**Calibration.** At `prepare`, the residues are fitted (10 + 10 iterations,
+~4 ms) so the channels' mean power, smoothed, follows a target curve: 1/12
+octave below 1 kHz, 1/3 octave above. A second fit makes a smoothed low band
+for `Body Resonance` 0. The gain matches the Library Mic (Smooth) loudness
+from 300 Hz to 5 kHz (×1.19).
+
+**The target** (`data/violin/radiation_target.csv`, from
+`tools/combine_target.py`):
+- **Below 800 Hz:** the CC0 library-mic curve, 1/6-octave smoothed. My
+  bridge force is within 1 dB of 1/n there (`tools/force_tilt.py`).
+- **Above 800 Hz:** a direct measurement (`tools/radiation_target.py`). Each
+  VSCO-2-CE solo-violin "Arco Vib" note (CC0, G3–C7, p and f) is compared
+  with the same note rendered through this synth's Pickup output. Real minus
+  synth per harmonic, aligned per note on 0.5–3 kHz, median per band,
+  1/3-octave smoothed, with −12 dB/oct above 9 kHz.
+- **Why not the library curve alone:** it assumes a 1/n bridge force (KB
+  §12.7). Above 2 kHz my force falls below 1/n (−5 dB at 4 kHz, −13 at
+  6.3 kHz, −22 at 10 kHz). With the library IR, the output came out ~8 dB
+  too dark above 5.6 kHz compared with the real notes. Fully undoing the
+  roll-off would overshoot, since real forces roll off too; the direct
+  comparison measures where the truth lies.
+
+**Result:** Modelled minus real, per half-octave band from 350 Hz to
+9.5 kHz: −1.0, −3.0, −0.1, +1.2, +0.9 dB. For the Library Mic (Smooth):
++1.6, −0.9, −0.3, +3.0, +8.1 dB.
+
+**Controls** (on the 120 residues, gliding over ~5 ms):
+- **`Bridge Hill`** (1.8–3.4 kHz, default 2.6): the radiation is re-shaped
+  by the ratio of the hill shape (Q 2.5) at the new centre to the measured
+  one, normalised so frequencies well below don't move. At the same time
+  the bridge admittance's dense band follows the hill (`Bridge::setHill`),
+  so the string's damping moves too. Measured on a scale: 2.0 kHz gives
+  −5 to −6 dB above 2.5 kHz; 3.3 kHz gives +5 to +7 dB at 4–6 kHz.
+  Below 1.6 kHz it's unchanged (±0.6 dB).
+- **`Mute`** (KB §11.2: the mute's mass on the bridge): the hill moves to
+  65% and the admittance's dense band drops to 60%. The radiation gets the
+  same hill move plus a −5 dB shelf above ~1.5 kHz [T]. Measured: −12 to
+  −13 dB above 2.5 kHz, −1.7 dB at 1.6 kHz, lows unchanged. It goes on
+  over ~80 ms. With the mute on, notes still sustain: G6, A6 and C7 slip
+  once per period (`LAB_MUTE=1 instrument_lab chord`).
+- **`Body Resonance`** (0–1): blends the low band (below 1.2 kHz) between
+  the measured peaks and dips and the smoothed fit. At 0, the 700 Hz dip
+  fills by +8 dB and the 550 Hz region is trimmed: an even instrument.
+- **`Stereo Width`:** mid/side on the per-channel gains (0 = mono).
+
+**Library Mic / Library Mic (Smooth):** the CC0 library-mic IRs by
+convolution (resampled from 48 kHz in `prepare`). They have the library's
+mics and room baked in, and are ~8 dB darker than the real notes above
+5.6 kHz, as above.
+
+**Pickup:** the raw bridge force (an electric violin).
+
+**Vibrato and life.** On a held vibrato B4, harmonics swing 2–7 dB over
+each vibrato cycle in both outputs. Most of that is common to both channels:
+it comes from the string itself (vibrato against the bridge and the
+sympathetic strings). With the measured default vibrato (±8 cents, KB §11.2),
+a partial moves less than the high-band modes' bandwidth, so the left/right
+differences in the swing depend on where each harmonic falls: some
+decorrelate (r ≈ 0.5), many don't. Wider vibrato decorrelates more.
 
 ## Tools
 
@@ -327,20 +393,29 @@ LAB_FS=192000 LAB_HEAT=2 ./build/string_lab ...                      # rate, hea
 ./build/instrument_lab sympathy <note>                               # each string's level, bowing and after
 ./build/instrument_lab bridge                                        # |Y| of the bridge
 python3 tools/calibrate_force.py                                     # Helmholtz window vs the assistant
-  env: LAB_HF=1 (measure above 1 kHz), LAB_DYN, LAB_PRESSURE, LAB_COUPLING, LAB_CHANGE, LAB_FLOOR,
+./build/radiation_lab [sampleRate]                                   # radiation vs target, L/R difference per band
+python3 tools/force_tilt.py                                          # bridge force vs 1/n, per 1/3 octave
+python3 tools/radiation_target.py <VSCO Arco Vib dir> [render] [csv|-] [mode]   # real vs synth per band
+python3 tools/combine_target.py <library csv> <measured csv> <out csv>          # the radiation target
+  env: LAB_HF=1 (measure above 1 kHz), LAB_DYN, LAB_PRESSURE, LAB_COUPLING, LAB_MUTE, LAB_CHANGE, LAB_FLOOR,
        LAB_WIDTH, LAB_SUSTAIN, LAB_BMIN, LAB_MINACC, LAB_TRACE=from,to
 python3 tools/analyze.py render.wav [out.png]                        # spectrogram, level, pitch per note
 ```
 
 ## Known limits (next phases)
 
-- The body is a fixed measured response, not a model: no control over the
-  bridge hill, mute, or the statistical high band (Phase 3).
 - No pizzicato, harmonics, spiccato, tremolo or martelé yet (Phases 4–5).
 - The bridge has one direction (bowing). There's no vertical admittance or
   second polarisation yet.
 - The highest notes have few samples per slip even at 96 kHz (KB §6.4); they
   slip longer and flatten more (A6: ~30 cents uncorrected).
 - Cost: all four strings run while the bridge moves, plus 45 bridge modes
-  at 96 kHz. Natively that's ~4% of a core for the instrument. The browser
-  renders 1.9× faster than realtime (it was 2.6× in Phase 1).
+  at 96 kHz and 120 radiation modes at the host rate. The browser renders
+  2.2× faster than realtime.
+- Start-up: in the browser, `prepare` runs when audio starts. The radiation
+  fit takes ~4 ms natively; notes in the first ~300 ms after audio starts
+  may be missed (mostly the kit's reverb set-up). Calibration was 24 ms
+  until it precomputed its matrices, and the kit's browser test then missed
+  its first chord.
+- Radiation has one fixed mic position. No placement presets (close,
+  overhead, room) or near-field sources yet (KB §12.3b–c).
