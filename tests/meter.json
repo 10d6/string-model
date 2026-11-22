@@ -1,0 +1,93 @@
+{
+ "patch": "init",
+ "transport": {
+  "bpm": 96,
+  "timeSig": [
+   3,
+   4
+  ],
+  "playing": true
+ },
+ "lengthBeats": 16,
+ "params": {
+  "room.mix": 0
+ },
+ "events": [
+  {
+   "beat": 2.5,
+   "on": 69,
+   "vel": 80
+  },
+  {
+   "beat": 2.95,
+   "off": 69
+  },
+  {
+   "beat": 3,
+   "on": 74,
+   "vel": 80
+  },
+  {
+   "beat": 4.9,
+   "off": 74
+  },
+  {
+   "beat": 5,
+   "on": 73,
+   "vel": 80
+  },
+  {
+   "beat": 5.45,
+   "off": 73
+  },
+  {
+   "beat": 5.5,
+   "on": 71,
+   "vel": 80
+  },
+  {
+   "beat": 5.95,
+   "off": 71
+  },
+  {
+   "beat": 6,
+   "on": 69,
+   "vel": 80
+  },
+  {
+   "beat": 8.8,
+   "off": 69
+  },
+  {
+   "beat": 9,
+   "on": 74,
+   "vel": 70
+  },
+  {
+   "beat": 10.6,
+   "on": 81,
+   "vel": 70
+  },
+  {
+   "beat": 10.65,
+   "off": 74
+  },
+  {
+   "beat": 12.8,
+   "off": 81
+  }
+ ],
+ "expect": {
+  "soundBy": 1.7,
+  "levelAt": [
+   {
+    "beat": 3.5,
+    "above": -45
+   },
+   {
+    "beat": 11.5,
+    "above": -50
+   }
+  ]
+ }
+}

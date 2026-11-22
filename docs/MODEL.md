@@ -466,11 +466,73 @@ player doc §3.1, KB ref 65 / P15):
   - B4 at 0.5–1 s: 15 vs 13 cents; later: 15 vs 15.
   - B6: 15 vs 18.
   - B4 straight after a run, at 0.2–0.5 s: 7 vs 5; at 0.7–1.3 s: 17 vs 15.
-- Rate on weak beats and phrase position need the meter: PR C.
+- **Rate:** faster on metrically weak notes, ±4% (below).
 
 **Double stops** put more weight on the lower string: ×1.12 lower, ×0.9
 upper (player doc §2.6) [T]. In `instrument_lab chord`, both strings of
 D–A, G–D, A–E and E–C slip once per period.
+
+### Meter and tempo
+
+Each note's position comes from the kit (beats are quarter notes; the
+transport gives the bar start and time signature). `model/Meter.h` turns it
+into a metric strength [T]:
+
+| Position | Strength |
+|---|---|
+| downbeat | 1 |
+| mid-bar strong beat (4/4 beat 3, 12/8) | 0.7 |
+| beat (dotted quarter in 6/8, 9/8, 12/8) | 0.5 |
+| subdivision (half a beat; a third in compound meters) | 0.25 |
+| finer | 0.1 |
+
+Played timing isn't quantised: a note within a tenth of a beat (at most a
+third of the grid step), early or late, counts. The meter applies only while a
+transport plays (a DAW, or the page's Play), since the kit's clock always
+runs. Otherwise these rules are off, and tempo-dependent ones use the time
+between keys.
+
+**`Metric Emphasis`** (default 0.5; player doc §4, KTH metric rules) [T]:
+- **Velocity:** ×(1 + 0.5 · amount · (strength − 0.4)), so +15% on the
+  downbeat and −4% on subdivisions at the default. On repeated eighths in
+  4/4: downbeat +1.3 dB, beat 3 +0.6, subdivisions −0.5 dB.
+- **Bowing to the meter** (player doc §2), for strokes from the air:
+  - a down-bow (frog to tip) on a strong beat (≥ 0.7), or on any beat that
+    starts a phrase after a rest of 0.25 s or more;
+  - an up-bow on a pickup that starts a phrase (off the beat, after a rest);
+  - only if 40% of the bow is left that way. With less, a long note runs
+    out of bow and changes mid-note, which sounds like an extra note. The
+    first version allowed 20% and re-took pickups to the tip, so each
+    downbeat after a pickup rebowed;
+  - with 80 ms or more in the air, the bow is re-taken first: to the frog
+    for a down-bow, to the middle for a pickup up-bow, so the downbeat after
+    it has most of the bow.
+
+  Otherwise notes alternate, unless the bow is nearly at one end. Checked
+  with a C++ harness on the performer, replaying 3/4 phrases with pickups:
+  - pickups are up-bow from mid-bow;
+  - every downbeat is down-bow, with ~60% of the bow;
+  - mid-phrase notes alternate;
+  - no bow changes mid-note, except in a 3.4 s slurred passage, which
+    rebows with Metric Emphasis at 0 too.
+- **Leading tones** rise up to +3 cents more on weak notes (player doc §3.2),
+  scaled by `Intonation Style`.
+- **Vibrato rate** goes ×(1 + 0.12 · Shaping · (0.5 − strength)): faster on
+  weak notes (Timmers & Desain, KB ref 65).
+
+**Bow weight** (player doc §1.4): the hand balances the bow's weight
+imperfectly. Force is +6% at the frog and −6% at the tip, plus ±3% per
+stroke, so down-bows from the frog start a little heavier [T].
+
+**Spiccato length** follows the note rate (the time between keys): contact
+and stroke ×0.7 at 9 notes/s, up to ×1.5 at 3/s [T].
+
+**`Portamento`** (default 0.3; player doc §3.3) [T]:
+- Applies to slurred shifts of a third or more, after a slow key gap
+  (0.3–0.8 s).
+- The slide is up to ×7 longer at 1: none in fast passages.
+- A slurred B4→E5 on the A string, keys 1 s apart: 33 ms at 0, 66 ms at
+  0.3, 141 ms at 1. Keys 0.25 s apart: 33 ms at any setting.
 
 ## Articulations (KB §11)
 

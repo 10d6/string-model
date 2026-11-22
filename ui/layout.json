@@ -102,6 +102,9 @@
           "param": "bow.legato"
         },
         {
+          "param": "bow.metric"
+        },
+        {
           "param": "artic.tremRate"
         }
       ]
@@ -134,6 +137,9 @@
         },
         {
           "param": "finger.shift"
+        },
+        {
+          "param": "finger.portamento"
         },
         {
           "param": "finger.intonation"
