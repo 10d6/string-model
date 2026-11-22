@@ -50,7 +50,7 @@ cmake -S . -B build -G Ninja && cmake --build build
 ./build/stringmodel_render --check . --out build/renders
 ./build/stringmodel_render tests/chord.json --out x.wav
 ./build/stringmodel_render --params
-python3 synthkit/tools/stress.py build/stringmodel_render 300   # random playing: every note must stop (API.md §10)
+python3 synthkit/tools/stress.py build/stringmodel_render 300 --tail 5   # random playing: every note must stop (API.md §10); plucked open strings ring > 3 s
 
 # the model, offline (docs/MODEL.md)
 ./build/string_lab sweep 1 62 0.13                 # Schelleng map, open D
