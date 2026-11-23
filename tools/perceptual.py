@@ -182,6 +182,7 @@ def distance(Pr, rr, Pm, rm):
 
 def shape(P, on, rel):
     """Two things the score can't see, reported beside it:
+    (ring, the vibrato's steady centre line, is in ring())
     rise    ms from the onset until the level is within 3 dB of the sustain's (soft bowed
             notes swell: the recordings take 150-190 ms at pp-mp)
     shimmer the sustain's level fluctuation per band (std over time of 20 ms-smoothed band
@@ -201,6 +202,30 @@ def shape(P, on, rel):
         band = (CENTRES > 1000) & (CENTRES < 8000)
         out["shimmer"] = round(float(np.median(Ls.std(axis=0)[band])), 2)
     return out
+
+
+def ring(x, P, on, rel, f0):
+    """How far each partial's centre pitch stands above its vibrato's smear (dB): the max of the
+    long-term spectrum within 3 cents of the partial's centre over the median within 20 cents,
+    partials 2-8, median. A vibrato around a fixed centre leaves a steady line there, heard as a
+    ring like beating; the recordings' wanders (~7 dB)."""
+    a, b = on * HOP + 0.4, rel * HOP - 0.05
+    if b - a < 0.7:
+        return None
+    seg = x[int(a * SR):int(b * SR)]
+    N = 1 << 19
+    S = 10 * np.log10(np.abs(np.fft.rfft(seg * np.hanning(len(seg)), N)) ** 2 + 1e-20)
+    f = np.fft.rfftfreq(N, 1 / SR)
+    out = []
+    for k in range(2, 9):
+        if k * f0 > 9000:
+            break
+        c = 1200 * np.log2(np.maximum(f, 1) / (k * f0))
+        w = (c > -60) & (c < 60)
+        pw = 10 ** (S[w] / 10)
+        cc = (c[w] * pw).sum() / pw.sum()
+        out.append(S[np.abs(c - cc) < 3].max() - np.median(S[np.abs(c - cc) < 20]))
+    return round(float(np.median(out)), 2) if out else None
 
 
 def load(path):
@@ -254,6 +279,11 @@ def one(job):
         r[k + "_rec"] = v
     for k, v in shape(Pm, onm, relm).items():
         r[k + "_syn"] = v
+    f0 = 440 * 2 ** ((midi(note) - 69) / 12)
+    if midi(note) not in (55, 62, 69, 76):  # open strings don't vibrate in the synth
+        a, b = ring(x, Pr, onr, relr, f0), ring(y, Pm, onm, relm, f0)
+        if a is not None and b is not None:
+            r["ring_rec"], r["ring_syn"] = a, b
     return f"{note}_{dur}_{dyn}", r
 
 
@@ -270,7 +300,7 @@ def summarise(results, label=""):
     vals = {k: [r[k] for r in results.values() if r.get(k) is not None] for k in keys}
     line = "  ".join(f"{k} {np.median(v):5.1f}" for k, v in vals.items() if v)
     print(f"{label}median over {len(results)} notes:  {line}")
-    for k in ("rise", "shimmer"):
+    for k in ("rise", "shimmer", "ring"):
         rv = [r[k + "_rec"] for r in results.values() if k + "_rec" in r and k + "_syn" in r]
         sv = [r[k + "_syn"] for r in results.values() if k + "_rec" in r and k + "_syn" in r]
         if rv:

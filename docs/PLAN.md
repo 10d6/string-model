@@ -53,7 +53,8 @@ details: [MODEL.md](MODEL.md).
 | 6f | Low notes: a sharp low cut below A0 (G3's fundamental was 17 dB too strong), brightness that follows bow force (p darker, f brighter, as in the recordings) | done (#15) |
 | 7a | Directional body: per-mode radiation patterns (random spherical harmonics + the measured front-up beam), a spaced omni pair you place with Mic Angle and Mic Elevation, the default reproducing the earlier sound | done (#16) |
 | 7b | Distance and the room: Mic Distance (1/r direct, the room stays, re-gained), the room fed by the power response, player shadowing | done (#17) |
-| — | The perceptual distance to the Philharmonia recordings (tools, #18); the attack swell, its first fix (**this PR**) | |
+| — | The perceptual distance to the Philharmonia recordings (tools, #18); the attack swell, its first fix (#19) | done |
+| — | Shimmer: a sharper, denser upper body (48/oct, Q 80), vibrato defaults 26 cents after 0.1 s, the vibrato's centre wanders (no more ring) (**this PR**; Bow Wander tried and left out) | |
 | 7c | Next: close mics: the near field (equivalent sources) and the bow-noise source, mic types with proximity effect, presets. (Swapped with the old 7b: at 1.5 m a cardioid's proximity boost starts ~20 Hz, so mic types only matter close.) | |
 | 7 | Mic placement and room: close / studio / overhead / room positions (KB §12.3–12.4), near-field sources and bow noise for close mics, the room fed by the body's power response (darker, smoother), the room's level per output | |
 | 8 | Cello: Kaplan string data, body with a strong ~175 Hz mode (the wolf note should appear by itself, plus a "wolf eliminator"), heavier bow. Then viola/bass | |
@@ -76,12 +77,14 @@ details: [MODEL.md](MODEL.md).
 
 - **From the perceptual distance (Philharmonia, docs/EVALUATION.md), by size:**
   1. ~~Soft attacks~~: done (the attack swell): 53.4 → 41.6, attack 72 → 47.
-  2. Shimmer: the recordings' sustain fluctuates 2.9 dB per band, the
-     synth's 1.6, and a wider vibrato barely helps (1.6). Candidates: the
-     bow's own unsteadiness (force/speed drift), sharper body peaks.
-  3. Vibrato style: this player ~31 cents p-p from the onset; the synth's
-     default is VSCO's calmer 16 cents after 0.25 s. Players also finger notes
-     that would be open strings when they want vibrato.
+  2. ~~Shimmer~~: mostly done (the shimmer PR): band against band 0.85 → 1.56 dB
+     (recordings 2.55). Bow Wander (a drifting bow under the player's
+     corrections) was tried and left out: the level sagged, and at a steady
+     level the owner wasn't convinced. The rest: rooms (the recordings'
+     studio adds some), players' larger vibrato, their note shaping.
+  3. Vibrato: defaults moved to 26 cents after 0.1 s; its centre now
+     wanders, so it no longer rings (ring 11.7 → 8.3 dB, recordings ~7). Still open:
+     players finger notes that would be open strings when they want vibrato.
   4. The calibration target: VSCO's mics are ~7 dB brighter above 500 Hz than
      Philharmonia's; the synth follows VSCO. Choose (or average) deliberately.
 

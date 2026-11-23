@@ -196,10 +196,12 @@
       ]
     },
     {
-      "kit": "voices"
+      "kit": "voices",
+      "controls": []
     },
     {
-      "kit": "master"
+      "kit": "master",
+      "controls": []
     }
   ],
   "paramInfo": {
@@ -234,7 +236,7 @@
     "bow.noise": "The bow hair's rosin noise: the slight hiss and grain of a real bow. 0 is a clean, synthetic string.",
     "vib.depth": "Vibrato width in cents (peak to peak) at a medium dynamic. Louder notes vibrate a little wider and faster, as players do. Open strings get none.",
     "vib.rate": "Vibrato speed. Players use about 5 to 7 Hz; it drifts a little from cycle to cycle.",
-    "vib.delay": "How long a note sounds straight before the vibrato starts; it then fades in over about a third of a second. Short notes in a fast passage may end before it starts.",
+    "vib.delay": "How long a note sounds straight before the vibrato starts; it then fades in over about a third of a second. Recorded players vibrate from the start of the note, so the default is short (0.1 s).",
     "room.mix": "How much of the room you hear (with the Modelled output, at the default 1.5 m; further away there's more). The room hears the violin's sound in every direction, not just toward the mics, so it's darker and smoother than the direct sound. 100% in the Hall is about what a real hall gives at 1.5 m.",
     "room.space": "The kind of room: from a small room to a cathedral, or a plate reverb.",
     "body.a0": "The body's air resonance (around 280 Hz, the 'A0' mode): the depth and warmth of the low strings. Its strength is the one measured trait that goes with violins players rate highly.",
