@@ -5,7 +5,7 @@ How each part of String Model is measured, the numbers it measured at last
 from the repo root after `cmake --build build` (Release). Python tools take
 `RENDER=path/to/stringmodel_render` to measure another build.
 
-## Reference numbers (as of the slurs PR, after Phase 6 and PRs #10–#13)
+## Reference numbers (as of the low-notes PR, after Phase 6 and PRs #10–#14)
 
 | What | Command | Last result |
 |---|---|---|
@@ -23,6 +23,8 @@ from the repo root after `cmake --build build` (Release). Python tools take
 | Pizzicato decay | `python3 tools/pizz_decay.py "<VSCO>/Strings/Solo Violin/Pizz"` | score 0.93 (1 polarisation: 1.71) |
 | Articulation pitch | `python3 tools/note_pitch.py tests/spiccato.json` (any scenario) | spiccato/sautillé within ~10–15 cents; the first note from rest can read flat in an 80 ms window |
 | Bow-change gap | `LAB_HF=1 tools/bow_change_gap.sh 69` | A4 mf: ~15 ms more than 6 dB down |
+| Low end vs VSCO | fundamental (h1) re harmonics 3–8, synth − real, mean of p and f | G3 +2.7, A3 +1.7, C4 −10.7, E4 −1.9 dB (was +17.1, +7.9) |
+| Brightness vs dynamics | f − p band levels above 4 kHz, synth − real, median G3–E5 | 4–8 kHz −2.1, 8–16 kHz −0.4 dB (was −7.3, −8.0) |
 | Slurs | `./build/stringmodel_render tests/slurs.json` + a 1 ms-hop pitch track (12 ms windows) | finger changes 2–4 ms (was 10–14), shifts 5–11 ms in a fast scale; onsets 1–2 dB above `main`'s, no clicks |
 | Bowing to the meter | `./build/bowing_lab 0.5 92 3 4 < events` (see the file's header) | pickups up-bow from mid-bow, downbeats down-bow, alternation, no mid-note rebows in phrases |
 | Browser speed | `node synthkit/web/test/bench-web.cjs build-web/web/stringmodel.html tests/chord.json` (Release build!) | ~7× realtime with the room, ~12× without |
@@ -108,6 +110,15 @@ from the repo root after `cmake --build build` (Release). Python tools take
   didn't reproduce locally (CI's seed, six others, and an ASan/UBSan build
   were all clean) and passed on re-run. Build sanitizer plugins with `-j 2`
   (the compiler runs out of memory otherwise).
+- **"Buzzy" can mean the wrong thing is loud, not that there's noise.** The
+  low notes sounded like too much bow noise, but their noise between
+  harmonics was *below* the recordings'. Two spectral faults did it: a G3
+  fundamental 17 dB too strong under a sawtooth (synth-like), and a top
+  octave that didn't darken at p. Compare per harmonic and per band against
+  the VSCO notes, p and f separately, before reaching for the noise knobs.
+  And check a filter in place: the radiation's own fit hid how much its
+  band-pass skirts leaked below A0 until `radiation_lab` was read relative
+  to the 250 Hz band.
 - **A new rule can open an old path.** Slur Range made "back to the key still
   held" take a new bow when it was a wide leap; in pizzicato that started a
   bowed stroke that never lifted (the stress test caught it at −40 dBFS 5 s

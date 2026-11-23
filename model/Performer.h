@@ -114,6 +114,7 @@ class Performer {
     dir_ = -1.f;
     bowPos_ = 0.15f;
     hand_ = 2.f;
+    bright_ = 0.f;
     for (int s = 0; s < 4; ++s) {
       force_[s] = 0.f;
       bowed_[s] = false;
@@ -431,6 +432,8 @@ class Performer {
 
   float beta() const { return betaT_; }
   float forceOn(int s) const { return force_[s]; }
+  // Bow force re mf on the players' line, in octaves (smoothed; 0 unbowed).
+  float brightness() const { return bright_; }
   float bowVelocity() const { return vb_; }
   int currentString() const { return str_; }
   int chordSize() const { return chordN_; }
@@ -446,6 +449,16 @@ class Performer {
     dynIn_ += (c.dynamics - dynIn_) * k;
     pressureIn_ += (c.pressure - pressureIn_) * k;
     contactIn_ += (c.contact - contactIn_) * k;
+    // Brightness drive: the bow force on the players' line, in octaves re mf
+    // (dynamics 0.557, the middle of the p/f pair the radiation was fitted on).
+    // f ~ e^(3.62 d) x 2^(1.5 pressure) x 2^(2.09 contact) (computeTargets:
+    // vb ~ e^(1.4 d), vb/beta ~ e^(3 d), f ~ vb^-0.39 (vb/beta)^1.39; the
+    // contact moves beta by 2^(-1.5 c)). Not bowing: neutral. ~20 ms glide.
+    {
+      const bool bowed = bowing_ && art_ != kPizzicato;
+      const float want = bowed ? std::clamp(5.23f * (dyn_ - 0.557f) + 1.5f * pressureIn_ + 2.09f * contactIn_, -3.f, 3.f) : 0.f;
+      bright_ += (want - bright_) * (1.f - std::exp(-dtControl / 0.02f));
+    }
     // Open-string bow allowance: eases in and out with the bow (~30 ms).
     const float ka = 1.f - std::exp(-dtControl / 0.03f);
     for (int st = 0; st < 4; ++st) {
@@ -1169,6 +1182,7 @@ class Performer {
   float rollStart_ = 0.f;
   float vel_now_ = 0.7f;
   float dynIn_ = 0.55f, pressureIn_ = 0.f, contactIn_ = 0.f;  // smoothed controls
+  float bright_ = 0.f;  // brightness drive, octaves of force re mf
   bool primed_ = false;
   bool bowing_ = false, changing_ = false, rounding_ = false;
   float revFrom_ = 0.f, revStart_ = 0.f, revT_ = 0.06f, strokeForce_ = 1.f, turnAt_ = 0.03f;

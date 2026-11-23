@@ -13,6 +13,7 @@
 #include <vector>
 #include "../model/Radiation.h"
 #include "../model/data/ViolinRadiation.h"
+#include "../model/defs/Violin.h"
 using namespace sm;
 // Mean power (dB) of the two channels over a 1/3-octave band centred at c.
 static double bandDb(const Radiation& rad, float c) {
@@ -32,7 +33,7 @@ static void settle(Radiation& rad, const RadiationSettings& s) {
 int character(int argc, char** argv) {
   const float fs = 48000.f;
   Radiation rad;
-  rad.prepare(fs, data::kViolinRadiationHz, data::kViolinRadiationDb, data::kViolinRadiationCount, 0x5717a1u, 2600.f, 230.f);
+  rad.prepare(fs, data::kViolinRadiationHz, data::kViolinRadiationDb, data::kViolinRadiationCount, 0x5717a1u, 2600.f, sm::violin().radiationLowCut);
   std::vector<float> bands;
   for (int b = -9; b <= 10; ++b) bands.push_back(1000.f * std::pow(2.f, b / 3.f));
   std::vector<double> base;
@@ -75,7 +76,7 @@ int main(int argc, char** argv) {
   if (argc > 1 && !std::strcmp(argv[1], "character")) return character(argc, argv);
   const float fs = argc > 1 ? static_cast<float>(std::atof(argv[1])) : 48000.f;
   Radiation rad;
-  rad.prepare(fs, data::kViolinRadiationHz, data::kViolinRadiationDb, data::kViolinRadiationCount, 0x5717a1u, 2600.f, 230.f);
+  rad.prepare(fs, data::kViolinRadiationHz, data::kViolinRadiationDb, data::kViolinRadiationCount, 0x5717a1u, 2600.f, sm::violin().radiationLowCut);
   std::printf("%d modes at %.0f Hz\n  band   target   model   L-R rms   fine-structure sd (L)\n", rad.modeCount(), fs);
   for (int b = -9; b <= 10; ++b) {
     const float c = 1000.f * std::pow(2.f, b / 3.f);
