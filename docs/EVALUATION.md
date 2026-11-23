@@ -5,7 +5,7 @@ How each part of String Model is measured, the numbers it measured at last
 from the repo root after `cmake --build build` (Release). Python tools take
 `RENDER=path/to/stringmodel_render` to measure another build.
 
-## Reference numbers (as of the open-strings PR, after Phase 6 and PRs #10–#12)
+## Reference numbers (as of the slurs PR, after Phase 6 and PRs #10–#13)
 
 | What | Command | Last result |
 |---|---|---|
@@ -16,13 +16,14 @@ from the repo root after `cmake --build build` (Release). Python tools take
 | Force window | `python3 tools/calibrate_force.py` (~25 min) | every row straddles 0 (margin ≥ 0.2) |
 | Radiation residual | `python3 tools/radiation_target.py "<VSCO>/Strings/Solo Violin/Arco Vib" build/stringmodel_render - 3` | matches Phase 5 within ~1 dB per band. The bands at 1.26, 2, 3.2 and 4 kHz were already off since Phase 3/5 (few notes per band) |
 | Body controls | `./build/radiation_lab character` | Air +9 → +6 dB at 250 Hz; Nasality +9 → +7–8 dB at 0.8–1.3 kHz; Brilliance +9 → +6–9 dB at 2–3.2 kHz; Softness 12 → −10 dB above 6 kHz; Voice ±10% moves 400–800 Hz bands 5–7 dB |
-| Open strings in tune | `python3 tools/open_strings.py` | within ±1 cent at mf, ±3.4 from pp to ff |
+| Open strings in tune | `python3 tools/open_strings.py` | within ±1 cent at mf, ±3.9 from pp to ff (E at ff; −3.4 with `bow.auto` on, as before: its bow change fell in the window) |
 | Harmonics | `python3 tools/harmonics_tuning.py` | within ±3 cents (B6 −5), fundamental 30–65 dB down |
 | Intonation Style | `python3 tools/intonation_check.py` | style 1 vs 0: C# +8, F# +6, B +4, G −4; double stops pure (third −14, sixths +14) |
 | Vibrato Shaping | `python3 tools/vibrato_extent.py` | B6 wider (20 → 22 cents); B4 after a fast run 5 cents, full (18) within ~1 s |
 | Pizzicato decay | `python3 tools/pizz_decay.py "<VSCO>/Strings/Solo Violin/Pizz"` | score 0.93 (1 polarisation: 1.71) |
 | Articulation pitch | `python3 tools/note_pitch.py tests/spiccato.json` (any scenario) | spiccato/sautillé within ~10–15 cents; the first note from rest can read flat in an 80 ms window |
 | Bow-change gap | `LAB_HF=1 tools/bow_change_gap.sh 69` | A4 mf: ~15 ms more than 6 dB down |
+| Slurs | `./build/stringmodel_render tests/slurs.json` + a 1 ms-hop pitch track (12 ms windows) | finger changes 2–4 ms (was 10–14), shifts 5–11 ms in a fast scale; onsets 1–2 dB above `main`'s, no clicks |
 | Bowing to the meter | `./build/bowing_lab 0.5 92 3 4 < events` (see the file's header) | pickups up-bow from mid-bow, downbeats down-bow, alternation, no mid-note rebows in phrases |
 | Browser speed | `node synthkit/web/test/bench-web.cjs build-web/web/stringmodel.html tests/chord.json` (Release build!) | ~7× realtime with the room, ~12× without |
 | Browser vs native | CI (`tests/chord.json`, limit −40 dB) | ~−70 dB |
@@ -107,5 +108,12 @@ from the repo root after `cmake --build build` (Release). Python tools take
   didn't reproduce locally (CI's seed, six others, and an ASan/UBSan build
   were all clean) and passed on re-run. Build sanitizer plugins with `-j 2`
   (the compiler runs out of memory otherwise).
+- **A new rule can open an old path.** Slur Range made "back to the key still
+  held" take a new bow when it was a wide leap; in pizzicato that started a
+  bowed stroke that never lifted (the stress test caught it at −40 dBFS 5 s
+  after release). `main` had the same bug with Legato Slurs off. Run the
+  stress test after any change to the key logic, and find the cause with a
+  replay of its passage into the model (`#define private public`, print the
+  performer's state).
 - **CodeQL** flags `float * float` converted to `double` in the labs: cast
   one operand first (`static_cast<double>(a) * b`).

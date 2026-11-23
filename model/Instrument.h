@@ -148,6 +148,7 @@ class Instrument {
     const float vb = perf_.tickSample(pc);
     for (int s = 0; s < 4; ++s) {
       pluck_[s] = perf_.pluckForce(s);
+      tap_[s] = perf_.fingerTap(s);
       pluckV_[s] = perf_.pluckForceVertical(s);
     }
     float x[4];
@@ -180,7 +181,7 @@ class Instrument {
       const float fb = target_[s].force;
       const float damp = target_[s].damp;
       zs += st.z0();
-      active_[s] = !st.asleep() || fb > 0.f || bridgeMoving || damp > 0.f || windAmp_[s] > 0.f || pluck_[s] != 0.f;
+      active_[s] = !st.asleep() || fb > 0.f || bridgeMoving || damp > 0.f || windAmp_[s] > 0.f || pluck_[s] != 0.f || tap_[s] != 0.f;
       if (!active_[s]) continue;
       any = true;
       st.wake();
@@ -192,7 +193,8 @@ class Instrument {
       // through the neck and the string's other wave types) [T].
       float wn = 0.f;
       if (windAmp_[s] > 0.f) wn = windAmp_[s] * windBp_[s].process(2.f * noise - 1.f);
-      st.setFingerNoise(wn);
+      // A finger landing or lifting (slurs) taps the string at the finger.
+      st.setFingerNoise(wn + tap_[s]);
       direct += st.z0() * wn;
       S += 2.f * st.z0() * st.step(vb, fb, ic.friction, ic.noise, noise, damp, pluck_[s]);
       // Intonation: slip onsets mark periods in Helmholtz motion.
@@ -289,6 +291,7 @@ class Instrument {
   float uPrev_ = 0.f;
   BandPass windBp_[4];
   float pluck_[4]{};
+  float tap_[4]{};  // finger taps (m/s at the finger), per host sample
   float windAmp_[4]{};
   StringTarget target_[4];
   float host_ = 48000.f, fs_ = 96000.f;

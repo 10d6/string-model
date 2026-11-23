@@ -2,8 +2,13 @@
 // finger motion for the physics.
 //
 // - Monophonic, last-note priority. Overlapping keys slur (same bow, finger
-//   change); a new key after all keys are up is a new stroke in the other
-//   bow direction. With legato off every key is a bow change (détaché).
+//   change) when the interval is within the slur range; a new key after all
+//   keys are up is a new stroke in the other bow direction. With legato off
+//   every key is a bow change (détaché).
+// - The left hand has a position (KB §11.2, player doc §3.3): a slurred note
+//   within its reach is a finger change (hammer-on / lift-off: the pitch
+//   switches in 2-3 ms with a small tap or pluck); one out of reach is a
+//   shift: the old finger slides with the hand, then the new finger lands.
 // - Keys pressed together (within the chord window) become a double stop on
 //   two adjacent strings sharing the bow, or a rolled chord for three or four
 //   (KB §11.2: the lower pair first, then onto the upper pair).
@@ -37,6 +42,7 @@ struct PerformerControls {
   float contact = 0.f;        // -1 tasto .. +1 ponticello
   float bite = 0.3f;          // 0..1 attack harshness
   bool legato = true;
+  float slurRange = 12.f;     // semitones: overlapping keys further apart take a new bow
   float bowChange = 0.02f;    // s, reversal time (full speed one way to the other)
   float vibDepth = 16.f;      // cents, peak-to-peak at mf
   float vibRate = 5.5f;       // Hz
@@ -48,7 +54,7 @@ struct PerformerControls {
   float autoChangeVary = 1.f;  // 0..1: automatic bow changes vary (turn point, time, force) [T]
   float changeWidth = 1.f;    // force is back to full at this fraction of the target speed [T]
   float sustainSpeed = 0.6f;  // long notes: bow speed after the attack, x attack speed
-  bool autoChange = true;     // change bow at the tip/frog; off = an endless bow
+  bool autoChange = false;    // change bow at the tip/frog; off = an endless bow
   float sustainBetaMin = 0.06f;  // long notes move toward the bridge no closer than this [T]
   float minAccel = 2.5f;      // m/s^2, floor on attack acceleration: below ~2 soft notes take 0.25 s to speak [T]
   float chordWindow = 0.035f; // s: keys pressed within this are one chord
@@ -107,17 +113,20 @@ class Performer {
     vb_ = 0.f;
     dir_ = -1.f;
     bowPos_ = 0.15f;
+    hand_ = 2.f;
     for (int s = 0; s < 4; ++s) {
       force_[s] = 0.f;
       bowed_[s] = false;
-      fingerFrom_[s] = fingerTo_[s] = static_cast<float>(def_->strings[s].openNote);
-      shiftT_[s] = 1.f;
+      placeFinger(s, static_cast<float>(def_->strings[s].openNote));
       stopped_[s] = false;
       offTime_[s] = 0.f;
       fingerOffAt_[s] = 0.f;
       fFactor_[s] = 1.f;
       pluckStart_[s] = -1.f;
       pluckNow_[s] = 0.f;
+      tapStart_[s] = -1.f;
+      tapNow_[s] = 0.f;
+      tapPending_[s] = 0.f;
       touchQ_[s] = 0.f;
     }
     art_ = kArco;
@@ -183,7 +192,9 @@ class Performer {
     // Martelé and spiccato strokes are separate by nature; tremolo and
     // harmonics slur like arco.
     const bool canSlur = c.articulation == kArco || c.articulation == kTremolo || c.articulation == kHarmonics;
-    const bool slur = bowing_ && c.legato && note_ >= 0 && !wasStopping && canSlur && art_ == c.articulation;
+    // Wider leaps than the slur range take a new bow.
+    const bool close = note_ >= 0 && std::abs(note - note_) <= static_cast<int>(std::lround(c.slurRange));
+    const bool slur = bowing_ && c.legato && close && !wasStopping && canSlur && art_ == c.articulation;
     if (!slur) art_ = c.articulation;
     play(note, vel, slur, c);
   }
@@ -222,7 +233,11 @@ class Performer {
     if (!wasTop) return;
     if (nHeld_ > 0) {
       // Back to the previous held key, slurred.
-      play(held_[nHeld_ - 1], vel_[nHeld_ - 1], c.legato, c);
+      // Back to the previous held key: slurred if close enough, else a new
+      // bow. A plucked note isn't re-sounded (the string just rings).
+      if (art_ == kPizzicato) return;
+      const int back = held_[nHeld_ - 1];
+      play(back, vel_[nHeld_ - 1], c.legato && std::abs(back - note_) <= static_cast<int>(std::lround(c.slurRange)), c);
     } else {
       release(relVel, c);
     }
@@ -320,8 +335,31 @@ class Performer {
       vibRateJit_ = 1.f + 0.05f * bipolar();
       vibDepthJit_ = 1.f + 0.15f * bipolar();
     }
-    for (int s = 0; s < 4; ++s)
-      if (shiftT_[s] < 1.f) shiftT_[s] = std::min(1.f, shiftT_[s] + dt / shiftDur_[s]);
+    for (int s = 0; s < 4; ++s) {
+      if (shiftT_[s] < 1.f) {
+        shiftT_[s] = std::min(1.f, shiftT_[s] + dt / shiftDur_[s]);
+      } else if (dropT_[s] < 1.f) {
+        // The slide has arrived: the new finger lands (or lifts) now.
+        if (tapPending_[s] != 0.f) {
+          tapStart_[s] = now_;
+          tapAmp_[s] = tapPending_[s];
+          tapPending_[s] = 0.f;
+        }
+        dropT_[s] = std::min(1.f, dropT_[s] + dt / dropDur_[s]);
+      }
+    }
+    // Finger taps: a raised-cosine velocity pulse at the finger.
+    for (int s = 0; s < 4; ++s) {
+      tapNow_[s] = 0.f;
+      if (tapStart_[s] < 0.f) continue;
+      const float t = now_ - tapStart_[s];
+      if (t < kTapDur) {
+        const float x = std::sin(3.14159265f * t / kTapDur);
+        tapNow_[s] = tapAmp_[s] * x * x;
+      } else {
+        tapStart_[s] = -1.f;
+      }
+    }
     // Plucks: the finger loads the string (force rises over 10-25 ms), then
     // slips off (falls in 1-2.5 ms) (KB §11.2 "Pizzicato").
     for (int s = 0; s < 4; ++s) {
@@ -345,6 +383,9 @@ class Performer {
   // The pluck splits between the polarisations by its angle.
   float pluckForce(int s) const { return pluckNow_[s] * pluckDir_[s] * pluckCos_[s]; }
   float pluckForceVertical(int s) const { return pluckNow_[s] * pluckSin_[s]; }
+  // Per sample: a landing or lifting finger's pulse on string s (m/s, added
+  // at the finger end).
+  float fingerTap(int s) const { return tapNow_[s]; }
 
   // At control rate: pitch, vibrato and force targets per string.
   void strings(StringTarget out[4], const PerformerControls& c) const {
@@ -380,7 +421,7 @@ class Performer {
       out[s].slide = 0.f;
       if (shiftT_[s] < 1.f && stopped) {
         const float t = shiftT_[s];
-        const float dndt = (fingerTo_[s] - fingerFrom_[s]) * 6.f * t * (1.f - t) / shiftDur_[s];
+        const float dndt = (fingerVia_[s] - fingerFrom_[s]) * 30.f * t * t * (1.f - t) * (1.f - t) / shiftDur_[s];
         const float pos = n - static_cast<float>(def_->strings[s].openNote);
         const float dxdn = def_->scaleLength * 0.0577623f * std::pow(2.f, -pos / 12.f);  // L ln2/12 2^(-p/12)
         out[s].slide = std::fabs(dxdn * dndt);
@@ -431,8 +472,7 @@ class Performer {
       if (!stopped_[s] || (!due && (bowed_[s] || s == str_))) continue;
       if (due || now_ - offTime_[s] >= c.fingerLift) {
         stopped_[s] = false;
-        fingerFrom_[s] = fingerTo_[s] = static_cast<float>(def_->strings[s].openNote);
-        shiftT_[s] = 1.f;
+        placeFinger(s, static_cast<float>(def_->strings[s].openNote));
       }
     }
   }
@@ -551,8 +591,7 @@ class Performer {
       const int s = best + j;
       chordStr_[j] = s;
       chordNote_[j] = notes[j];
-      fingerFrom_[s] = fingerTo_[s] = static_cast<float>(notes[j]);
-      shiftT_[s] = 1.f;
+      placeFinger(s, static_cast<float>(notes[j]));
       stopped_[s] = notes[j] != def_->strings[s].openNote;
     }
     tuneChord(n, c);
@@ -630,25 +669,60 @@ class Performer {
     }
     const bool open = static_cast<int>(n) == def_->strings[s].openNote;
     if (!open) n += 0.01f * c.intonStyle * (melodicCents(note) + leadingToneLift(note));  // the sounding note's tuning
-    // Finger: shift on the same string while sounding; jump otherwise.
+    // Finger (KB §11.2, player doc §3.3). Slurred on a sounding string:
+    // within the hand's reach (or to/from the open string) a finger lands or
+    // lifts; out of reach the hand shifts: the old finger slides with it,
+    // then the new finger lands (Flesch's L-type; the same finger if the
+    // slide reaches the note). Otherwise the finger is placed silently.
+    const float openN = static_cast<float>(def_->strings[s].openNote);
+    const float k = n - openN;
     const bool sounding = force_[s] > 0.f || (s == str_ && bowing_);
     if (sounding && slur) {
-      fingerFrom_[s] = currentFinger(s);
+      const float from = currentFinger(s);
+      const float kFrom = from - openN;
+      const bool up = k > kFrom;
+      fingerFrom_[s] = fingerVia_[s] = from;
       fingerTo_[s] = n;
-      const float interval = std::fabs(n - prevNote);
-      // A gentle key slides slowly and expressively, a hard one shifts quickly
-      // (x1.4 at velocity 0.2, x1 at 0.5, x0.4 at 1).
-      const float speed = std::clamp(1.6f - 1.2f * vel, 0.4f, 1.4f);
-      shiftDur_[s] = 0.008f + c.shiftTime * std::min(1.f, interval / 5.f) * speed;
-      // Portamento (player doc §3.3): on slow slurred leaps of a third or
-      // more, an audible slide, up to x7 longer: none in fast passages [T].
-      const float slow = std::clamp((gapRaw_ - 0.3f) / 0.5f, 0.f, 1.f);
-      const float leap = std::clamp((interval - 2.f) / 5.f, 0.f, 1.f);
-      shiftDur_[s] *= 1.f + 6.f * c.portamento * slow * leap;
-      shiftT_[s] = 0.f;
-    } else {
-      fingerFrom_[s] = fingerTo_[s] = n;
       shiftT_[s] = 1.f;
+      dropT_[s] = 0.f;
+      dropDur_[s] = up ? 0.002f : 0.003f;
+      tapPending_[s] = tapFor(up, vel);
+      if (open || kFrom < 0.5f || (inReach(k) && inReach(kFrom))) {
+        // A finger change. A stopped note out of reach after the open string:
+        // the hand moved while the open string sounded.
+        if (!open && !inReach(k)) hand_ = handFor(k, up);
+      } else {
+        const float newHand = handFor(k, up);
+        float via = from + (newHand - hand_);
+        via = up ? std::min(via, n) : std::max(via, n);  // never past the note
+        hand_ = newHand;
+        fingerVia_[s] = via;
+        const float slideSt = std::fabs(via - from);
+        const float interval = std::fabs(n - prevNote);
+        // A gentle key slides slowly and expressively, a hard one shifts quickly
+        // (x1.4 at velocity 0.2, x1 at 0.5, x0.4 at 1).
+        const float speed = std::clamp(1.6f - 1.2f * vel, 0.4f, 1.4f);
+        shiftDur_[s] = 0.008f + c.shiftTime * std::min(1.f, slideSt / 5.f) * speed;
+        // Portamento (player doc §3.3): on slow slurred leaps of a third or
+        // more, an audible slide, up to x7 longer: none in fast passages [T].
+        const float slow = std::clamp((gapRaw_ - 0.3f) / 0.5f, 0.f, 1.f);
+        const float leap = std::clamp((interval - 2.f) / 5.f, 0.f, 1.f);
+        shiftDur_[s] *= 1.f + 6.f * c.portamento * slow * leap;
+        shiftT_[s] = slideSt > 0.01f ? 0.f : 1.f;
+        if (std::fabs(n - via) < 0.01f) {
+          dropT_[s] = 1.f;  // the same finger: it just arrives
+          tapPending_[s] = 0.f;
+        }
+      }
+      // A finger change with no slide lands at once.
+      if (shiftT_[s] >= 1.f && tapPending_[s] != 0.f) {
+        tapStart_[s] = now_;
+        tapAmp_[s] = tapPending_[s];
+        tapPending_[s] = 0.f;
+      }
+    } else {
+      placeFinger(s, n);
+      if (!open && !inReach(k)) hand_ = handFor(k, k > hand_);
     }
     stopped_[s] = !open;
     str_ = s;
@@ -805,7 +879,7 @@ class Performer {
       if (!stopped_[s]) continue;
       const int iv = chordNote_[j] - chordNote_[ref];
       const float cents = refCents + (iv >= 0 ? justCents(iv) : -justCents(-iv));
-      fingerFrom_[s] = fingerTo_[s] = static_cast<float>(chordNote_[j]) + 0.01f * c.intonStyle * cents;
+      placeFinger(s, static_cast<float>(chordNote_[j]) + 0.01f * c.intonStyle * cents);
     }
   }
 
@@ -820,10 +894,49 @@ class Performer {
     vibMeterK_ = meter_ >= 0.f ? 1.f + 0.12f * c.vibShape * (0.5f - meter_) : 1.f;
   }
 
+  // The slide follows a minimum-jerk curve, the usual model of a human
+  // point-to-point reach (Flash & Hogan 1985): it starts and lands more
+  // gently than a cubic S-curve [T]. A finger landing or lifting is a fast
+  // S-curve (KB §11.2: 1-3 ms).
   float currentFinger(int s) const {
-    const float t = shiftT_[s];
-    const float sc = t * t * (3.f - 2.f * t);
-    return fingerFrom_[s] + (fingerTo_[s] - fingerFrom_[s]) * sc;
+    if (shiftT_[s] < 1.f) {
+      const float t = shiftT_[s];
+      const float mj = t * t * t * (10.f + t * (6.f * t - 15.f));
+      return fingerFrom_[s] + (fingerVia_[s] - fingerFrom_[s]) * mj;
+    }
+    if (dropT_[s] < 1.f) {
+      const float t = dropT_[s];
+      return fingerVia_[s] + (fingerTo_[s] - fingerVia_[s]) * t * t * (3.f - 2.f * t);
+    }
+    return fingerTo_[s];
+  }
+
+  void placeFinger(int s, float n) {
+    fingerFrom_[s] = fingerVia_[s] = fingerTo_[s] = n;
+    shiftT_[s] = dropT_[s] = 1.f;
+    tapPending_[s] = 0.f;
+  }
+
+  // The hand's reach (KB §11.2; player doc §3.3): from a low first finger
+  // (one below the hand's place) to an extended fourth (five above). k:
+  // semitones above the open string. Positions are the same on every string.
+  bool inReach(float k) const {
+    const float r = std::round(k);
+    return r <= 0.f || (r >= hand_ - 1.f && r <= hand_ + 5.f);
+  }
+  // Where the hand goes for a note out of reach [T]: going up, the note
+  // lands on the third finger, so the old (lower) finger slides and a higher
+  // one drops (Flesch's L-type; from the third or fourth finger it is a
+  // same-finger slide); going down, on the second, so the old finger slides
+  // and lifts off onto the note.
+  static float handFor(float k, bool up) { return std::max(2.f, std::round(up ? k - 3.f : k - 2.f)); }
+
+  // A finger lands (hammer-on) or lifts sideways (lift-off, a small pluck) on
+  // a bowed string: a velocity pulse at the finger (KB §11.2) [T level]. The
+  // hammer-on mostly pushes the string toward the fingerboard (the other
+  // polarisation), so it is the weaker of the two here.
+  float tapFor(bool down, float vel) {
+    return (down ? kTapHammer : kTapLift) * (0.5f + vel) * (bipolar() < 0.f ? -1.f : 1.f);
   }
 
   // Bow-stroke templates, from Demoucron's measured strokes (KB §11.5).
@@ -910,8 +1023,7 @@ class Performer {
     float n = static_cast<float>(std::max(note, def_->strings[0].openNote - 7));
     stopped_[s] = note != def_->strings[s].openNote;
     if (stopped_[s]) n += 0.01f * c.intonStyle * melodicCents(note);
-    fingerFrom_[s] = fingerTo_[s] = n;
-    shiftT_[s] = 1.f;
+    placeFinger(s, n);
     for (float& q : touchQ_) q = 0.f;
     str_ = s;
     noteAge_ = 0.f;
@@ -1078,10 +1190,18 @@ class Performer {
   float pluckCos_[4]{1, 1, 1, 1}, pluckSin_[4]{};
   float pluckNow_[4]{}, pluckBeta_ = 0.2f;
   float touchQ_[4]{};
+  static constexpr float kTapDur = 0.0015f;   // s
+  static constexpr float kTapHammer = 0.05f;  // m/s at velocity 0.5 [T]
+  static constexpr float kTapLift = 0.09f;    // m/s at velocity 0.5 [T]
   static constexpr float kTouchR = 4.f;  // a light touch: R = 4 Z (KB: 1-10 Z) [T]
   bool bowed_[4]{};
   bool stopped_[4]{};
-  float fingerFrom_[4]{}, fingerTo_[4]{}, shiftT_[4]{1, 1, 1, 1}, shiftDur_[4]{0.03f, 0.03f, 0.03f, 0.03f};
+  // The stopping finger: a shift slides from -> via (shiftT_), then a finger
+  // lands or lifts via -> to (dropT_). A plain finger change has via = from.
+  float fingerFrom_[4]{}, fingerVia_[4]{}, fingerTo_[4]{}, shiftT_[4]{1, 1, 1, 1}, shiftDur_[4]{0.03f, 0.03f, 0.03f, 0.03f};
+  float dropT_[4]{1, 1, 1, 1}, dropDur_[4]{0.0025f, 0.0025f, 0.0025f, 0.0025f};
+  float tapStart_[4]{-1.f, -1.f, -1.f, -1.f}, tapAmp_[4]{}, tapNow_[4]{}, tapPending_[4]{};
+  float hand_ = 2.f;  // the first finger's place, semitones above the open string (2: first position)
   float noteAge_ = 0.f, now_ = 0.f, vibPhase_ = 0.f, vibCents_ = 0.f, vibRateNow_ = 5.5f, vibRateJit_ = 1.f,
         vibDepthJit_ = 1.f;
   uint32_t rng_ = 1;

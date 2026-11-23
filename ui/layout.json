@@ -102,6 +102,9 @@
           "param": "bow.legato"
         },
         {
+          "param": "bow.slurRange"
+        },
+        {
           "param": "bow.metric"
         },
         {
@@ -194,8 +197,8 @@
     "bow.bite": "How hard notes start: higher means a faster bow acceleration and a stronger accent on loud notes.",
     "bow.change": "How quickly the bow reverses, on detached notes and when a long note runs out of bow. Slower is more audible.",
     "bow.sustain": "On held notes the bow slows after the attack and moves toward the bridge to keep the same loudness, so it lasts longer between bow changes. 1 keeps the attack speed.",
-    "bow.auto": "On: a long note changes bow when the bow runs out (every few seconds, as a player would). Off: an endless bow.",
-    "bow.legato": "On: overlapping keys slur (same bow, the finger changes). Off: every note changes bow.",
+    "bow.auto": "On: a long note changes bow when the bow runs out (every few seconds, as a player would). Off (the default): an endless bow, so long notes never break.",
+    "bow.legato": "On: overlapping keys slur: the bow keeps going and the left hand changes the note. Within the hand's reach a finger lands or lifts (a quick, clean change); further away the hand shifts. Slur Range sets the widest interval that slurs. Off: every note changes bow.",
     "body.coupling": "How strongly the strings drive the bridge and body. It sets sympathetic ringing (open strings sound along with notes that match their harmonics) and how much the body loads the strings. 0: a rigid bridge.",
     "chord.window": "Keys pressed within this time of each other are one chord: two notes become a double stop on neighbouring strings, three or four are rolled.",
     "chord.roll": "How long the bow stays on each pair of strings when it rolls across a three- or four-note chord.",
@@ -207,10 +210,31 @@
     "body.resonance": "The low body resonances' peaks and dips, which make some notes louder than their neighbours (around C#5-D5 especially). 1: as measured on a real violin. 0: smoothed out, for an even instrument. (Modelled output.)",
     "out.width": "Stereo width of the body's upper range, where the two channels hear different patterns of resonances. 0: mono. (Modelled output.)",
     "bow.release": "How a note ends when you let go. Lift: the bow leaves and the string rings on. Stop on String: the bow stops on the string and damps it, for a short, clean end. Finger Off: the bow leaves, then the finger, so the note falls to the open string. Auto: a quick key-up stops, a gentle one lifts (needs a keyboard that sends key-up speed).",
-    "finger.shift": "How long a slurred shift slides. Bigger intervals slide longer, and key velocity sets the speed: a gentle key slides slowly and expressively, a hard one shifts quickly.",
+    "finger.shift": "How long a slurred shift slides, when a slurred note is out of the hand's reach (notes within reach are a quick finger change, with no slide). Bigger shifts slide longer, and key velocity sets the speed: a gentle key slides slowly and expressively, a hard one shifts quickly.",
     "finger.noise": "The whistle of the finger sliding over the string's winding during shifts (G, D and A strings; the steel E is plain).",
     "string.select": "Which string plays the notes. Auto picks the usual string. G, D, A or E play every note that string reaches (up to two octaves above it): sul G and sul D give a darker, more intense sound.",
-    "string.keys": "Keys C1 to E1 choose the string without sounding: C1 Auto, C#1 G, D1 D, D#1 A, E1 E."
+    "string.keys": "Keys C1 to E1 choose the string without sounding: C1 Auto, C#1 G, D1 D, D#1 A, E1 E.",
+    "instrument": "Which instrument plays. Violin for now; cello, viola and bass will be added here.",
+    "artic": "How new notes are bowed or played. Arco: ordinary bowing. Martelé: a bitten, accented stroke that stops on the string. Spiccato: off-the-string bounced notes. Tremolo: fast repeated bow strokes. Pizzicato: plucked. Harmonics: the finger touches the string lightly for a flute-like tone. Sautillé: a fast bouncing stroke, one note per bounce. Also on keys F1 to B1.",
+    "artic.tremRate": "Bow strokes per second for Tremolo (each stroke is one direction). Players measure around 12 per second.",
+    "bow.velSens": "How much key velocity changes each note's dynamics. At 0 every note follows the Dynamics knob; higher lets you shape phrases from the keys.",
+    "bow.atPressure": "How much aftertouch (key pressure) adds bow pressure, for a growl or crunch on demand.",
+    "bow.noise": "The bow hair's rosin noise: the slight hiss and grain of a real bow. 0 is a clean, synthetic string.",
+    "vib.depth": "Vibrato width in cents (peak to peak) at a medium dynamic. Louder notes vibrate a little wider and faster, as players do. Open strings get none.",
+    "vib.rate": "Vibrato speed. Players use about 5 to 7 Hz; it drifts a little from cycle to cycle.",
+    "vib.delay": "How long a note sounds straight before the vibrato starts; it then fades in over about a third of a second. Short notes in a fast passage may end before it starts.",
+    "room.mix": "How much of the room's reverb is added to the instrument.",
+    "room.space": "The kind of room: from a small room to a cathedral, or a plate reverb.",
+    "body.a0": "The body's air resonance (around 280 Hz, the 'A0' mode): the depth and warmth of the low strings. Its strength is the one measured trait that goes with violins players rate highly.",
+    "body.nasal": "The 0.8–1.5 kHz region: more gives a nasal, boxy tone typical of factory instruments; less sounds sweeter and more open.",
+    "body.brilliance": "The level of the bridge hill (around 2–3 kHz): presence and ring that carries in a hall. Bridge Hill sets its frequency.",
+    "body.softness": "Cuts the top above about 4 kHz for a softer, rounder sound. Below 0 it adds air and edge.",
+    "body.voice": "Moves all the body's resonances below 3 kHz up or down together, like a larger or smaller instrument: lower is darker and more alto-like, higher brighter and more soprano-like.",
+    "finger.style": "How the player tunes. 0: equal temperament. Higher: as string players do, by ear from the open strings: leading tones a little high, notes that match an open string tuned to it, double stops pure.",
+    "vib.shape": "How much the vibrato follows the music. 0: the same vibrato on every note. Higher: wider in high positions, narrower in fast passages (opening up on a held note), widening through long notes, a little faster on weak beats.",
+    "bow.metric": "How much the player follows the meter when a host transport is playing: stronger beats a little louder, down-bows on strong beats and up-bows on pickups. 0 plays every note evenly. Off without a playing transport.",
+    "finger.portamento": "Audible slides on slow, slurred shifts of a third or more, as in older or more romantic styles. 0 shifts cleanly; fast passages never slide.",
+    "bow.slurRange": "The widest interval that slurs. Overlapping keys further apart than this change bow instead, so only close notes are slurred. 24 slurs any leap."
   },
   "keyboard": true
 }

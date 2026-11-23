@@ -272,8 +272,11 @@ What this shows:
 ## Gesture layer (KB §7.3, §11.5)
 
 **Keys.** Last-note priority, plus double stops and chords:
-- Overlapping keys **slur**: the same bow, the finger shifts with an S-curve
-  over 8 ms + `Shift Time` × (interval / 5 st, max 1).
+- Overlapping keys **slur**: the same bow, and the left hand changes the note
+  (below). Keys further apart than `Slur Range` (1–24 semitones, default
+  12) take a new bow instead, so only close notes slur. Letting go of the top
+  key goes back to a key still held, by the same rule; in pizzicato it
+  re-sounds nothing.
 - A key played after all keys are up starts a **new stroke** in the other
   bow direction.
 - With `Legato Slurs` off, every key is a bow change.
@@ -342,8 +345,9 @@ re-attacks at bow changes get very hard near β 1/25 (KB §7.2). Allowed down
 to β 0.025, a bow change stayed > 6 dB down for ~90 ms.
 
 **Bow changes.** The bow position along the hair is tracked (62 cm). A long
-note changes bow at the tip or the frog; `Auto Bow Change` off gives an
-endless bow. A key-driven bow change (détaché) reverses in `Bow Change`
+note changes bow at the tip or the frog when `Auto Bow Change` is on; off
+(the default since the slurs PR, the owner's choice) gives an endless bow.
+The labs keep it on (`LAB_AUTO=0` turns it off in `instrument_lab`). A key-driven bow change (détaché) reverses in `Bow Change`
 (default 20 ms) at constant acceleration. An automatic change (the bow ran
 out) takes the same time but follows a half cosine through zero, like a
 tremolo reversal, so less of it is spent near zero speed. Each automatic
@@ -396,10 +400,45 @@ per-control-block smoothing made renders differ by 1.9 dB between block sizes.
   key-up speed send 64, which lifts.
 - A note played during a stop starts a new stroke from rest.
 
-**Shifts** (KB §11.2 "Shifts, portamento"). A slur on the same string slides
-the finger with an S-curve over 8 ms + `Shift Time` × min(1, interval/5 st)
-× (1.6 − 1.2·velocity) [T]: a gentle key slides slowly (×1.4 at 0.2), a hard
-one quickly (×0.4 at 1). The finger's speed along the string,
+**The left hand in a slur** (KB §11.2 "Left-hand articulation", "Shifts";
+player doc §3.3). Until this PR every slurred change slid the pitch over
+~10–20 ms, even a half step or a slur to and from an open string: a small
+portamento and a whoosh of winding noise on every note. A player slides only
+when the hand changes position. So the performer tracks the hand's place
+(the first finger's, in semitones above the open string; 2 is first
+position; the same on every string) [T]:
+- **Within reach** (from one below the hand's place, a low first finger, to
+  five above, an extended fourth), or to or from the open string: a **finger
+  change**. The pitch switches in 2 ms (a finger landing, hammer-on) or 3 ms
+  (lifting) with a fast S-curve (KB: 1–3 ms), with no slide, no lighter
+  finger and no winding noise. The landing finger taps the string and a
+  lifting one plucks it sideways: a 1.5 ms raised-cosine velocity pulse at
+  the finger end, 0.05 m/s (landing) or 0.09 m/s (lifting) × (0.5 +
+  velocity), random sign [T level]. The landing tap is the smaller because a
+  hammer-on mostly moves the other polarisation. Measured: the onset of a
+  change rises 1–2 dB above `main`'s (0–6 dB above the steady note, from the
+  string re-settling); no clicks.
+- **Out of reach: a shift** (Flesch's L-type). Going up, the hand moves so
+  the note lands on the third finger; going down, on the second. The old
+  finger slides with the hand, then the new finger lands (or, going down,
+  the old one lifts off onto it). If the slide reaches the note, it is a
+  same-finger slide. A note after an open string or a new bow moves the hand
+  silently.
+- **Measured** (`tests/slurs.json`-like phrases, 12 ms pitch windows): the
+  time from leaving the old pitch by 40 cents to within 40 cents of the new
+  went from a median of 10–11 ms to 4 ms (the window's limit) for finger
+  changes. A slurred A4→E5 (open string to fourth finger, slow keys) was a
+  59 ms slide up from the open string; it is now 3 ms. On a forced A string
+  a two-octave scale shifts twice per octave each way.
+
+**Shifts** (KB §11.2 "Shifts, portamento"). The slide takes 8 ms + `Shift
+Time` × min(1, slide/5 st) × (1.6 − 1.2·velocity) [T]: a gentle key slides
+slowly (×1.4 at 0.2), a hard one quickly (×0.4 at 1). It follows a
+minimum-jerk curve, 10t³ − 15t⁴ + 6t⁵, the usual model of a human
+point-to-point reach (Flash & Hogan 1985), which starts and lands more gently
+than the cubic S-curve it replaces [T]. A 5-semitone shift (B4→G5 on the A
+string, velocity 64) measures 40 ms, the fast end of the KB's 50–150 ms. The
+finger's speed along the string,
 v = |dx/dt| with x = L(1 − 2^(−p/12)) and L = 0.328 m, does two things:
 - **Lighter finger:** the stopped T60 is divided by (1 + 1.5 v) [T]. The
   note dips ~6 dB during a slow 5-semitone slide.
@@ -542,10 +581,10 @@ and stroke ×0.7 at 9 notes/s, up to ×1.5 at 3/s [T].
 
 **`Portamento`** (default 0.3; player doc §3.3) [T]:
 - Applies to slurred shifts of a third or more, after a slow key gap
-  (0.3–0.8 s).
+  (0.3–0.8 s); notes within the hand's reach never slide.
 - The slide is up to ×7 longer at 1: none in fast passages.
-- A slurred B4→E5 on the A string, keys 1 s apart: 33 ms at 0, 66 ms at
-  0.3, 141 ms at 1. Keys 0.25 s apart: 33 ms at any setting.
+- A slurred B4→G5 on the A string (a shift), keys 1 s apart: 40 ms at 0,
+  106 ms at 0.3, 264 ms at 1. Keys 0.25 s apart: 39 ms at any setting.
 
 ## Articulations (KB §11)
 

@@ -24,6 +24,8 @@ details: [MODEL.md](MODEL.md).
 - **Player habits on by default, at moderate settings** (the owner's choice):
   Intonation Style 0.7, Vibrato Shaping 0.7, Metric Emphasis 0.5,
   Portamento 0.3. Each has a control to turn it down.
+- **Auto Bow Change off by default** (the owner's choice): long notes are an
+  endless bow unless it is turned on.
 - **Plugin builds are off for PRs** (the owner's request). They run for `v*`
   tags (which publish a release) and when CI is run by hand with "plugins"
   ticked, for milestones.
@@ -46,7 +48,8 @@ details: [MODEL.md](MODEL.md).
 | 6a | Body character (KB §5.8): Air Resonance, Nasality, Brilliance, Softness, Voice, four body presets | done (#9 → #10) |
 | 6b | Player habits (instrument-research `player_technique_and_responsiveness.md`): Intonation Style (Pythagorean from the open strings, key estimated, double stops pure), Vibrato Shaping, double-stop weighting | done (#11) |
 | 6c | Meter and tempo: Metric Emphasis (accents, bowing to the meter with re-takes), bow weight frog/tip, spiccato length from the note rate, Portamento | done (#12) |
-| 6d | Open strings in tune under the bow (allowance only while bowed); evaluation tools moved into `tools/`; docs and lessons (`docs/EVALUATION.md`) (**this PR**) | |
+| 6d | Open strings in tune under the bow (allowance only while bowed); evaluation tools moved into `tools/`; docs and lessons (`docs/EVALUATION.md`) | done (#13) |
+| 6e | Slurs: the left hand's position (finger changes in 2–3 ms with a tap or pluck; L-type shifts on a minimum-jerk curve), Slur Range; Auto Bow Change off by default; info text for every control (**this PR**) | |
 | 7 | Mic placement and room: close / studio / overhead / room positions (KB §12.3–12.4), near-field sources and bow noise for close mics, the room fed by the body's power response (darker, smoother), the room's level per output | |
 | 8 | Cello: Kaplan string data, body with a strong ~175 Hz mode (the wolf note should appear by itself, plus a "wolf eliminator"), heavier bow. Then viola/bass | |
 
