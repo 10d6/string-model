@@ -52,7 +52,8 @@ details: [MODEL.md](MODEL.md).
 | 6e | Slurs: the left hand's position (finger changes in 2–3 ms with a tap or pluck; L-type shifts on a minimum-jerk curve), Slur Range; Auto Bow Change off by default; info text for every control | done (#14) |
 | 6f | Low notes: a sharp low cut below A0 (G3's fundamental was 17 dB too strong), brightness that follows bow force (p darker, f brighter, as in the recordings) | done (#15) |
 | 7a | Directional body: per-mode radiation patterns (random spherical harmonics + the measured front-up beam), a spaced omni pair you place with Mic Angle and Mic Elevation, the default reproducing the earlier sound | done (#16) |
-| 7b | Distance and the room: Mic Distance (1/r direct, the room stays, re-gained), the room fed by the power response, player shadowing (**this PR**) | |
+| 7b | Distance and the room: Mic Distance (1/r direct, the room stays, re-gained), the room fed by the power response, player shadowing | done (#17) |
+| — | The perceptual distance to the Philharmonia recordings (tools, #18); the attack swell, its first fix (**this PR**) | |
 | 7c | Next: close mics: the near field (equivalent sources) and the bow-noise source, mic types with proximity effect, presets. (Swapped with the old 7b: at 1.5 m a cardioid's proximity boost starts ~20 Hz, so mic types only matter close.) | |
 | 7 | Mic placement and room: close / studio / overhead / room positions (KB §12.3–12.4), near-field sources and bow noise for close mics, the room fed by the body's power response (darker, smoother), the room's level per output | |
 | 8 | Cello: Kaplan string data, body with a strong ~175 Hz mode (the wolf note should appear by itself, plus a "wolf eliminator"), heavier bow. Then viola/bass | |
@@ -74,10 +75,7 @@ details: [MODEL.md](MODEL.md).
 ## Ideas not done yet (with why)
 
 - **From the perceptual distance (Philharmonia, docs/EVALUATION.md), by size:**
-  1. Soft attacks: the recordings swell pp–mp notes over 150–190 ms (first
-     100 ms 5–7 dB under the sustain); the synth is at full level in ~30 ms.
-     A performer habit (bow speed/force ramp by dynamic; the "attack style"
-     idea below). Attack window 73 % against 23 % between takes.
+  1. ~~Soft attacks~~: done (the attack swell): 53.4 → 41.6, attack 72 → 47.
   2. Shimmer: the recordings' sustain fluctuates 2.9 dB per band, the
      synth's 1.6, and a wider vibrato barely helps (1.6). Candidates: the
      bow's own unsteadiness (force/speed drift), sharper body peaks.

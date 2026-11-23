@@ -338,9 +338,9 @@ def main():
         jobs = [(p, os.path.abspath(a.render), params, n, d, y, tmp) for n, d, y, p in recs]
         with Pool(a.jobs) as pool:
             out = dict(pool.map(one, jobs))
-    summarise(out)
-    if a.json:
+    if a.json:  # first: a closed pipe mustn't lose the run
         json.dump(out, open(a.json, "w"), indent=1)
+    summarise(out)
 
 
 if __name__ == "__main__":

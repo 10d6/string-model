@@ -92,6 +92,9 @@
           "param": "bow.bite"
         },
         {
+          "param": "bow.swell"
+        },
+        {
           "param": "bow.change"
         },
         {
@@ -246,7 +249,8 @@
     "bow.slurRange": "The widest interval that slurs. Overlapping keys further apart than this change bow instead, so only close notes are slurred. 24 slurs any leap.",
     "mic.angle": "Where the mics stand around the player (Modelled output). 0°: in front, facing the player; 90°: on the player's left, where the scroll points; −90°: on the right; 180°: behind. The violin's treble beams forward and up, so the sides are a little darker and behind is darker still. Every place has its own colour, changing from note to note.",
     "mic.elevation": "The mics' height, as an angle seen from the violin (Modelled output). 0°: level with it; 30° (default): a little above, the usual close-mic height; 90°: straight overhead. Below 0° the treble falls away: the violin radiates little toward the floor.",
-    "mic.distance": "How far the mics are from the violin (Modelled output). Further away, the direct sound falls while the room stays, so you hear more room and a softer edge; the level is re-gained so it stays about as loud. 1.5 m is the default. Closer than 40 cm currently behaves like 40 cm (close-mic sound is coming)."
+    "mic.distance": "How far the mics are from the violin (Modelled output). Further away, the direct sound falls while the room stays, so you hear more room and a softer edge; the level is re-gained so it stays about as loud. 1.5 m is the default. Closer than 40 cm currently behaves like 40 cm (close-mic sound is coming).",
+    "bow.swell": "How much a bowed note grows into its level, as players do. Real soft notes start gently and swell over about a fifth of a second; loud ones settle faster. 0: every note starts at full level at once (the old behaviour); 1: as the Philharmonia violinist plays. Slurred notes don't swell, and a new bow in a fast passage only a little."
   },
   "keyboard": true
 }
