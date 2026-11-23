@@ -64,6 +64,7 @@ struct StringModel : Synth {
   Param autoChange, sustainSpeed, coupling, chordWindow, rollTime, hill, mute, resonance, a0, nasal, brilliance, softness, voice, width, releaseMode, slideNoise, stringSel, keyswitches, artic, tremRate, intonStyle, vibShape, metric, portamento;
   Param instrument, dynamics, velSens, pressure, atPressure, contact, bite, legato, bowChange, noise, friction;
   Param vibDepth, vibRate, vibDelay, shiftTime, intonation, output, roomMix, roomSpace;
+  Param slurRange;
   Param bendRange, a4;
 
   void defineParams(ParamBuilder& b) override {
@@ -78,7 +79,7 @@ struct StringModel : Synth {
     bite = b.add("bow.bite").name("Attack Bite").range(0, 1).def(0.3).smoothing(0).group("Bow");
     legato = b.add("bow.legato").name("Legato Slurs").toggle().def(1).group("Bow");
     bowChange = b.add("bow.change").name("Bow Change").range(0.008, 0.2).def(0.02).unit("s").smoothing(0).group("Bow");
-    autoChange = b.add("bow.auto").name("Auto Bow Change").toggle().def(1).group("Bow");
+    autoChange = b.add("bow.auto").name("Auto Bow Change").toggle().def(0).group("Bow");
     sustainSpeed = b.add("bow.sustain").name("Long-Note Bow Speed").range(0.25, 1).def(0.6).smoothing(0).group("Bow");
     releaseMode = b.add("bow.release").name("Release").choices({"Auto (Key-Up Speed)", "Lift", "Stop on String", "Finger Off"}).def(0).group("Bow");
     noise = b.add("bow.noise").name("Rosin Noise").range(0, 0.5).def(0.12).smoothing(0).group("Bow");
@@ -112,6 +113,7 @@ struct StringModel : Synth {
     vibShape = b.add("vib.shape").name("Vibrato Shaping").range(0, 1).def(0.7).smoothing(0).group("Left Hand");
     metric = b.add("bow.metric").name("Metric Emphasis").range(0, 1).def(0.5).smoothing(0).group("Bow");
     portamento = b.add("finger.portamento").name("Portamento").range(0, 1).def(0.3).smoothing(0).group("Left Hand");
+    slurRange = b.add("bow.slurRange").name("Slur Range").range(1, 24).integer().def(12).unit("st").group("Bow");
   }
 
   std::unique_ptr<Voice> makeVoice() override { return std::make_unique<SilentVoice>(); }
@@ -213,6 +215,7 @@ struct StringModel : Synth {
     pc_.contact = ctx.get(contact);
     pc_.bite = ctx.get(bite);
     pc_.legato = ctx.on(legato);
+    pc_.slurRange = ctx.get(slurRange);
     pc_.bowChange = ctx.get(bowChange);
     pc_.autoChange = ctx.on(autoChange);
     pc_.releaseMode = ctx.choice(releaseMode);

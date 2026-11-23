@@ -37,6 +37,8 @@ int main(int argc, char** argv) {
   if (const char* e = std::getenv("LAB_FRICTION")) ic.friction = static_cast<FrictionModel>(std::atoi(e));  // 0 thermal, 1 classic, 2 enhanced
   if (const char* e = std::getenv("LAB_BOWWIDTH")) ic.bowWidth = static_cast<float>(std::atof(e));
   if (std::getenv("LAB_COUPLING")) ic.coupling = static_cast<float>(std::atof(std::getenv("LAB_COUPLING")));
+  // The labs measure automatic bow changes (the synth's default is off).
+  pc.autoChange = !std::getenv("LAB_AUTO") || std::atoi(std::getenv("LAB_AUTO")) != 0;
   if (std::getenv("LAB_STRING")) pc.forcedString = std::atoi(std::getenv("LAB_STRING"));
   if (std::getenv("LAB_MUTE")) ic.mute = static_cast<float>(std::atof(std::getenv("LAB_MUTE")));
   if (std::getenv("LAB_AVARY")) pc.autoChangeVary = static_cast<float>(std::atof(std::getenv("LAB_AVARY")));

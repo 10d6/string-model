@@ -21,7 +21,7 @@ How it works: [docs/MODEL.md](docs/MODEL.md). Roadmap: [docs/PLAN.md](docs/PLAN.
 | Aftertouch | bow pressure: airy ↔ crunchy |
 | CC 74 | contact point: sul tasto ↔ sul ponticello |
 | Pitch bend | the finger slides |
-| Overlapping keys | slur (same bow); separate keys change bow; slur velocity sets the slide speed |
+| Overlapping keys | slur (same bow) within Slur Range: a finger change, or a shift if the note is out of the hand's reach; separate keys change bow; velocity sets the shift's speed |
 | Keys pressed together | double stop (2) or rolled chord (3–4) |
 | Key-up speed | Release Auto: a quick release stops the bow on the string, a gentle one lifts it |
 | C1, C#1, D1, D#1, E1 | keyswitches: string Auto, G, D, A, E (sul G, sul D…) |

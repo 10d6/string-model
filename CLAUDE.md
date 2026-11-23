@@ -136,7 +136,7 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
   clips sent with each change. Describe changes in plain terms: what to
   listen for, what was measured.
 - The owner's standing choices: plugin builds off for PRs; player habits on
-  at moderate defaults; mic placement is Phase 7 and the cello Phase 8
+  at moderate defaults; Auto Bow Change off by default; mic placement is Phase 7 and the cello Phase 8
   (docs/PLAN.md "Next").
 - New parameters go at the end of `defineParams` (API.md doesn't say whether
   hosts key parameters by position); `ui/layout.json` places them on screen.
