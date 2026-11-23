@@ -66,7 +66,7 @@ struct StringModel : Synth {
   Param vibDepth, vibRate, vibDelay, shiftTime, intonation, output, roomMix, roomSpace;
   Param slurRange;
   Param micAngle, micElevation, micDistance;
-  Param attackSwell;
+  Param attackSwell, bowWander;
   Param bendRange, a4;
 
   void defineParams(ParamBuilder& b) override {
@@ -88,9 +88,9 @@ struct StringModel : Synth {
     friction = b.add("bow.friction").name("Friction Model").choices({"Thermal", "Classic", "Enhanced Thermal"}).def(2).group("Bow");
     chordWindow = b.add("chord.window").name("Chord Window").range(0, 0.08).def(0.035).unit("s").smoothing(0).group("Bow");
     rollTime = b.add("chord.roll").name("Chord Roll").range(0.02, 0.2).def(0.06).unit("s").smoothing(0).group("Bow");
-    vibDepth = b.add("vib.depth").name("Vibrato Depth").range(0, 60).def(16).unit("ct").smoothing(0).group("Left Hand");
+    vibDepth = b.add("vib.depth").name("Vibrato Depth").range(0, 60).def(22).unit("ct").smoothing(0).group("Left Hand");
     vibRate = b.add("vib.rate").name("Vibrato Rate").range(3, 9).def(5.5).unit("Hz").smoothing(0).group("Left Hand");
-    vibDelay = b.add("vib.delay").name("Vibrato Delay").range(0, 1).def(0.25).unit("s").smoothing(0).group("Left Hand");
+    vibDelay = b.add("vib.delay").name("Vibrato Delay").range(0, 1).def(0.1).unit("s").smoothing(0).group("Left Hand");
     shiftTime = b.add("finger.shift").name("Shift Time").range(0, 0.3).def(0.04).unit("s").smoothing(0).group("Left Hand");
     stringSel = b.add("string.select").name("String").choices({"Auto", "G", "D", "A", "E"}).def(0).group("Left Hand");
     keyswitches = b.add("string.keys").name("Keyswitches").toggle().def(1).group("Left Hand");
@@ -123,6 +123,8 @@ struct StringModel : Synth {
     micDistance = b.add("mic.distance").name("Mic Distance").range(0.05, 10).log().def(1.5).unit("m").group("Output");
     // A player habit (the Philharmonia recordings): bowed notes grow into their level.
     attackSwell = b.add("bow.swell").name("Attack Swell").range(0, 1).def(0.75).smoothing(0).group("Bow");
+    // A player habit (the Philharmonia recordings): the bow's slow unsteadiness, corrected by ear.
+    bowWander = b.add("bow.wander").name("Bow Wander").range(0, 1).def(0.6).smoothing(0).group("Bow");
   }
 
   std::unique_ptr<Voice> makeVoice() override { return std::make_unique<SilentVoice>(); }
@@ -224,6 +226,7 @@ struct StringModel : Synth {
     pc_.contact = ctx.get(contact);
     pc_.bite = ctx.get(bite);
     pc_.swell = ctx.get(attackSwell);
+    pc_.wander = ctx.get(bowWander);
     pc_.legato = ctx.on(legato);
     pc_.slurRange = ctx.get(slurRange);
     pc_.bowChange = ctx.get(bowChange);
@@ -353,7 +356,7 @@ struct StringModel : Synth {
   static constexpr float kWet = 0.12f;
   // Each space's wet/direct power ratio at Room 100% (Modelled output, the
   // reference distance; tools/room_power.py).
-  static constexpr float kRoomPower[5] = {0.315f, 0.139f, 0.179f, 0.195f, 0.204f};
+  static constexpr float kRoomPower[5] = {0.239f, 0.133f, 0.158f, 0.150f, 0.188f};
   double sr_ = 48000;
   sm::Instrument inst_;
   sm::PerformerControls pc_;

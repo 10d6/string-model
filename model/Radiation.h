@@ -2,7 +2,7 @@
 // (KB §5.3, §5.5, §12.3a).
 //
 // A bank of body modes, log-spaced from 180 Hz to 10 kHz (16 per octave to
-// 1 kHz at Q 22, 24 per octave above at Q ~40 falling slowly; a little random
+// 1 kHz at Q 22, 48 per octave above at Q ~80 falling slowly; a little random
 // jitter), each a peak-normalised band-pass driven by the total bridge force.
 // Microphones share the modes and mix them with their own residues (KB
 // §12.3a: shared poles, direction-specific residues):
@@ -285,8 +285,8 @@ class Radiation {
     float tl = 0, tr = 0, rl = 0, rr = 0;
   };
   static constexpr float kGlide = 0.06f;
-  static constexpr float kHighDensity = 24.f;
-  static constexpr float kLowQ = 22.f, kHighQ = 40.f;  // per control tick (~5 ms at 48 kHz, 16-sample ticks)
+  static constexpr float kHighDensity = 48.f;
+  static constexpr float kLowQ = 22.f, kHighQ = 80.f;  // per control tick (~5 ms at 48 kHz, 16-sample ticks)
 
   float target(float hz) const {
     const float lx = std::log(hz);

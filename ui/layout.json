@@ -95,6 +95,9 @@
           "param": "bow.swell"
         },
         {
+          "param": "bow.wander"
+        },
+        {
           "param": "bow.change"
         },
         {
@@ -234,7 +237,7 @@
     "bow.noise": "The bow hair's rosin noise: the slight hiss and grain of a real bow. 0 is a clean, synthetic string.",
     "vib.depth": "Vibrato width in cents (peak to peak) at a medium dynamic. Louder notes vibrate a little wider and faster, as players do. Open strings get none.",
     "vib.rate": "Vibrato speed. Players use about 5 to 7 Hz; it drifts a little from cycle to cycle.",
-    "vib.delay": "How long a note sounds straight before the vibrato starts; it then fades in over about a third of a second. Short notes in a fast passage may end before it starts.",
+    "vib.delay": "How long a note sounds straight before the vibrato starts; it then fades in over about a third of a second. Recorded players vibrate from the start of the note, so the default is short (0.1 s).",
     "room.mix": "How much of the room you hear (with the Modelled output, at the default 1.5 m; further away there's more). The room hears the violin's sound in every direction, not just toward the mics, so it's darker and smoother than the direct sound. 100% in the Hall is about what a real hall gives at 1.5 m.",
     "room.space": "The kind of room: from a small room to a cathedral, or a plate reverb.",
     "body.a0": "The body's air resonance (around 280 Hz, the 'A0' mode): the depth and warmth of the low strings. Its strength is the one measured trait that goes with violins players rate highly.",
@@ -250,7 +253,8 @@
     "mic.angle": "Where the mics stand around the player (Modelled output). 0°: in front, facing the player; 90°: on the player's left, where the scroll points; −90°: on the right; 180°: behind. The violin's treble beams forward and up, so the sides are a little darker and behind is darker still. Every place has its own colour, changing from note to note.",
     "mic.elevation": "The mics' height, as an angle seen from the violin (Modelled output). 0°: level with it; 30° (default): a little above, the usual close-mic height; 90°: straight overhead. Below 0° the treble falls away: the violin radiates little toward the floor.",
     "mic.distance": "How far the mics are from the violin (Modelled output). Further away, the direct sound falls while the room stays, so you hear more room and a softer edge; the level is re-gained so it stays about as loud. 1.5 m is the default. Closer than 40 cm currently behaves like 40 cm (close-mic sound is coming).",
-    "bow.swell": "How much a bowed note grows into its level, as players do. Real soft notes start gently and swell over about a fifth of a second; loud ones settle faster. 0: every note starts at full level at once (the old behaviour); 1: as the Philharmonia violinist plays. Slurred notes don't swell, and a new bow in a fast passage only a little."
+    "bow.swell": "How much a bowed note grows into its level, as players do. Real soft notes start gently and swell over about a fifth of a second; loud ones settle faster. 0: every note starts at full level at once (the old behaviour); 1: as the Philharmonia violinist plays. Slurred notes don't swell, and a new bow in a fast passage only a little.",
+    "bow.wander": "How much the bow drifts, as a real one does: the player keeps correcting small changes in bow speed, contact point and pressure, so a held note's level and colour move gently, a hand's rhythm rather than a jitter. 0 is a machine-steady bow; 1 is as unsteady as the recorded Philharmonia violinist. High on a string it fades out, where players hold the bow steadiest."
   },
   "keyboard": true
 }

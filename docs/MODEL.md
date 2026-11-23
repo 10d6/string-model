@@ -486,6 +486,28 @@ dynamics. Forces on the high G string reach the 3 N cap at mf and above.
 **Vibrato (stopped, bowed strings).** `Vibrato Depth` is peak-to-peak at mf,
 scaled 0.6–1.4× by dynamics; the rate is ×0.9–1.1. It ramps in over 350 ms
 after `Vibrato Delay`, with ±5% rate and ±15% depth drift per cycle.
+Defaults 22 cents after 0.1 s (until the shimmer PR, 16 cents after 0.25 s,
+the VSCO player): both recorded players vibrate from the onset, VSCO's at
+12–21 cents and the Philharmonia player's at ~31 (5–95% of the pitch, held
+notes), so the default sits between them, moderate like the other habits.
+
+**Bow wander (`Bow Wander`, default 0.6; the shimmer PR).** A real bow is not
+steady: the stick and hair are springy and the string kicks them, the hand
+has its own tremor (KB §3: force fluctuations reach ~10%), and the player
+corrects what they hear and feel after a reaction time. The performer keeps
+three deviations, in log units, of bow speed, contact (β) and force, each
+x' = −1.5 x − 6 x(t − 0.12 s) + noise, stepped every 4 ms [T]. It wanders
+with a spectrum peak at 1.7 Hz and ~0.2 s correlation, with a little
+overshoot, not jitter. Spread at Wander 1: speed 0.20, contact 0.22, force
+0.08 (fitted to the Philharmonia recordings' common level wobble, 2.26 dB:
+the synth gives 2.28 at 1, 1.60 at 0.6). Speed and contact move the force
+along the players' line, so the note stays in the Helmholtz window; the force
+also wobbles on its own. Arco and harmonics only. It fades out from 10 to 20
+semitones above the open string: up there the window is narrow and players
+hold the bow steady near the bridge (B6 broke into octave jumps at full
+wander). Held notes G3–E6 at three dynamics: 1 of 900 100-ms windows outside
+0.9–1.1 slips per period at 0.6, 6 at 1 (0 without). It moves the open
+strings' pitch by up to ~1 cent (the flattening depends on force).
 
 **Intonation (the player's ear).** Bowing flattens the pitch, by about 10 cents
 at mf here. On stopped notes, the time between slip onsets is compared with
@@ -684,8 +706,16 @@ directly (it is already smooth) and turn off the automatic bow change.
 
 **Modelled (default): `model/Radiation.h`.** A bank of body modes driven by
 the total bridge force (KB §12.3a):
-- 16 per octave from 180 Hz to 1 kHz (Q 22), and 24 per octave from 1 to
-  10 kHz (Q ~40, falling slowly), with a little random jitter: 120 modes.
+- 16 per octave from 180 Hz to 1 kHz (Q 22), and 48 per octave from 1 to
+  10 kHz (Q ~80, falling slowly), with a little random jitter: 199 modes.
+  Until the shimmer PR, 24 per octave at Q ~40 (120 modes). Above 1–2 kHz the
+  body's modes overlap and its response is effectively random (KB §5); how
+  fast it changes with frequency is set by the modes' bandwidth. At Q 40
+  (2.5% wide) a vibrato partial barely changed level, so the synth's
+  band-against-band shimmer was a third of the recordings' (below). Q 80 is
+  a loss factor of ~1.25%, mid-range for violin plates; the density keeps the
+  modes overlapping (~0.9) rather than ringing as separate peaks. Fit sd
+  0.57 dB (was 1.09); browser speed unchanged within noise.
 - Each is a peak-normalised band-pass. The microphones share the modes and
   mix them with their own residues: the residue toward the mic's direction
   (KB §12.3a: shared poles, direction-specific residues).
