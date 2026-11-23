@@ -324,7 +324,7 @@ class Performer {
     const float fTarget = fT_ * dip * (1.f + accent_) * strokeForce_ * weight;
     for (int s = 0; s < 4; ++s) {
       const float base = templateForce_ >= 0.f ? templateForce_ : fTarget;
-      const float goal = (bowed_[s] && bowing_) ? std::min(base * fFactor_[s], def_->forceMax) : 0.f;
+      const float goal = (bowed_[s] && bowing_) ? std::min(base * fFactor_[s], fMax_[s]) : 0.f;
       const float rate = goal > force_[s] ? landRate_ : liftRate_;
       force_[s] += (goal - force_[s]) * rate;
       if (force_[s] < 1e-4f && goal == 0.f) force_[s] = 0.f;
@@ -842,6 +842,7 @@ class Performer {
         body = std::pow(2.f, 1.5f * load);
       }
       fFactor_[s] = std::pow(z / def_->zRef, 1.39f) * pos * body * def_->forceTrim[s] * (count >= 2 ? 1.0f : 1.f);
+      fMax_[s] = def_->forceMax * pos;
       // Harmonics: a much lighter bow; quarter touches lighter still. Through
       // the synth: octaves within ~5 cents, thirds/quarters within ~15 [T].
       if (touchQ_[s] > 0.f) fFactor_[s] *= touchQ_[s] < 0.3f ? 0.15f : 0.3f;
@@ -1191,18 +1192,19 @@ class Performer {
     // factors (impedance, position, double stops) are in fFactor_.
     float f = def_->forceRef * (vb / def_->vbRef) * std::pow(beta / def_->betaRef, -1.39f);
     // Soft playing sits near the bottom of the Helmholtz window in this model
-    // (calibrate_force.py): lift it, most at pp [T].
+    // (calibrate_force.py): lift it, most at pp; ff close to the bridge on
+    // the lower strings is near the bottom too: lift it a little (ffLift) [T].
     // During an attack swell, by the dynamic the note is at now (the level
     // law: ~23 dB per unit of d), so the quiet start is lifted like pp.
     const float dNow = std::max(0.f, d - swellNow / 23.1f);
-    const float margin = 0.1f + 0.8f * (1.f - dNow) * (1.f - dNow);
+    const float margin = 0.1f + 0.8f * (1.f - dNow) * (1.f - dNow) + def_->ffLift[str_] * dNow * dNow;
     f *= std::pow(2.f, 1.5f * (pressureIn_ + margin));
     vbT_ = vb;
     betaT_ = beta;
     fT_ = f;
     // Acceleration: attack (k * F) until near target speed, then gentle;
     // reversals use the bow-change acceleration.
-    const float fLead = std::min(f * fFactor_[str_], def_->forceMax);
+    const float fLead = std::min(f * fFactor_[str_], fMax_[str_]);
     const float attackA = std::clamp(attackK_ * fLead, c.minAccel, 30.f);
     if (changing_) {
       accel_ = accelChange_;
@@ -1238,6 +1240,10 @@ class Performer {
   float kSwellSpeed = 0.4f;             // share of the swell taken by bow speed (the rest by distance)
   float landRate_ = 0.01f, liftRate_ = 0.01f, accentDecay_ = 0.999f;
   float force_[4]{}, fFactor_[4]{1, 1, 1, 1}, offTime_[4]{}, fingerOffAt_[4]{};
+  // Force cap per string: forceMax in low positions, scaled up high like the
+  // force law itself (pos): short strings need more and stay clean (D5 and
+  // G5 on the G at ff: Helmholtz from ~5 N to 20 N) [T].
+  float fMax_[4]{3, 3, 3, 3};
   bool stopping_ = false, muting_ = false;
   float stopStart_ = 0.f, damp_ = 0.f, muteStart_ = 0.f;
   int art_ = kArco;

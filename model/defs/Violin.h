@@ -26,6 +26,7 @@ struct InstrumentDef {
   float denseFrom, denseTo, denseSpacing;
   uint32_t bodySeed;
   float forceTrim[4];  // per-string force calibration (tools/calibrate_force.py) [T]
+  float ffLift[4];     // extra Pressure (x d^2) per string: ff close to the bridge needs more on the low strings [T]
   // The bow flattens an open string, and no finger can correct it: the
   // performer raises a bowed open string by this much, only while the bow is
   // on it (unbowed open strings stay at true pitch to ring in sympathy) [T].
@@ -63,13 +64,14 @@ inline const InstrumentDef& violin() {
           {"A", 69, 0.20f, 0.70f, 0.85f},
           {"E", 76, 0.19f, 0.65f, 1.00f},
       },
-      // open T60, stopped T60, bridge LP, nut LP, finger LP  [T]
-      {2.2f, 0.9f, 9000.f, 12000.f, 5000.f},
+      // String damping, rates 1/s (tools/partial_q.py on the Philharmonia
+      // pizzicato) [T]: low, high, transition Hz; finger low, high; bridge share
+      {2.6f, 40.f, 2000.f, 7.5f, 18.f, 0.1f},
       0.62f,
       0.22f,
       // Demoucron at 13 cm/s: mf beta 0.07, 0.47 N (pp 0.16/0.17 N, ff 0.04/1.15 N)
       0.35f, 0.13f, 0.07f,  // forceRef trimmed from 0.47 to sit mid-window in our model [T]
-      3.0f,
+      5.0f,  // the players' line asks ~4-5 N on the G at ff [T]
       0.28f,
       // Signature modes, KB §5.2 / §10 (frequencies [V] ranges, Q and peak
       // admittance [T]: Q 20-60, peaks 0.05-0.5 s/kg, KB §5.2): A0 air mode
@@ -93,9 +95,13 @@ inline const InstrumentDef& violin() {
       0x5717a1u,
       // The steel E needed ~+0.2 pressure (x1.22) to sit mid-window.
       {1.f, 1.f, 1.f, 1.22f},
+      // With the frequency-dependent losses, ff near the bridge sits at the
+      // bottom of the window on G, D and A, most on the G (the E is already
+      // near the top).
+      {0.6f, 0.3f, 0.3f, 0.f},
       // Full compensation of the flattening under the bow (enhanced friction,
       // two-point bow), averaged over dynamics 0.15-0.85 (tools/open_strings.py).
-      {15.5f, 11.5f, 14.f, 16.f},
+      {16.5f, 6.5f, 6.5f, 6.5f},
       data::kViolinRadiationHz, data::kViolinRadiationDb, data::kViolinRadiationCount,
       245.f,  // below A0 (~280 Hz) the violin radiates little; weak at the open G (KB §12.7)
       1.19f,  // same loudness (300 Hz-5 kHz) as the Library Mic (Smooth) output

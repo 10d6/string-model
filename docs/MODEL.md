@@ -38,37 +38,67 @@ The strings run at 2× the host rate below 70 kHz (96 kHz at 48 kHz). A
 ## String (KB §6.1, §10)
 
 Four one-way fractional delay lines (4-point Lagrange) carry velocity waves:
-bow→nut, nut→bow, bow→bridge and bridge→bow. Losses are lumped into the
-terminations as −g × a one-pole low-pass.
+bow→nut, nut→bow, bow→bridge and bridge→bow. The string's own losses are
+lumped into the terminations as first-order loss shelves (below).
 
 - **Lengths:** the bridge side is β × the note's period. It doesn't move with
   vibrato, because vibrato moves only the finger (KB §11.2). The filters'
   phase delay at the pitch is subtracted from the loop, so the loop is in
   tune. Both lengths glide over about 1 ms.
-- **Losses [T]:** g is set from a T60 for the low partials. Open strings get
-  2.2 s; stopped strings get 0.9 s, since the finger is far lossier than the
-  nut (KB §2.3: η_F × 3). The low-pass corners are: bridge 9 kHz, nut
-  12 kHz, finger 5 kHz.
+- **Losses: decay rates by frequency, not by note** (KB §2.3, Valette–Cuesta:
+  1/Q = air + viscous ∝ f² + thermoelastic). Each partial decays at
+  σ(f) = σ_L + (σ_H − σ_L)·f²/(f² + f_T²) per second, whatever note it
+  belongs to [T]:
+  - the string's own: σ_L 2.6/s, σ_H 40/s ÷ the string's `hf` (G 0.55,
+    D 0.7, A 0.85, E 1), f_T 2 kHz; 10% at the bridge end, 90% at the nut or
+    finger end;
+  - a stopping finger adds 7.5/s low, 18/s high (KB §2.3: η_F × 3). A
+    sliding finger presses lighter: its share × (1 + 1.5 v).
+  Each end is a first-order shelf (`LossShelf`, `model/Delay.h`), designed
+  per note so one round trip (one period) applies exp(−σ(f)/f0) at every f.
+  Fitted with `tools/partial_q.py`: each partial's decay after a pluck
+  (Philharmonia pizzicato, initial 25 dB), as Q = π f τ. The bridge and body
+  add their own losses in the synth, so the fit was iterated on the totals.
+  Median Q, real / synth:
+
+  | | 150–500 Hz | 0.5–1 kHz | 1–2 kHz | 2–4 kHz | 4–8 kHz |
+  |---|---|---|---|---|---|
+  | stopped | 177 / 182 | 260 / 266 | 304 / 322 | 355 / 412 | 651 / 699 |
+  | open | 444 / 450 | 444 / 468 | 398 / 407 | 273 / 478 | 1420 / 1038 |
+  | stopped, before (low-passes) | / 148 | / 128 | / 120 | too fast | too fast |
+
+  Until this change the losses were one-pole low-passes (bridge 9 kHz, nut
+  12 kHz, finger 5 kHz) with g from a T60 (open 2.2 s, stopped 0.9 s). A
+  low-pass takes the same fraction on every pass, and a high note makes
+  more passes per second, so stopped notes' treble died in milliseconds
+  instead of ringing ~0.5 s: the recordings' decay rates level off at
+  25–30/s above ~2 kHz. Open strings' 2–4 kHz partials still ring longer
+  than the (few) measured ones.
+
+  A top low-pass above the measured range (to round the Helmholtz corner)
+  was tried and dropped: it made the treble's damping depend on the note
+  again (stopped 4–8 kHz Q 255 vs 651).
 - **The loop's gain at DC must not exceed its gain at the fundamental.**
+  The shelves' gain falls with frequency, so this holds by construction.
   Phase 1 raised g to make up for the low-passes. On high notes that pushed
   the loop's DC gain to ~1, and the waveguide then held a DC wave: a uniform
   slope that a string fixed at both ends can't have. The bow's one-way drag
   fed it, and it barely decayed (the open E "rang" for ~15 s at DC, hidden by
   the output DC blocker but offsetting the velocity the bow sees). Now g
-  isn't raised, so high notes decay a little faster, as with a constant Q.
-  Two fixes that failed, for the record:
+  wasn't raised. Two fixes that failed, for the record:
   - Blocking DC in the loop breaks Helmholtz motion. The bow's mean drag is
     held by a static deflection, which in a waveguide is a DC wave in each
     segment.
   - Making the ends lossless only at DC made a ~5 Hz resonance.
 - **Open strings carry a bow allowance while bowed [T].** Bowing flattens a
   string, and no finger can correct an open one. Violinists tune while
-  bowing, so the performer raises an open string the bow is on by G +15.5,
-  D +11.5, A +14, E +16 cents (`openTuneCents`), easing in and out over
+  bowing, so the performer raises an open string the bow is on by G +16.5,
+  D, A, E +6.5 cents (`openTuneCents`; before the loss shelves G +15.5,
+  D +11.5, A +14, E +16: the less damped string flattens less), easing in and out over
   ~30 ms as the bow lands and leaves. Harmonics, bowed much lighter, get
   0.55× of it. Unbowed open strings sit at true pitch, so they ring in
   sympathy with stopped notes. `tools/open_strings.py`: within ±1 cent at
-  mf, ±3.4 from pp to ff.
+  mf, ±2 from pp to ff.
   - Until the open-strings PR the allowance (+7/+4/+9/+12) applied to every
     open string. It was held to 60% so unbowed strings could still ring,
     which left bowed open strings 4–10 cents flat.
@@ -76,6 +106,9 @@ terminations as −g × a one-pole low-pass.
     string's (D's 3rd = A's 2nd) come out 2–4 dB lower: they interact
     through the bridge. Open notes are 0.7–1.9 dB quieter than before
     (none of it with body coupling off).
+- **Tuning:** the shelves delay low partials a little more than high ones
+  (~0.4 vs ~0.1 samples). The loop is tuned at the partial that sounds: the
+  fundamental, or the k-th for a harmonic touched at 1/k.
 - **Torsion (KB §3.6):** the bow sees 1/Z_eff = 1/Z₀ + 1/Z_R, with Z_R ≈
   3.5 Z₀ [T]. The torsional part is **high-passed** at 2× the pitch. A pure
   resistance (the KB's "lumped Z_eff") lets a steady bow spin the string
@@ -143,8 +176,9 @@ violins.
 String impedances (KB §2.1, Z₀ = μc mid-range): G 0.33, D 0.24, A 0.20,
 E 0.19 kg/s.
 
-**High-frequency loss per string [T]:** the termination low-passes are
-scaled by G 0.55, D 0.7, A 0.85, E 1. Thicker, wound strings lose their high
+**High-frequency loss per string [T]:** the string's high decay rate is
+divided by G 0.55, D 0.7, A 0.85, E 1 (until the loss shelves, the
+low-pass corners were multiplied by them). Thicker, wound strings lose their high
 partials faster, since internal viscous loss grows with frequency and
 diameter (KB §2.3). Without this, D5 sul G came out brighter than D5 on the
 A string. Now A4 sul D is clearly darker than the open A (spectral centroid
@@ -231,7 +265,22 @@ few samples of the bridge (very high notes), it's one point.
 
 ### Measured with `string_lab` (open D, v_b = 0.13 m/s, 96 kHz)
 
-Enhanced Thermal with the bow width (`LAB_WIDTH=3 string_lab sweep 1 62 0.13 enhanced`):
+Enhanced Thermal with the bow width and the loss shelves (`LAB_WIDTH=3 string_lab sweep 1 62 0.13 enhanced`):
+
+```
+beta \ F    0.02  0.04  0.08  0.15  0.30  0.60  1.20  2.40  4.80
+   0.020     r-99   r-99   r+85   m +6   m +4   m +2   m +0   H -1   r-22
+   0.030     r-99   r-99   m +5   m +4   m +2   m +1   H -1   H-11   r +5
+   0.045     r-99   r-99   m +4   m +2   m +0   H -1   H -7   r-60   r+99
+   0.065     r-99   r-99   m +2   m +0   H -1   H -6   r-22   r+30   r-99
+   0.090     r-99   m +1   m +0   H -1   H -4   H-13   r-83   r-51   r-99
+   0.130     r-99   m +0   H -1   H -3   H -7   r-28   r+79   r+99   r+99
+   0.180     r +0   m -1   H -2   H -5   H-14   r-88   r+31   r-11   r-99
+```
+
+The window's low-force edge moved up with the loss shelves (Schelleng's
+minimum force rises as the string's damping falls), and flattening is
+smaller. Before them:
 
 ```
 beta \ F    0.02  0.04  0.08  0.15  0.30  0.60  1.20  2.40  4.80
@@ -310,12 +359,18 @@ What this shows:
 - The force follows the players' line through the Schelleng diagram:
   F = F_ref (v_b / 0.13) (β / 0.07)^−1.39 (Z / 0.22)^1.39. F_ref = 0.35 N
   [T], trimmed from Demoucron's 0.47 N to sit mid-window in this model.
-  F is capped at 3 N.
+  F is capped at 5 N × the high-position factor below (3 N flat until the
+  loss shelves: the less damped string needs more force low on the G at ff,
+  and up the G and D strings the window has no upper edge up to 20 N).
+  Forces here are this model's, trimmed to its windows; they run above
+  players' (0.5–2.5 N).
 - **Calibrated against the coupled instrument** (`tools/calibrate_force.py`).
   The script sweeps Pressure for notes on every string at four dynamics and
   reports the range with clean Helmholtz motion. Four corrections followed:
-  - **A margin**, most at pp: log₂ F += 1.5 (0.1 + 0.8 (1 − d)²). Soft notes
-    sat at the bottom of the window.
+  - **A margin**, most at pp: log₂ F += 1.5 (0.1 + 0.8 (1 − d)² + k d²).
+    Soft notes sat at the bottom of the window; with the loss shelves, so
+    did ff close to the bridge on the lower strings: k = G 0.6, D 0.3,
+    A 0.3, E 0 (`ffLift`; the E is near the top of its window at ff).
   - **The E string × 1.22.**
   - **High positions:** × (max(1, f/(1.5 f_open)))^0.7. Short, high strings
     are loaded by the body. A6 went from −19 cents and unstable to −3 cents.
@@ -463,7 +518,7 @@ than the cubic S-curve it replaces [T]. A 5-semitone shift (B4→G5 on the A
 string, velocity 64) measures 40 ms, the fast end of the KB's 50–150 ms. The
 finger's speed along the string,
 v = |dx/dt| with x = L(1 − 2^(−p/12)) and L = 0.328 m, does two things:
-- **Lighter finger:** the stopped T60 is divided by (1 + 1.5 v) [T]. The
+- **Lighter finger:** the finger's decay rates are × (1 + 1.5 v) [T]. The
   note dips ~6 dB during a slow 5-semitone slide.
 - **Winding noise** on the wound strings (G 1, D 1, A 0.7, E 0) [T]:
   - White noise band-passed (Q 2) at v / 0.12 mm (the turns of winding the
@@ -481,7 +536,9 @@ every note from its open note up two octaves; others fall back to Auto.
 E1 E. They set the `String` parameter (`ctx.setParam`, so the page and host
 follow) and don't sound. Checked with `LAB_STRING`: G-string notes up to
 G5 and D-string notes up to G5 keep clean Helmholtz motion at soft and loud
-dynamics. Forces on the high G string reach the 3 N cap at mf and above.
+dynamics, except G5 on the G at p and mf (already so before the loss
+shelves). High on the E, G6 at ff and C7 at mf now hold; A6 at ff does not
+(nor did it before).
 
 **Vibrato (stopped, bowed strings).** `Vibrato Depth` is peak-to-peak at mf,
 scaled 0.6–1.4× by dynamics; the rate is ×0.9–1.1. It ramps in over 350 ms
@@ -813,7 +870,10 @@ with bow force: more force sharpens the Helmholtz corner (KB §2 "corner
 rounding"; §11.5: log centroid rises linearly with log force). The string
 here barely does: at fixed v_b and β, 0.4 → 1.6 N on G3 (all Helmholtz)
 raises 4–8 and 8–16 kHz by under 3 dB and doesn't move the centroid
-(`string_lab tone`), because the lumped loss filters set the corner. The
+(`string_lab tone`). Frequency-dependent losses (above) didn't change that:
+with the tilt off, the p→f spread at 2–4 / 4–8 / 8–16 kHz is +0.5 / +0.6 /
+−0.2 dB (low-passes: +0.4 / +0.5 / −0.2; VSCO +2.5 / +6.4 / +8.0). Losses set
+how fast partials die, not how sharp the bow makes the corner. The
 VSCO notes brighten by +3..+15 dB above 4 kHz from p to f; the synth's p was
 up to 12 dB too fizzy at 8–16 kHz on low notes (what read as "bow noise",
 though its inter-harmonic noise is below the recordings') and its f a little
@@ -857,7 +917,12 @@ from 300 Hz to 5 kHz (×1.19).
 darker above 4.5 kHz): the same pipeline, after which the per-band residual
 (`radiation_target.py … - 3`) matches Phase 5's within ~1 dB.
 
-**Result:** Modelled minus real, per half-octave band from 350 Hz to
+**Re-measured for the loss shelves** (the string is several dB brighter
+above 4 kHz; before, the modelled output came out ~7 dB too bright above
+6 kHz). Modelled minus real per half-octave band from 350 Hz to 11 kHz:
+−2.0, −2.7, +0.6, +2.5, +2.5, +1.6, −2.9, −2.8, −0.6, −2.8 dB.
+
+**Result (before the loss shelves):** Modelled minus real, per half-octave band from 350 Hz to
 9.5 kHz: −1.4, −2.9, −0.1, +1.1, +0.8 dB (re-measured after the per-string
 HF loss in Phase 4). For the Library Mic (Smooth):
 +1.6, −0.9, −0.3, +3.0, +8.1 dB.

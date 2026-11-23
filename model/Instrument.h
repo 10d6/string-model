@@ -107,8 +107,7 @@ class Instrument {
       str_[s].prepare(fs_, 40.f);
       str_[s].setDef(def_->strings[s], def_->loss);
       LossDef lv = def_->loss;
-      lv.openT60 *= def_->vertT60;
-      lv.stoppedT60 *= def_->vertT60;
+      for (float* r : {&lv.lowRate, &lv.highRate, &lv.fingerLow, &lv.fingerHigh}) *r /= def_->vertT60;
       vert_[s].prepare(fs_, 40.f);
       vert_[s].setDef(def_->strings[s], lv);
     }
