@@ -22,7 +22,14 @@
 // semitone and differently left and right ("directional tone colour",
 // Weinreich; KB §5.5). Vibrato then sweeps each partial through different
 // peaks in each ear, the main "life" of string tone (KB §8). The mic's place
-// (micAz, micEl) changes the colour the way placement does.
+// (micAz, micEl) changes the colour the way placement does; its distance
+// (micDist) narrows or widens the pair's view and sets the direct level
+// (1/r re kRefDistance).
+//
+// The room is fed separately with the power response (KB §12.3e): the
+// sphere-averaged |H|^2, i.e. each mode at its mean level with a random sign
+// (two sign sets: a decorrelated stereo feed). It is smoother and darker
+// than any one direction in front, by the directivity index.
 //
 // The residues are calibrated in prepare(), at the default mic place, so the
 // smoothed power response there matches a target curve (for the violin, the CC0 library-mic response with
@@ -55,12 +62,15 @@ struct RadiationSettings {
   // 180 = behind; elevation 0 = level with the violin, 90 = straight above.
   float micAz = 0.f;
   float micEl = 30.f;
+  float micDist = 1.5f;    // m, violin to the pair (far field: 0.4 m and up for now)
   bool operator==(const RadiationSettings& o) const {
     return hillHz == o.hillHz && mute == o.mute && resonance == o.resonance && width == o.width && a0 == o.a0 &&
            nasal == o.nasal && brilliance == o.brilliance && softness == o.softness && voice == o.voice &&
-           micAz == o.micAz && micEl == o.micEl;
+           micAz == o.micAz && micEl == o.micEl && micDist == o.micDist;
   }
-  bool sameMic(const RadiationSettings& o) const { return width == o.width && micAz == o.micAz && micEl == o.micEl; }
+  bool sameMic(const RadiationSettings& o) const {
+    return width == o.width && micAz == o.micAz && micEl == o.micEl && micDist == o.micDist;
+  }
 };
 
 class Radiation {
@@ -90,7 +100,7 @@ class Radiation {
     // with silent modes) so it vectorises.
     voiceNow_ = 0.f;
     const std::size_t n = (modes_.size() + 3) & ~std::size_t(3);
-    for (auto* v : {&b0_, &a1_, &a2_, &s1_, &s2_, &rl_, &rr_}) v->assign(n, 0.f);
+    for (auto* v : {&b0_, &a1_, &a2_, &s1_, &s2_, &rl_, &rr_, &ra_, &rb_}) v->assign(n, 0.f);
     for (std::size_t k = 0; k < modes_.size(); ++k) {
       b0_[k] = modes_[k].b0;
       a1_[k] = modes_[k].a1;
@@ -126,7 +136,10 @@ class Radiation {
     for (auto& m : modes_) {
       m.rl += (m.tl - m.rl) * kGlide;
       m.rr += (m.tr - m.rr) * kGlide;
+      m.ra += (m.ta - m.ra) * kGlide;
+      m.rb += (m.tb - m.rb) * kGlide;
     }
+    directNow_ += (direct_ / directRef_ - directNow_) * kGlide;
     syncResidues();
     // Voice moves the modes themselves: glide, recomputing their filters.
     if (voiceNow_ != settings_.voice) {
@@ -142,9 +155,11 @@ class Radiation {
     }
   }
 
-  void process(float f, float& l, float& r) {
+  // The pair (direct sound, 1/r re the reference distance) and the room feed
+  // (the power response, two decorrelated channels; the same at any place).
+  void process(float f, float& l, float& r, float& roomA, float& roomB) {
     for (auto& h : hp_) f = h.process(f);
-    float L[4] = {0.f, 0.f, 0.f, 0.f}, R[4] = {0.f, 0.f, 0.f, 0.f};
+    float L[4] = {0.f, 0.f, 0.f, 0.f}, R[4] = {0.f, 0.f, 0.f, 0.f}, A[4] = {0.f, 0.f, 0.f, 0.f}, B[4] = {0.f, 0.f, 0.f, 0.f};
     const std::size_t n = b0_.size();
     float* __restrict s1 = s1_.data();
     float* __restrict s2 = s2_.data();
@@ -153,6 +168,8 @@ class Radiation {
     const float* __restrict a2 = a2_.data();
     const float* __restrict rl = rl_.data();
     const float* __restrict rr = rr_.data();
+    const float* __restrict ra = ra_.data();
+    const float* __restrict rb = rb_.data();
     for (std::size_t k = 0; k < n; k += 4) {
       for (std::size_t j = 0; j < 4; ++j) {
         const std::size_t i = k + j;
@@ -161,11 +178,22 @@ class Radiation {
         s2[i] = -b0[i] * f - a2[i] * y;
         L[j] += rl[i] * y;
         R[j] += rr[i] * y;
+        A[j] += ra[i] * y;
+        B[j] += rb[i] * y;
       }
     }
-    l = ((L[0] + L[1]) + (L[2] + L[3])) * gain_;
-    r = ((R[0] + R[1]) + (R[2] + R[3])) * gain_;
+    const float g = gain_ * directNow_;
+    l = ((L[0] + L[1]) + (L[2] + L[3])) * g;
+    r = ((R[0] + R[1]) + (R[2] + R[3])) * g;
+    roomA = ((A[0] + A[1]) + (A[2] + A[3])) * gain_;
+    roomB = ((B[0] + B[1]) + (B[2] + B[3])) * gain_;
   }
+  void process(float f, float& l, float& r) {
+    float a, b;
+    process(f, l, r, a, b);
+  }
+  // The direct sound's gain re the reference distance (1 there).
+  float directGain() const { return directNow_; }
 
   int modeCount() const { return static_cast<int>(modes_.size()); }
 
@@ -175,6 +203,7 @@ class Radiation {
     micGeometry(s);
     applySettings(s, true);
     micPending_ = false;
+    directNow_ = direct_ / directRef_;
     syncResidues();
   }
   // Labs: the residue of mode k toward a unit direction (pattern only, no level).
@@ -185,7 +214,8 @@ class Radiation {
   }
   float modeHz(int k) const { return modes_[k].hz; }
 
-  // Magnitude (dB) of one channel's current response at hz (0 left, 1 right).
+  // Magnitude (dB) of one channel's current response at hz (0 left, 1 right,
+  // 2 and 3 the room feed), without the distance gain.
   float responseDb(float hz, int ch) const {
     std::complex<double> sum = 0;
     for (std::size_t k = 0; k < modes_.size(); ++k) {
@@ -193,7 +223,8 @@ class Radiation {
       m.b0 = b0_[k];
       m.a1 = a1_[k];
       m.a2 = a2_[k];
-      sum += static_cast<double>(ch == 0 ? m.rl : m.rr) * modeResponse(m, hz);
+      const float res = ch == 0 ? m.rl : ch == 1 ? m.rr : ch == 2 ? m.ra : m.rb;
+      sum += static_cast<double>(res) * modeResponse(m, hz);
     }
     for (const auto& h : hp_) sum *= h.response(hz, fs_);
     return static_cast<float>(20.0 * std::log10(std::abs(sum) * gain_ + 1e-12));
@@ -245,6 +276,8 @@ class Radiation {
     float b0 = 0, a1 = 0, a2 = 0, s1 = 0, s2 = 0;
     float amp = 1, ampSmooth = 1;      // calibrated level (as measured / smoothed low band)
     float gl = 1, gr = 1;              // per-channel residues toward the left / right mic
+    float sa = 1, sb = 1;              // the room feed's random signs (two channels)
+    float ta = 0, tb = 0, ra = 0, rb = 0;  // the room feed's residues: target, gliding
     int order = 0;                     // spherical-harmonic order of its pattern (0: monopole)
     std::size_t coef = 0;              // its coefficients in coef_
     float blend = 0.f;                 // 0 below 600 Hz (monopole) .. 1 above 1.2 kHz (pattern)
@@ -371,6 +404,11 @@ class Radiation {
       const float k = static_cast<float>(std::sqrt(4.0 * 3.141592653589793 / ss));
       for (int i = 0; i < n; ++i) coef_[m.coef + i] *= k;
     }
+    // The room feed's signs (above the monopole band; blended like the patterns).
+    for (auto& m : modes_) {
+      m.sa = uni2() < 0.5f ? -1.f : 1.f;
+      m.sb = uni2() < 0.5f ? -1.f : 1.f;
+    }
     // The overall shape's rms over the sphere, per mode (a 256-point
     // Fibonacci sphere), so each pattern keeps unit mean power.
     for (auto& m : modes_) {
@@ -407,6 +445,18 @@ class Radiation {
     float db = w * kBeamDb * (cosg - 1.f);
     const float wf = std::clamp(std::log2(hz / 1500.f) / 0.5f, 0.f, 1.f) * std::clamp(std::log2(9000.f / hz) / 0.5f, 0.f, 1.f);
     db -= wf * kFloorDb * std::max(0.f, -d[2]);
+    // The player (KB §12.3d): the head and chin above the violin and toward
+    // the player's right, the torso behind and below, shade the treble in
+    // those directions: up to kHeadDb / kTorsoDb above ~1.5 kHz, fading in
+    // from 700 Hz, over cones of ~40 / ~50 degrees [T].
+    const float ws = std::clamp(std::log2(hz / 700.f) / 1.1f, 0.f, 1.f);
+    auto cone = [&](const float* a, float halfCos) {
+      const float c = d[0] * a[0] + d[1] * a[1] + d[2] * a[2];
+      return std::clamp((c - halfCos) / (1.f - halfCos), 0.f, 1.f);
+    };
+    static constexpr float head[3] = {-0.25f, -0.68f, 0.69f};   // unit: back a little, the player's right, up
+    static constexpr float torso[3] = {-0.62f, -0.35f, -0.70f}; // unit: behind, a little right, down
+    db -= ws * (kHeadDb * cone(head, 0.77f) + kTorsoDb * cone(torso, 0.64f));
     return std::pow(10.f, db / 20.f);
   }
 
@@ -456,7 +506,7 @@ class Radiation {
   }
 
   // The pair's directions from the violin, and every mode's residue toward
-  // each. Omnis kDistance from the violin at (micAz, micEl), spaced
+  // each. Omnis micDist from the violin at (micAz, micEl), spaced
   // width x kSpacing along the line across the mic's view (left = the
   // listener's left, looking at the player).
   void micGeometry(const RadiationSettings& s) {
@@ -465,12 +515,17 @@ class Radiation {
     // Left, seen from the mic looking at the player: up x (-horizontal view).
     const float lx = std::sin(az), ly = -std::cos(az);
     const float half = 0.5f * std::clamp(s.width, 0.f, 1.f) * kSpacing;
+    const float dist = std::max(s.micDist, kMinDistance);
     float dl[3], dr[3];
     for (int i = 0; i < 3; ++i) {
       const float u = i == 0 ? lx : (i == 1 ? ly : 0.f);
-      dl[i] = kDistance * c[i] + half * u;
-      dr[i] = kDistance * c[i] - half * u;
+      dl[i] = dist * c[i] + half * u;
+      dr[i] = dist * c[i] - half * u;
     }
+    // The direct sound's level: 1/r from the reference distance (each mic's
+    // own distance, so a close pair is a little quieter than its centre).
+    direct_ = kRefDistance / std::sqrt(dist * dist + half * half);
+    directRef_ = kRefDistance / std::sqrt(kRefDistance * kRefDistance + 0.25f * kSpacing * kSpacing);
     for (float* v : {dl, dr}) {
       const float len = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
       for (int i = 0; i < 3; ++i) v[i] /= len;
@@ -595,9 +650,14 @@ class Radiation {
       // Each mic's own residue (its direction; the pair's spacing is the width).
       m.tl = a * norm_ * m.gl;
       m.tr = a * norm_ * m.gr;
+      // The room: the same level, a random sign (blended like the patterns).
+      m.ta = a * norm_ * ((1.f - m.blend) + m.blend * m.sa);
+      m.tb = a * norm_ * ((1.f - m.blend) + m.blend * m.sb);
       if (snap) {
         m.rl = m.tl;
         m.rr = m.tr;
+        m.ra = m.ta;
+        m.rb = m.tb;
       }
     }
   }
@@ -606,6 +666,8 @@ class Radiation {
     for (std::size_t k = 0; k < modes_.size() && k < rl_.size(); ++k) {
       rl_[k] = modes_[k].rl;
       rr_[k] = modes_[k].rr;
+      ra_[k] = modes_[k].ra;
+      rb_[k] = modes_[k].rb;
     }
   }
 
@@ -613,7 +675,10 @@ class Radiation {
   static constexpr float kRadius = 0.2f;       // m (violin, KB §12.3a)
   static constexpr float kSound = 343.f;       // m/s
   static constexpr int kMaxOrder1 = 40;        // harmonic orders 0..39 (ka ~ 37 at 10 kHz)
-  static constexpr float kDistance = 1.5f;     // m, violin to the pair
+  static constexpr float kRefDistance = 1.5f;  // m: the calibration's distance (the default)
+  static constexpr float kMinDistance = 0.4f;  // m: closer needs the near field (Phase 7c)
+  static constexpr float kHeadDb = 6.f;        // dB, treble shade toward the player's head [T]
+  static constexpr float kTorsoDb = 8.f;       // dB, toward the torso [T]
   static constexpr float kSpacing = 0.6f;      // m between the omnis at width 1
   static constexpr float kBeamEl = 0.61f;      // rad (35 deg): the treble beam's elevation
   static constexpr float kBeamDb = 4.5f;       // dB per unit of (cos angle - 1) from the beam, at 4 kHz+
@@ -624,7 +689,8 @@ class Radiation {
   bool micPending_ = false;
   int micTick_ = 0;
   std::vector<Mode> modes_;
-  std::vector<float> b0_, a1_, a2_, s1_, s2_, rl_, rr_;  // audio-loop copies (SoA)
+  std::vector<float> b0_, a1_, a2_, s1_, s2_, rl_, rr_, ra_, rb_;  // audio-loop copies (SoA)
+  float direct_ = 1.f, directRef_ = 1.f, directNow_ = 1.f;  // the direct sound's 1/r gain (re the reference)
   static constexpr int kLowCutSections = 3;    // order 6
   static constexpr double kLowCutRipple = 0.5;  // dB
   Biquad hp_[kLowCutSections];

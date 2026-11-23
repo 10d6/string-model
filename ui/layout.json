@@ -59,6 +59,9 @@
         },
         {
           "param": "mic.elevation"
+        },
+        {
+          "param": "mic.distance"
         }
       ]
     },
@@ -229,7 +232,7 @@
     "vib.depth": "Vibrato width in cents (peak to peak) at a medium dynamic. Louder notes vibrate a little wider and faster, as players do. Open strings get none.",
     "vib.rate": "Vibrato speed. Players use about 5 to 7 Hz; it drifts a little from cycle to cycle.",
     "vib.delay": "How long a note sounds straight before the vibrato starts; it then fades in over about a third of a second. Short notes in a fast passage may end before it starts.",
-    "room.mix": "How much of the room's reverb is added to the instrument.",
+    "room.mix": "How much of the room you hear (with the Modelled output, at the default 1.5 m; further away there's more). The room hears the violin's sound in every direction, not just toward the mics, so it's darker and smoother than the direct sound. 100% in the Hall is about what a real hall gives at 1.5 m.",
     "room.space": "The kind of room: from a small room to a cathedral, or a plate reverb.",
     "body.a0": "The body's air resonance (around 280 Hz, the 'A0' mode): the depth and warmth of the low strings. Its strength is the one measured trait that goes with violins players rate highly.",
     "body.nasal": "The 0.8–1.5 kHz region: more gives a nasal, boxy tone typical of factory instruments; less sounds sweeter and more open.",
@@ -242,7 +245,8 @@
     "finger.portamento": "Audible slides on slow, slurred shifts of a third or more, as in older or more romantic styles. 0 shifts cleanly; fast passages never slide.",
     "bow.slurRange": "The widest interval that slurs. Overlapping keys further apart than this change bow instead, so only close notes are slurred. 24 slurs any leap.",
     "mic.angle": "Where the mics stand around the player (Modelled output). 0°: in front, facing the player; 90°: on the player's left, where the scroll points; −90°: on the right; 180°: behind. The violin's treble beams forward and up, so the sides are a little darker and behind is darker still. Every place has its own colour, changing from note to note.",
-    "mic.elevation": "The mics' height, as an angle seen from the violin (Modelled output). 0°: level with it; 30° (default): a little above, the usual close-mic height; 90°: straight overhead. Below 0° the treble falls away: the violin radiates little toward the floor."
+    "mic.elevation": "The mics' height, as an angle seen from the violin (Modelled output). 0°: level with it; 30° (default): a little above, the usual close-mic height; 90°: straight overhead. Below 0° the treble falls away: the violin radiates little toward the floor.",
+    "mic.distance": "How far the mics are from the violin (Modelled output). Further away, the direct sound falls while the room stays, so you hear more room and a softer edge; the level is re-gained so it stays about as loud. 1.5 m is the default. Closer than 40 cm currently behaves like 40 cm (close-mic sound is coming)."
   },
   "keyboard": true
 }

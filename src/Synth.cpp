@@ -65,7 +65,7 @@ struct StringModel : Synth {
   Param instrument, dynamics, velSens, pressure, atPressure, contact, bite, legato, bowChange, noise, friction;
   Param vibDepth, vibRate, vibDelay, shiftTime, intonation, output, roomMix, roomSpace;
   Param slurRange;
-  Param micAngle, micElevation;
+  Param micAngle, micElevation, micDistance;
   Param bendRange, a4;
 
   void defineParams(ParamBuilder& b) override {
@@ -118,6 +118,8 @@ struct StringModel : Synth {
     // Phase 7a: where the mic pair is (Modelled output), in the player's frame.
     micAngle = b.add("mic.angle").name("Mic Angle").range(-180, 180).def(0).unit("°").group("Output");
     micElevation = b.add("mic.elevation").name("Mic Elevation").range(-30, 90).def(30).unit("°").group("Output");
+    // Phase 7b: the pair's distance (far field from 0.4 m until the near field, 7c).
+    micDistance = b.add("mic.distance").name("Mic Distance").range(0.05, 10).log().def(1.5).unit("m").group("Output");
   }
 
   std::unique_ptr<Voice> makeVoice() override { return std::make_unique<SilentVoice>(); }
@@ -254,6 +256,7 @@ struct StringModel : Synth {
     rs.width = ctx.get(width);
     rs.micAz = ctx.get(micAngle);
     rs.micEl = ctx.get(micElevation);
+    rs.micDist = ctx.get(micDistance);
     rs.a0 = ctx.get(a0);
     rs.nasal = ctx.get(nasal);
     rs.brilliance = ctx.get(brilliance);
@@ -280,7 +283,7 @@ struct StringModel : Synth {
       const float force = inst_.process(pc_, ic_) * gain;
       float l = 0.f, r = 0.f;
       if (mode == 3) {
-        rad_.process(force * inst_.def().radiationGain, l, r);
+        rad_.process(force * inst_.def().radiationGain, l, r, feedL_[i & 31], feedR_[i & 31]);
       } else if (mode == 0) {
         stereoIr_.processMono(force, l, r);
       } else if (mode == 1) {
@@ -298,28 +301,55 @@ struct StringModel : Synth {
     }
     blockPos_ += io.frames;
 
-    // Room.
+    // Room. The Modelled output feeds it the violin's power response (the
+    // radiation's room channels, KB §12.3e: what the room hears is the sound
+    // radiated every way, smoother and darker than the mic's view); the other
+    // outputs feed it what they play.
     const Ramp mix = ctx.ramp(roomMix);
     const int n = std::min(io.frames, 32);
+    const int space = ctx.choice(roomSpace);
     bool on = false;
     for (int i = 0; i < n; ++i) {
-      dryL_[i] = io.left[i];
-      dryR_[i] = io.right[i];
+      dryL_[i] = mode == 3 ? feedL_[i] : io.left[i];
+      dryR_[i] = mode == 3 ? feedR_[i] : io.right[i];
       wetL_[i] = wetR_[i] = 0.f;
       on = on || mix.at(i) > 0;
     }
-    dsp::Reverb::Settings st{ctx.choice(roomSpace), 1.f, 1.f, 50.f, 8.f, 0.f, 90.f, 11000.f, on};
+    dsp::Reverb::Settings st{space, 1.f, 1.f, 50.f, 8.f, 0.f, 90.f, 11000.f, on};
     if (reverb_.process(st, dryL_, dryR_, wetL_, wetR_, n))
       for (int i = 0; i < n; ++i) {
         io.left[i] += mix.at(i) * 0.01f * kWet * wetL_[i];
         io.right[i] += mix.at(i) * 0.01f * kWet * wetR_[i];
       }
+    // Distance (Modelled): the direct sound fell as 1/r in the radiation, the
+    // room didn't. Re-gain the total as an engineer would, so the loudness
+    // stays about the same and only the balance moves: power (d0^2 + W m^2)
+    // / (d^2 + W m^2), d = the direct gain re the reference distance, m the
+    // mix, W the space's wet/direct power at 100% (measured, kRoomPower).
+    if (mode == 3) {
+      const float d = rad_.directGain();
+      const float wm0 = kRoomPower[std::clamp(space, 0, 4)] * 0.0001f * mix.at(0) * mix.at(0);
+      const float wm1 = kRoomPower[std::clamp(space, 0, 4)] * 0.0001f * mix.at(n - 1) * mix.at(n - 1);
+      const float t0 = std::sqrt((1.f + wm0) / (d * d + wm0)), t1 = std::sqrt((1.f + wm1) / (d * d + wm1));
+      const float t = trim_ > 0.f ? trim_ : t0;
+      for (int i = 0; i < n; ++i) {
+        const float g = t + (t1 - t) * static_cast<float>(i + 1) / static_cast<float>(n);
+        io.left[i] *= g;
+        io.right[i] *= g;
+      }
+      trim_ = t1;
+    } else {
+      trim_ = 0.f;
+    }
   }
 
  private:
   static constexpr int kQueue = 512;
   static constexpr int kKeyswitchLow = 24;  // C1
   static constexpr float kWet = 0.12f;
+  // Each space's wet/direct power ratio at Room 100% (Modelled output, the
+  // reference distance; tools/room_power.py).
+  static constexpr float kRoomPower[5] = {0.315f, 0.139f, 0.179f, 0.195f, 0.204f};
   double sr_ = 48000;
   sm::Instrument inst_;
   sm::PerformerControls pc_;
@@ -334,6 +364,8 @@ struct StringModel : Synth {
   int queued_ = 0, blockPos_ = 0;
   float pitchBend_ = 0.f, bendSmooth_ = 0.f, pressureAt_ = 0.f;
   float dryL_[32]{}, dryR_[32]{}, wetL_[32]{}, wetR_[32]{};
+  float feedL_[32]{}, feedR_[32]{};  // the radiation's room feed (Modelled)
+  float trim_ = 0.f;                 // the distance trim at the end of the last block
 };
 
 SK_SYNTH(StringModel)

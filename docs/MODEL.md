@@ -704,6 +704,37 @@ the total bridge force (KB §12.3a):
   pre-7a output): default within ±1 dB to 8 kHz; overhead −1 to −2 dB at
   2–8 kHz; the player's left +4 at 1–2 kHz, −2 to −3 above; behind −10 dB at
   2–4 kHz, −6 at 4–8; below −3 dB at 2–8 kHz.
+- **The player (Phase 7b, KB §12.3d) [T]:** the head and chin (above the
+  violin, toward the player's right) and the torso (behind and below) shade
+  the treble in their directions: up to 6 and 8 dB above ~1.5 kHz (fading in
+  from 700 Hz), over cones of ~40° and ~50°. Toward the head −4.7 to −6 dB at
+  2–8 kHz re the sphere mean, toward the torso −12 to −15 (with the
+  directivity there); the default place is unchanged (±0.3 dB per band).
+- **Distance (Phase 7b, `Mic Distance`, 0.4–10 m; closer behaves as 0.4 m
+  until the near field, 7c):** the pair's directions spread or narrow
+  (60 cm apart: ±31° at 0.5 m, ±2° at 8 m), and the direct sound falls as
+  1/r from the reference 1.5 m (each mic's own distance). The room doesn't,
+  so its share grows 6 dB per doubling. The synth then re-gains the total as
+  an engineer would: power × (1 + W m²) / (d² + W m²), d the direct gain re
+  1.5 m, m the Room mix, W the space's measured wet/direct power at 100%
+  (`tools/room_power.py`: Room 0.315, Chamber 0.139, Hall 0.179, Cathedral
+  0.195, Plate 0.204). Loudness stays within 0.3 dB from 1.5 to 10 m (Room 20
+  or 60%); at 0.5 m +2.4 dB, as the pair sees the violin from ±31°. In the
+  Hall at Room 20% the room is ~30 dB under the direct sound at 0.5 m, 21.5
+  at 1.5 m, 13 at 4 m, 7 at 8 m; Room 100% at 1.5 m (−7.5 dB) is what a real
+  hall of that size gives (critical distance ~3.6 m, KB §12.3e: −7.6 dB).
+  No time of flight (8 m would add 23 ms of latency) and no air absorption
+  (under 1 dB at 8 kHz below 10 m). The floor reflection is left for the
+  cello (Phase 8): for a standing violinist it is minor, and the VSCO
+  calibration already contains the recordings' own floor.
+- **The room's feed (Phase 7b, KB §12.3e):** the reverb hears the violin's
+  power response (the sphere average), not the mics' view: two more channels
+  from the same modes, each mode at its mean level with a random sign
+  (decorrelated left and right). Its treble is lower by the directivity
+  index: the reverb at Room 100% is 3.6 dB darker at 1–2 kHz, 7.3 at 2–4,
+  7.0 at 4–8, 8 at 8–16 kHz than when it was fed the mics' signal. The
+  other outputs still feed the room what they play. Cost: the radiation now
+  mixes four channels; the browser page went from 9.3× to 8.8× real time.
 - **Low cut:** a 6th-order Chebyshev high-pass (0.5 dB ripple) at 245 Hz.
   The violin radiates little below its A0 air mode (~280 Hz) and is weak at
   the open G (KB §12.7): below A0 the air in the f-holes and the plates move
@@ -872,6 +903,7 @@ python3 tools/analyze.py render.wav [out.png]                        # spectrogr
   env: LAB_WIDTH=<samples> LAB_SHARE, LAB_HFLOOR LAB_HSPEED LAB_TDROPE (enhanced friction)
 ./build/radiation_lab character [a0 nasal brilliance softness voice%] # body controls per band
 ./build/radiation_lab directivity                                  # one omni around the violin: per octave, per semitone
+python3 tools/room_power.py                                         # each Space's wet/direct power (the distance trim)
 ./build/bowing_lab <metric> [bpm num den] < events                   # bow direction per note, mid-note rebows
   instrument_lab env also: LAB_FRICTION=0|1|2, LAB_BOWWIDTH=<m>, LAB_AVARY
 python3 tools/open_strings.py | harmonics_tuning.py | intonation_check.py | vibrato_extent.py
