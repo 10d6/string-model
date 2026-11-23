@@ -63,6 +63,7 @@ python3 tools/calibrate_force.py                   # Helmholtz window vs the pla
 python3 tools/analyze.py build/renders/legato-scale.wav   # spectrogram, level, pitch per note
 ./build/string_lab guettler 1 62 0.1 enhanced     # attacks from rest: perfect / within 50 ms
 ./build/radiation_lab character                    # body controls per third-octave band
+./build/radiation_lab directivity                  # radiation patterns: per octave band, semitone to semitone
 printf '2.5 69 1 .6\n2.95 69 0 .5\n3 74 1 .6\n4 74 0 .5\n' | ./build/bowing_lab 0.5 92 3 4   # bow direction, rebows
 
 # evaluation scripts (docs/EVALUATION.md has the reference numbers)

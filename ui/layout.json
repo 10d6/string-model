@@ -53,6 +53,12 @@
         },
         {
           "param": "out.width"
+        },
+        {
+          "param": "mic.angle"
+        },
+        {
+          "param": "mic.elevation"
         }
       ]
     },
@@ -208,7 +214,7 @@
     "body.hill": "The bridge's main resonance on the body (the 'bridge hill', around 2.6 kHz on a violin): lower is darker and warmer, higher is brighter. It moves the string's damping too, not just the tone.",
     "body.mute": "A mute on the bridge: its extra mass lowers and weakens the bridge hill, so the tone goes veiled and quieter in the highs.",
     "body.resonance": "The low body resonances' peaks and dips, which make some notes louder than their neighbours (around C#5-D5 especially). 1: as measured on a real violin. 0: smoothed out, for an even instrument. (Modelled output.)",
-    "out.width": "Stereo width of the body's upper range, where the two channels hear different patterns of resonances. 0: mono. (Modelled output.)",
+    "out.width": "The spacing of the stereo mic pair (Modelled output). At 1 the two mics are 60 cm apart, so each hears the violin from a slightly different direction and the treble differs between your ears, as in a real room. At 0 both are in one spot: mono.",
     "bow.release": "How a note ends when you let go. Lift: the bow leaves and the string rings on. Stop on String: the bow stops on the string and damps it, for a short, clean end. Finger Off: the bow leaves, then the finger, so the note falls to the open string. Auto: a quick key-up stops, a gentle one lifts (needs a keyboard that sends key-up speed).",
     "finger.shift": "How long a slurred shift slides, when a slurred note is out of the hand's reach (notes within reach are a quick finger change, with no slide). Bigger shifts slide longer, and key velocity sets the speed: a gentle key slides slowly and expressively, a hard one shifts quickly.",
     "finger.noise": "The whistle of the finger sliding over the string's winding during shifts (G, D and A strings; the steel E is plain).",
@@ -234,7 +240,9 @@
     "vib.shape": "How much the vibrato follows the music. 0: the same vibrato on every note. Higher: wider in high positions, narrower in fast passages (opening up on a held note), widening through long notes, a little faster on weak beats.",
     "bow.metric": "How much the player follows the meter when a host transport is playing: stronger beats a little louder, down-bows on strong beats and up-bows on pickups. 0 plays every note evenly. Off without a playing transport.",
     "finger.portamento": "Audible slides on slow, slurred shifts of a third or more, as in older or more romantic styles. 0 shifts cleanly; fast passages never slide.",
-    "bow.slurRange": "The widest interval that slurs. Overlapping keys further apart than this change bow instead, so only close notes are slurred. 24 slurs any leap."
+    "bow.slurRange": "The widest interval that slurs. Overlapping keys further apart than this change bow instead, so only close notes are slurred. 24 slurs any leap.",
+    "mic.angle": "Where the mics stand around the player (Modelled output). 0°: in front, facing the player; 90°: on the player's left, where the scroll points; −90°: on the right; 180°: behind. The violin's treble beams forward and up, so the sides are a little darker and behind is darker still. Every place has its own colour, changing from note to note.",
+    "mic.elevation": "The mics' height, as an angle seen from the violin (Modelled output). 0°: level with it; 30° (default): a little above, the usual close-mic height; 90°: straight overhead. Below 0° the treble falls away: the violin radiates little toward the floor."
   },
   "keyboard": true
 }
