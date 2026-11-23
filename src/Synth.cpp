@@ -65,6 +65,7 @@ struct StringModel : Synth {
   Param instrument, dynamics, velSens, pressure, atPressure, contact, bite, legato, bowChange, noise, friction;
   Param vibDepth, vibRate, vibDelay, shiftTime, intonation, output, roomMix, roomSpace;
   Param slurRange;
+  Param micAngle, micElevation;
   Param bendRange, a4;
 
   void defineParams(ParamBuilder& b) override {
@@ -114,6 +115,9 @@ struct StringModel : Synth {
     metric = b.add("bow.metric").name("Metric Emphasis").range(0, 1).def(0.5).smoothing(0).group("Bow");
     portamento = b.add("finger.portamento").name("Portamento").range(0, 1).def(0.3).smoothing(0).group("Left Hand");
     slurRange = b.add("bow.slurRange").name("Slur Range").range(1, 24).integer().def(12).unit("st").group("Bow");
+    // Phase 7a: where the mic pair is (Modelled output), in the player's frame.
+    micAngle = b.add("mic.angle").name("Mic Angle").range(-180, 180).def(0).unit("°").group("Output");
+    micElevation = b.add("mic.elevation").name("Mic Elevation").range(-30, 90).def(30).unit("°").group("Output");
   }
 
   std::unique_ptr<Voice> makeVoice() override { return std::make_unique<SilentVoice>(); }
@@ -248,6 +252,8 @@ struct StringModel : Synth {
     rs.hillHz = ctx.get(hill);
     rs.resonance = ctx.get(resonance);
     rs.width = ctx.get(width);
+    rs.micAz = ctx.get(micAngle);
+    rs.micEl = ctx.get(micElevation);
     rs.a0 = ctx.get(a0);
     rs.nasal = ctx.get(nasal);
     rs.brilliance = ctx.get(brilliance);

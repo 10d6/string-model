@@ -72,8 +72,75 @@ int character(int argc, char** argv) {
   return 0;
 }
 
+
+// Directivity (KB §12.1): one omni (width 0) on a sphere around the violin.
+// Per octave band: level toward front, front-up, sides, back, top and bottom
+// re the mean over the sphere, the share of directions within 3 dB of the
+// loudest, and the directivity index; then how much the directivity index
+// varies from semitone to semitone (KB: 2.2-8.1 dB for the violin's class).
+int directivity() {
+  const float fs = 48000.f;
+  Radiation rad;
+  rad.prepare(fs, data::kViolinRadiationHz, data::kViolinRadiationDb, data::kViolinRadiationCount, 0x5717a1u, 2600.f, sm::violin().radiationLowCut);
+  const int G = 200;
+  std::vector<std::pair<float, float>> dirs;  // az, el (deg)
+  for (int i = 0; i < G; ++i) {
+    const float z = 1.f - (2.f * i + 1.f) / G, phi = 2.39996323f * i;
+    dirs.push_back({std::atan2(std::sin(phi), std::cos(phi)) * 57.29578f, std::asin(z) * 57.29578f});
+  }
+  const std::pair<const char*, std::pair<float, float>> named[] = {
+      {"front", {0, 0}}, {"fr-up", {0, 35}}, {"left", {90, 0}}, {"right", {-90, 0}}, {"back", {180, 0}}, {"top", {0, 90}}, {"bottom", {0, -60}}};
+  const float octs[] = {250, 500, 1000, 2000, 4000, 8000};
+  // Power per direction per 1/12-octave point from 177 Hz to 11.3 kHz.
+  std::vector<float> fr;
+  for (float f = 177.f; f < 11300.f; f *= std::pow(2.f, 1.f / 12.f)) fr.push_back(f);
+  auto measure = [&](float az, float el, std::vector<double>& out) {
+    RadiationSettings s;
+    s.width = 0.f;
+    s.micAz = az;
+    s.micEl = el;
+    rad.setNow(s);
+    out.resize(fr.size());
+    for (std::size_t j = 0; j < fr.size(); ++j) out[j] = std::pow(10.0, rad.responseDb(fr[j], 0) / 10);
+  };
+  std::vector<std::vector<double>> P(G);
+  for (int i = 0; i < G; ++i) measure(dirs[i].first, dirs[i].second, P[i]);
+  std::vector<std::vector<double>> N(7);
+  for (int i = 0; i < 7; ++i) measure(named[i].second.first, named[i].second.second, N[i]);
+  auto band = [&](const std::vector<double>& p, float c) {
+    double s = 0;
+    int n = 0;
+    for (std::size_t j = 0; j < fr.size(); ++j)
+      if (fr[j] >= c / std::sqrt(2.f) && fr[j] < c * std::sqrt(2.f)) s += p[j], ++n;
+    return s / n;
+  };
+  std::printf("octave  front  fr-up   left  right   back    top bottom   (dB re sphere mean)  within 3 dB of max   DI\n");
+  for (float c : octs) {
+    double mean = 0, mx = 0;
+    std::vector<double> b(G);
+    for (int i = 0; i < G; ++i) b[i] = band(P[i], c), mean += b[i] / G, mx = std::max(mx, b[i]);
+    int within = 0;
+    for (int i = 0; i < G; ++i) within += b[i] > mx / 2 ? 1 : 0;
+    std::printf("%6.0f ", c);
+    for (int i = 0; i < 7; ++i) std::printf(" %+6.1f", 10 * std::log10(band(N[i], c) / mean));
+    std::printf("   %25.0f%%   %4.1f dB\n", 100.0 * within / G, 10 * std::log10(mx / mean));
+  }
+  double lo = 1e9, hi = -1e9;
+  for (std::size_t j = 0; j < fr.size(); ++j) {
+    if (fr[j] < 1000.f || fr[j] > 4000.f) continue;
+    double mean = 0, mx = 0;
+    for (int i = 0; i < G; ++i) mean += P[i][j] / G, mx = std::max(mx, P[i][j]);
+    const double di = 10 * std::log10(mx / mean);
+    lo = std::min(lo, di);
+    hi = std::max(hi, di);
+  }
+  std::printf("semitone to semitone, 1-4 kHz: directivity index %.1f to %.1f dB (variation %.1f dB)\n", lo, hi, hi - lo);
+  return 0;
+}
+
 int main(int argc, char** argv) {
   if (argc > 1 && !std::strcmp(argv[1], "character")) return character(argc, argv);
+  if (argc > 1 && !std::strcmp(argv[1], "directivity")) return directivity();
   const float fs = argc > 1 ? static_cast<float>(std::atof(argv[1])) : 48000.f;
   Radiation rad;
   rad.prepare(fs, data::kViolinRadiationHz, data::kViolinRadiationDb, data::kViolinRadiationCount, 0x5717a1u, 2600.f, sm::violin().radiationLowCut);

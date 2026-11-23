@@ -663,16 +663,47 @@ directly (it is already smooth) and turn off the automatic bow change.
 the total bridge force (KB §12.3a):
 - 16 per octave from 180 Hz to 1 kHz (Q 22), and 24 per octave from 1 to
   10 kHz (Q ~40, falling slowly), with a little random jitter: 120 modes.
-- Each is a peak-normalised band-pass. Each channel mixes the modes with its
-  own residues.
-- **Low band (below 600 Hz):** a monopole, the same residues left and right
-  (KB §5.5).
-- **High band (above 1.2 kHz):** each channel's residues get an independent
-  random sign and level (±4 dB), blended in between. Overlapping modes
-  interfere differently in each ear, so the response changes from semitone
-  to semitone and differs left and right ("directional tone colour"). Above
-  1 kHz, left and right differ by 4–9 dB RMS, and each has 3–6 dB of fine
-  structure per 1/3 octave.
+- Each is a peak-normalised band-pass. The microphones share the modes and
+  mix them with their own residues: the residue toward the mic's direction
+  (KB §12.3a: shared poles, direction-specific residues).
+- **Low band (below 600 Hz):** a monopole, the same residue in every
+  direction (KB §5.5, §12.1).
+- **High band (above 1.2 kHz, blended over 600–1200 Hz; Phase 7a):** each
+  mode has a random radiation pattern: real orthonormal spherical harmonics
+  up to order ⌈ka⌉ + 1 (a = 0.2 m: order 6 at 1.2 kHz, 17 at 4.3 kHz, 39 at
+  10 kHz) with random Gaussian coefficients. It is smooth at 1 kHz and
+  changes every few degrees at 8 kHz. On top, the measured overall shape
+  (KB §12.1, Pätynen & Lokki) [T]: above 1 kHz (full from 4 kHz) the treble
+  beams toward the front, 35° up, at 4.5 dB × (cos angle − 1), and at 2–6.3
+  kHz it is up to 3 dB weaker toward the floor. Each pattern has unit mean
+  power over the sphere, so the fitted levels are the same in every
+  direction on average.
+- **The mics (Phase 7a):** a spaced pair of omnis 1.5 m from the violin at
+  `Mic Angle` (azimuth in the player's frame: 0 in front, +90° on the
+  player's left) and `Mic Elevation` (0 level, 90° overhead), `Stereo Width`
+  × 60 cm apart across the mic's view. Each hears the body from a slightly
+  different direction, so overlapping modes interfere differently in each
+  ear: the response changes from semitone to semitone and differs left and
+  right ("directional tone colour"). At the default place (0°, 30°), 1–8 kHz:
+  left and right differ by 6.0 dB RMS on average (the earlier random
+  per-channel residues: 7.5) and each has 4.6 dB of fine structure per 1/3
+  octave (4.6). Below 600 Hz they differ by 1–2 dB at 250–500 Hz (the high
+  modes' skirts; the KB has the 500 Hz octave lateral, not omni). Moving the
+  mic re-evaluates the patterns (~80k multiply-adds) at most every 16
+  control ticks (~5 ms), about 8 µs per tick natively while a knob moves;
+  the residues glide. The mic is always far (1.5 m): distance, mic types and
+  the near field come in 7b–7d.
+- **Directivity** (`radiation_lab directivity`: one omni at 200 directions,
+  re the sphere mean): 250 and 500 Hz omni within ±1 dB; 2 kHz front and up
+  strongest (back −4.6, below −6.4 dB); 4 kHz front +2, back −3.2, below −3.5;
+  8 kHz front-up +6.7, back −7.2 (KB: "strongly forward, only the front
+  within −3 dB"; bottom elevations weaker). The directivity index varies by
+  4.9 dB from semitone to semitone over 1–4 kHz (KB: 2.2–8.1 dB for the
+  violin's class). 1 kHz is random (the KB's diagonal lobes aren't shaped).
+- **Positions** (a phrase, band levels re 200–1000 Hz, change from the
+  pre-7a output): default within ±1 dB to 8 kHz; overhead −1 to −2 dB at
+  2–8 kHz; the player's left +4 at 1–2 kHz, −2 to −3 above; behind −10 dB at
+  2–4 kHz, −6 at 4–8; below −3 dB at 2–8 kHz.
 - **Low cut:** a 6th-order Chebyshev high-pass (0.5 dB ripple) at 245 Hz.
   The violin radiates little below its A0 air mode (~280 Hz) and is weak at
   the open G (KB §12.7): below A0 the air in the f-holes and the plates move
@@ -710,8 +741,9 @@ the p→f spread above 4 kHz is within 2 dB of the recordings (median; it
 was 7–8 dB short), and p and f each within 2.6 dB of them per band. G3 and
 C4 at p remain ~8 dB bright at 8–16 kHz (at about −47 dB re the total).
 
-**Calibration.** At `prepare`, the residues are fitted (10 + 10 iterations,
-~4 ms) so the channels' mean power, smoothed, follows a target curve: 1/12
+**Calibration.** At `prepare`, at the default mic place, the residues are
+fitted (30 + 10 iterations, ~5 ms; a mode near a null of its pattern toward
+the calibration place moves its band slowly, so the detail pass needs 30) so the channels' mean power, smoothed, follows a target curve: 1/12
 octave below 1 kHz, 1/3 octave above. A second fit makes a smoothed low band
 for `Body Resonance` 0. The gain matches the Library Mic (Smooth) loudness
 from 300 Hz to 5 kHz (×1.19).
@@ -839,6 +871,7 @@ python3 tools/analyze.py render.wav [out.png]                        # spectrogr
 ./build/string_lab guettler <string> <note> <beta> [classic|enhanced]  # attacks from rest (Guettler plane)
   env: LAB_WIDTH=<samples> LAB_SHARE, LAB_HFLOOR LAB_HSPEED LAB_TDROPE (enhanced friction)
 ./build/radiation_lab character [a0 nasal brilliance softness voice%] # body controls per band
+./build/radiation_lab directivity                                  # one omni around the violin: per octave, per semitone
 ./build/bowing_lab <metric> [bpm num den] < events                   # bow direction per note, mid-note rebows
   instrument_lab env also: LAB_FRICTION=0|1|2, LAB_BOWWIDTH=<m>, LAB_AVARY
 python3 tools/open_strings.py | harmonics_tuning.py | intonation_check.py | vibrato_extent.py

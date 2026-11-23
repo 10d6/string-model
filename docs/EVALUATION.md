@@ -5,7 +5,7 @@ How each part of String Model is measured, the numbers it measured at last
 from the repo root after `cmake --build build` (Release). Python tools take
 `RENDER=path/to/stringmodel_render` to measure another build.
 
-## Reference numbers (as of the low-notes PR, after Phase 6 and PRs #10–#14)
+## Reference numbers (as of Phase 7a, after PRs #10–#15)
 
 | What | Command | Last result |
 |---|---|---|
@@ -23,6 +23,8 @@ from the repo root after `cmake --build build` (Release). Python tools take
 | Pizzicato decay | `python3 tools/pizz_decay.py "<VSCO>/Strings/Solo Violin/Pizz"` | score 0.93 (1 polarisation: 1.71) |
 | Articulation pitch | `python3 tools/note_pitch.py tests/spiccato.json` (any scenario) | spiccato/sautillé within ~10–15 cents; the first note from rest can read flat in an 80 ms window |
 | Bow-change gap | `LAB_HF=1 tools/bow_change_gap.sh 69` | A4 mf: ~15 ms more than 6 dB down |
+| Directivity | `./build/radiation_lab directivity` | 250/500 Hz omni ±1 dB; 4 kHz front +2, back −3.2, below −3.5; 8 kHz front-up +6.7, back −7.2 dB; semitone-to-semitone directivity index varies 4.9 dB (KB 2.2–8.1) |
+| Default mic vs VSCO | `tools/radiation_target.py <Arco Vib> build/stringmodel_render - 3`, half-octave means | within ±4.1 dB, RMS 2.5 dB (pre-7a 2.3; the largest is now 2.2–3.2 kHz, +4.1) |
 | Low end vs VSCO | fundamental (h1) re harmonics 3–8, synth − real, mean of p and f | G3 +2.7, A3 +1.7, C4 −10.7, E4 −1.9 dB (was +17.1, +7.9) |
 | Brightness vs dynamics | f − p band levels above 4 kHz, synth − real, median G3–E5 | 4–8 kHz −2.1, 8–16 kHz −0.4 dB (was −7.3, −8.0) |
 | Slurs | `./build/stringmodel_render tests/slurs.json` + a 1 ms-hop pitch track (12 ms windows) | finger changes 2–4 ms (was 10–14), shifts 5–11 ms in a fast scale; onsets 1–2 dB above `main`'s, no clicks |

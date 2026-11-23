@@ -50,13 +50,20 @@ details: [MODEL.md](MODEL.md).
 | 6c | Meter and tempo: Metric Emphasis (accents, bowing to the meter with re-takes), bow weight frog/tip, spiccato length from the note rate, Portamento | done (#12) |
 | 6d | Open strings in tune under the bow (allowance only while bowed); evaluation tools moved into `tools/`; docs and lessons (`docs/EVALUATION.md`) | done (#13) |
 | 6e | Slurs: the left hand's position (finger changes in 2–3 ms with a tap or pluck; L-type shifts on a minimum-jerk curve), Slur Range; Auto Bow Change off by default; info text for every control | done (#14) |
-| 6f | Low notes: a sharp low cut below A0 (G3's fundamental was 17 dB too strong), brightness that follows bow force (p darker, f brighter, as in the recordings) (**this PR**) | |
+| 6f | Low notes: a sharp low cut below A0 (G3's fundamental was 17 dB too strong), brightness that follows bow force (p darker, f brighter, as in the recordings) | done (#15) |
+| 7a | Directional body: per-mode radiation patterns (random spherical harmonics + the measured front-up beam), a spaced omni pair you place with Mic Angle and Mic Elevation, the default reproducing the earlier sound (**this PR**) | |
+| 7b–d | Next: mic types and proximity, presets (7b); near field and the bow-noise source (7c); the room fed by the power response, distance, floor and player shadowing (7d) | |
 | 7 | Mic placement and room: close / studio / overhead / room positions (KB §12.3–12.4), near-field sources and bow noise for close mics, the room fed by the body's power response (darker, smoother), the room's level per output | |
 | 8 | Cello: Kaplan string data, body with a strong ~175 Hz mode (the wolf note should appear by itself, plus a "wolf eliminator"), heavier bow. Then viola/bass | |
 
 ## Next
 
 1. **Phase 7: mic placement and room** (the owner asked for it after Phase 3).
+   Plan agreed with the owner: 7a directional body and placement; 7b mic
+   types, proximity effect, presets; 7c near field and the bow-noise source;
+   7d the room fed by the power response, distance, floor reflection, player
+   shadowing. Placement controls stay simple (a few knobs, no placement view);
+   the default place is the pre-7a sound.
 2. **Phase 8: cello** (then viola/bass). Expect: a new `InstrumentDef`
    (Kaplan string data, body, bow), the radiation measured against VSCO
    cello recordings with the same pipeline, `calibrate_force.py` and the
