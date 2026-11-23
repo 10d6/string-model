@@ -75,6 +75,9 @@ python3 tools/vibrato_extent.py                    # Vibrato Shaping
 python3 tools/pizz_decay.py "<VSCO>/Strings/Solo Violin/Pizz"   # two-stage decay vs recordings
 python3 tools/note_pitch.py tests/spiccato.json    # pitch per note of any scenario
 LAB_HF=1 tools/bow_change_gap.sh 69                # automatic bow change gap
+python3 tools/perceptual.py --data ~/data/phil/wav [--json out.json]   # perceptual distance to the Philharmonia recordings (2.5 min)
+python3 tools/perceptual.py --compare a.json b.json # two builds, note by note
+python3 tools/perceptual.py --yardstick             # recording vs recording
 
 # browser page (API.md §11)
 cmake -S . -B build-web -G Ninja -DCMAKE_TOOLCHAIN_FILE=synthkit/cmake/wasm32-wasi.cmake -DCMAKE_BUILD_TYPE=Release && cmake --build build-web   # Release: without it the page is unoptimised (-O0)
@@ -109,6 +112,11 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
   the performer's bowing rules, `bowing_lab` (no mid-note rebows); after
   pizzicato or string changes, `tools/pizz_decay.py`. Compare with the
   reference numbers in `docs/EVALUATION.md` and update them.
+- The Philharmonia violin samples (the owner supplies the zip) are free to
+  use but must not be shared as samples: never commit them. Decode to WAV
+  outside the repo; `tools/perceptual.py` (docs/EVALUATION.md) measures
+  against them. Run it before and after an audible change and compare
+  (`--compare`); mind its blind spot (the body's fine structure).
 - The performer's player habits (Intonation Style, Vibrato Shaping, Metric
   Emphasis, Portamento) follow instrument-research's
   `player_technique_and_responsiveness.md` (cite §). Model what players
