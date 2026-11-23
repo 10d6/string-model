@@ -72,6 +72,20 @@ details: [MODEL.md](MODEL.md).
 
 ## Ideas not done yet (with why)
 
+- **From the perceptual distance (Philharmonia, docs/EVALUATION.md), by size:**
+  1. Soft attacks: the recordings swell pp–mp notes over 150–190 ms (first
+     100 ms 5–7 dB under the sustain); the synth is at full level in ~30 ms.
+     A performer habit (bow speed/force ramp by dynamic; the "attack style"
+     idea below). Attack window 73 % against 23 % between takes.
+  2. Shimmer: the recordings' sustain fluctuates 2.9 dB per band, the
+     synth's 1.6, and a wider vibrato barely helps (1.6). Candidates: the
+     bow's own unsteadiness (force/speed drift), sharper body peaks.
+  3. Vibrato style: this player ~31 cents p-p from the onset; the synth's
+     default is VSCO's calmer 16 cents after 0.25 s. Players also finger notes
+     that would be open strings when they want vibrato.
+  4. The calibration target: VSCO's mics are ~7 dB brighter above 500 Hz than
+     Philharmonia's; the synth follows VSCO. Choose (or average) deliberately.
+
 - **"Character vs ease"** (KB §5.8): a body whose stronger, less damped low
   modes also make it harder to play. The body controls change only the
   radiated sound today.

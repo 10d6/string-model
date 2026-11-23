@@ -24,6 +24,7 @@ from the repo root after `cmake --build build` (Release). Python tools take
 | Articulation pitch | `python3 tools/note_pitch.py tests/spiccato.json` (any scenario) | spiccato/sautillé within ~10–15 cents; the first note from rest can read flat in an 80 ms window |
 | Bow-change gap | `LAB_HF=1 tools/bow_change_gap.sh 69` | A4 mf: ~15 ms more than 6 dB down |
 | Directivity | `./build/radiation_lab directivity` | 250/500 Hz omni ±1 dB; 4 kHz front +2, back −3.2, below −3.5; 8 kHz front-up +6.7, back −7.2 dB; semitone-to-semitone directivity index varies 4.9 dB (KB 2.2–8.1) |
+| Perceptual distance | `python3 tools/perceptual.py --data <phil wav>` (2.5 min) | score 53.2 (attack 72.6, early 40.5, sustain 31.8); yardsticks: another take 20.5, another violin 35.4 |
 | Default mic vs VSCO | `tools/radiation_target.py <Arco Vib> build/stringmodel_render - 3`, half-octave means | within ±4.1 dB, RMS 2.5 dB (pre-7a 2.3; the largest is now 2.2–3.2 kHz, +4.1) |
 | Low end vs VSCO | fundamental (h1) re harmonics 3–8, synth − real, mean of p and f | G3 +2.7, A3 +1.7, C4 −10.7, E4 −1.9 dB (was +17.1, +7.9) |
 | Brightness vs dynamics | f − p band levels above 4 kHz, synth − real, median G3–E5 | 4–8 kHz −2.1, 8–16 kHz −0.4 dB (was −7.3, −8.0) |
@@ -35,6 +36,66 @@ from the repo root after `cmake --build build` (Release). Python tools take
 `<VSCO>`: the VSCO-2-CE repository (CC0), fetched with instrument-research's
 `tools/fetch_vsco.sh`; for pizzicato, a sparse checkout of
 `Strings/Solo Violin/Pizz/`. Never commit the recordings.
+
+## The perceptual distance (Philharmonia recordings)
+
+`tools/perceptual.py`, ported from 10d6/piano (`docs/TESTING.md` there): how far
+the synth sounds from a real violin, from a simple ear model (ERB gammatone
+bands, Zwicker loudness, a ~1 dB tolerance), without listeners.
+
+**The data.** The Philharmonia Orchestra's violin samples (1502 MP3s, 96 kbit/s
+mono; arco-normal on 49 notes G3–G7 at six dynamics pp–ff in 0.25/0.5/1/1.5 s,
+plus most articulations). Free to use, including commercially, but **not to be
+shared as samples**: never commit them, as with VSCO; only measured numbers go
+in the repo. The owner supplies the zip; decode once with ffmpeg to WAV (e.g.
+`~/data/phil/wav`, or `--data` / `$PHIL_WAV`). Their top octave is cut at
+16–20 kHz by the encoder: the measure stops at 15 kHz.
+
+**How notes are compared.** Each recording sets the synth note's length (its
+held part); the dynamics map to velocity pp 20, p 40, mp 60, mf 80, f 100,
+ff 120; the synth is mono (L+R), level-matched per note over the held part, at
+the default settings (Room 20%). Windows, each aligned on its own signal's onset:
+attack 0–80 ms and early 80–250 ms frame by frame; the sustain as each band's
+mean (vibrato won't line up frame by frame); the release (0.3 s from where the
+level falls 10 dB) frame by frame, reported but **not scored**. Beside the
+score: **rise** (ms to within 3 dB of the sustain) and **shimmer** (the
+sustain's per-band level fluctuation, dB, 1–8 kHz), which the averaged sustain
+can't see.
+
+**Yardsticks** (`--yardstick`; score = mean of attack, early, sustain):
+
+| Pair | score | attack | early | sustain | release |
+|---|---|---|---|---|---|
+| another take (the 0.5 s vs the 1 s recording, same note and dynamic) | 20.5 | 23.4 | 19.3 | 10.4 | 52.6 |
+| one dynamic step up | 26.5 | 34.2 | 24.3 | 10.9 | 53.9 |
+| another violin and studio (VSCO vs Philharmonia, 26 notes p/f) | 35.4 | 42.5 | 35.1 | 25.5 | 85.9 |
+
+The release differs by ~50 % between two takes (a player ends a 0.5 s and a
+1 s note differently), so it can't tell a fault from a habit.
+
+**Validation.**
+- The low-notes PR (#15), G3–C4: after it, 37 of 58 notes nearer (median −1.1
+  points); the low-band errors it fixed shrink (early +6.6 → +0.3, release
+  +14.4 → +2.5). ✓
+- Anchor, the Pickup output (no body): 53.0 against the Modelled 53.2; on the
+  26 VSCO notes 53.9 against 49.8. **A blind spot:** the averaged sustain
+  (Pickup 25.1, Modelled 29.0, another violin 25.5) can't hear the body. The
+  ERB bands are wider than the body's fine peaks (the piano found the same for
+  its body's ring). Judge body changes with `radiation_lab` and by ear.
+- Calibration: VSCO is brighter than Philharmonia in the sustain (+6.9 mid,
+  +6.8 high); the synth (calibrated on VSCO) is off by about the same
+  (+7.8, +6.0). Much of the sustain distance is the two libraries' mics.
+
+**Baseline (Phase 7a main, 448 notes, 0.5 and 1 s):** score 53.2 (attack 72.6,
+early 40.5, sustain 31.8; release 77.0). Rise: recordings 84 ms, synth 26 ms
+(median); by dynamic, pp–mp 153–186 ms against 31–34 ms (the player swells
+soft notes: their first 100 ms peak 5–7 dB under the sustain; the synth's is
++0.5 to +1.6 dB over), mf–ff 34–65 ms against 20–28. Shimmer: recordings
+2.9 dB, synth 1.6 (a single dry mic 1.3; with the Philharmonia player's 31-cent
+vibrato from the onset 1.6; the Pickup 1.9). Vibrato: this player ~31 cents
+p-p (5–95 %), from the onset; the synth 17 (VSCO's calmer player), after
+0.25 s, none on open strings. Signed: the attack is too loud in the mids
+(+41) and highs (+15) for its sustain.
 
 ## Techniques
 
