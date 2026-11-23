@@ -66,6 +66,7 @@ struct StringModel : Synth {
   Param vibDepth, vibRate, vibDelay, shiftTime, intonation, output, roomMix, roomSpace;
   Param slurRange;
   Param micAngle, micElevation, micDistance;
+  Param attackSwell;
   Param bendRange, a4;
 
   void defineParams(ParamBuilder& b) override {
@@ -120,6 +121,8 @@ struct StringModel : Synth {
     micElevation = b.add("mic.elevation").name("Mic Elevation").range(-30, 90).def(30).unit("°").group("Output");
     // Phase 7b: the pair's distance (far field from 0.4 m until the near field, 7c).
     micDistance = b.add("mic.distance").name("Mic Distance").range(0.05, 10).log().def(1.5).unit("m").group("Output");
+    // A player habit (the Philharmonia recordings): bowed notes grow into their level.
+    attackSwell = b.add("bow.swell").name("Attack Swell").range(0, 1).def(0.75).smoothing(0).group("Bow");
   }
 
   std::unique_ptr<Voice> makeVoice() override { return std::make_unique<SilentVoice>(); }
@@ -220,6 +223,7 @@ struct StringModel : Synth {
     pc_.pressure = std::clamp(ctx.get(pressure) + ctx.get(atPressure) * pressureAt_, -1.f, 1.f);
     pc_.contact = ctx.get(contact);
     pc_.bite = ctx.get(bite);
+    pc_.swell = ctx.get(attackSwell);
     pc_.legato = ctx.on(legato);
     pc_.slurRange = ctx.get(slurRange);
     pc_.bowChange = ctx.get(bowChange);

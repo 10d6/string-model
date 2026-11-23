@@ -344,6 +344,29 @@ Demoucron's players stayed 25–40 mm from the bridge on long strokes, and
 re-attacks at bow changes get very hard near β 1/25 (KB §7.2). Allowed down
 to β 0.025, a bow change stayed > 6 dB down for ~90 ms.
 
+**Attack swell (`Attack Swell`, default 0.75; the perceptual-distance work).**
+A bowed note grows into its level. Measured on the Philharmonia violin (arco,
+0.25–1 s notes, onsets aligned): the first 60 ms sit 12–13 dB under the
+note's peak at pp–mp, ~7 dB at mf, 3–5 dB at f–ff, and the level is within
+3 dB after ~200 / ~100 / ~68 ms (median), whatever the note's length. The
+synth was at full level in 32–42 ms at every dynamic. Now each stroke from
+rest starts D0·(1 − t/T)² dB under its level, D0 = 15 dB at d ≤ 0.45 falling
+45 dB per unit of d to 4 dB, T = 0.36 s falling to 0.26 s, times the control
+[T: fitted]. 40% of the deficit is a slower bow (the bow accelerates through
+each stroke, KB §11.5) and 60% a contact point further from the bridge, on the
+level law (L = 7.7 ln(vb/β)); the force follows the players' line for both, and
+the soft-playing force lift (the margin) uses the momentary dynamic. A new bow
+mid-phrase (détaché) gets 40% of the depth over half the time, and none in
+passages faster than ~0.12 s between keys; slurs don't start strokes. Only
+arco. Measured at 1 (0.75): soft notes within 3 dB after 176 (160) ms, first
+60 ms −10.2 (−8.5) dB; mf 121 (103) ms, −6.7 (−5.2); loud 58 (50) ms, −3.0
+(−2.4). The strings stay in Helmholtz motion: at pp the G string's first
+100 ms multi-slipped on main (2.3–2.5 slips per period) and does less now
+(1.2–1.4 at 1); after 100 ms every window of 12 notes G3–E6 is within
+0.9–1.1 slips per period at 0.75 (at 1, G3 and A#3 stay at ~1.3 until
+~200 ms). Perceptual distance: 53.4 → 41.6 (attack 72.4 → 47.3), 390 of 448
+notes nearer.
+
 **Bow changes.** The bow position along the hair is tracked (62 cm). A long
 note changes bow at the tip or the frog when `Auto Bow Change` is on; off
 (the default since the slurs PR, the owner's choice) gives an endless bow.

@@ -41,6 +41,7 @@ struct PerformerControls {
   float pressure = 0.f;       // -1..1 (log2 force offset / 1.5)
   float contact = 0.f;        // -1 tasto .. +1 ponticello
   float bite = 0.3f;          // 0..1 attack harshness
+  float swell = 0.75f;        // 0..1 Attack Swell: notes grow into their level (1 = the Philharmonia player)
   bool legato = true;
   float slurRange = 12.f;     // semitones: overlapping keys further apart take a new bow
   float bowChange = 0.02f;    // s, reversal time (full speed one way to the other)
@@ -755,6 +756,23 @@ class Performer {
     // Guettler plane: acceleration proportional to force, steeper with velocity.
     attackK_ = (6.f + 8.f * vel) * (1.f + 1.5f * c.bite);
     accent_ = std::max(0.f, vel - 0.55f) * (0.6f + 1.2f * c.bite);
+    // Attack swell (measured on the Philharmonia violin, docs/EVALUATION.md):
+    // a bowed note grows into its level. Its first 60 ms sit 12-13 dB under
+    // the peak at pp-mp, ~7 dB at mf, 3-5 dB at f-ff; within 3 dB after
+    // 170-250 / 70-200 / 58-77 ms. Fitted [T]: the deficit D0 (1 - t/T)^2 with
+    // D0 15 dB (soft) .. 4 dB (loud), T 0.36 .. 0.26 s. From rest only in
+    // full: a new bow mid-phrase (detache) gets 40% of the depth over half the
+    // time, and in fast passages less still (notes under ~0.3 s apart).
+    computeDyn(c);
+    {
+      const float x = std::clamp(dyn_ - 0.45f, 0.f, 0.25f);
+      swellDb_ = c.swell * std::clamp(15.f - 45.f * (dyn_ - 0.45f), 4.f, 15.f);
+      swellT_ = 0.36f - 0.4f * x;
+      if (change && bowing_) {
+        swellDb_ *= 0.4f * std::clamp((gapRaw_ - 0.12f) / 0.25f, 0.f, 1.f);
+        swellT_ *= 0.5f;
+      }
+    }
     if (change && bowing_) {
       bowChange(c);
     } else {
@@ -1139,6 +1157,17 @@ class Performer {
     }
     if (art_ == kSpiccato || art_ == kSautille) beta = 0.18f - 0.1f * d;   // Demoucron: 58 / 40 / 29 mm at p / mf / f
     if (art_ == kPizzicato) beta = pluckBeta_;        // the pluck point
+    // Attack swell (startStroke): the level deficit, 40% from a slower bow
+    // (the bow accelerates through the stroke, KB §11.5) and 60% from further
+    // from the bridge, on the level law L = 7.7 ln(vb/beta); the force below
+    // follows the players' line for both, so it stays in the window.
+    float swellNow = 0.f;  // dB under the note's level now
+    if (art_ == kArco && swellDb_ > 0.f && noteAge_ < swellT_) {
+      const float u = 1.f - noteAge_ / swellT_;
+      swellNow = swellDb_ * u * u;
+      vb *= std::exp(-kSwellSpeed * swellNow / 7.7f);
+      beta *= std::exp((1.f - kSwellSpeed) * swellNow / 7.7f);
+    }
     // A touched string vibrates in k segments, like a string 1/k as long:
     // the bow goes k times closer to the bridge (relative), with less force
     // (updateForceFactors). Measured: 1.99-4.00 x f0, in tune.
@@ -1150,7 +1179,10 @@ class Performer {
     float f = def_->forceRef * (vb / def_->vbRef) * std::pow(beta / def_->betaRef, -1.39f);
     // Soft playing sits near the bottom of the Helmholtz window in this model
     // (calibrate_force.py): lift it, most at pp [T].
-    const float margin = 0.1f + 0.8f * (1.f - d) * (1.f - d);
+    // During an attack swell, by the dynamic the note is at now (the level
+    // law: ~23 dB per unit of d), so the quiet start is lifted like pp.
+    const float dNow = std::max(0.f, d - swellNow / 23.1f);
+    const float margin = 0.1f + 0.8f * (1.f - dNow) * (1.f - dNow);
     f *= std::pow(2.f, 1.5f * (pressureIn_ + margin));
     vbT_ = vb;
     betaT_ = beta;
@@ -1189,6 +1221,8 @@ class Performer {
   float vb_ = 0.f, dir_ = -1.f, bowPos_ = 0.15f;
   float vbT_ = 0.2f, betaT_ = 0.08f, fT_ = 0.4f, dyn_ = 0.5f;
   float accel_ = 5.f, accelChange_ = 5.f, attackK_ = 10.f, accent_ = 0.f;
+  float swellDb_ = 0.f, swellT_ = 0.3f;  // the attack swell's depth (dB) and length (s)
+  float kSwellSpeed = 0.4f;             // share of the swell taken by bow speed (the rest by distance)
   float landRate_ = 0.01f, liftRate_ = 0.01f, accentDecay_ = 0.999f;
   float force_[4]{}, fFactor_[4]{1, 1, 1, 1}, offTime_[4]{}, fingerOffAt_[4]{};
   bool stopping_ = false, muting_ = false;
