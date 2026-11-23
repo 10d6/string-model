@@ -47,6 +47,8 @@ struct LossDef {
   float fingerLow;    // 1/s, added by a stopping finger, low partials
   float fingerHigh;   // 1/s, added by a stopping finger, high partials
   float bridgeShare;  // of the string's own loss, at the bridge end (the bow-bridge segment is short)
+  float topHz;        // one-pole low-pass at the bridge (x hf): viscous loss keeps rising above the
+                      // measured range (> 8 kHz), and it rounds the Helmholtz corner [T]
 };
 
 enum class FrictionModel { Thermal, Classic, Enhanced };
@@ -74,6 +76,7 @@ class BowedString {
     for (Delay* d : lines()) d->clear();
     nutLoss_.clear();
     bridgeLoss_.clear();
+    topLP_.y = 0.f;
     torX_ = torY_ = torX2_ = torY2_ = 0.f;
     touchR_ = 0.f;
     thermal.reset();
@@ -102,7 +105,8 @@ class BowedString {
     nutLoss_.set(std::exp(-nLow / hz), std::exp(-nHigh / hz), loss_.fT, fs_);
     bridgeLoss_.set(std::exp(-sb * loss_.lowRate / hz), std::exp(-sb * hi / hz), loss_.fT, fs_);
     const float period = fs_ / hz;
-    const float filt = nutLoss_.delayAt(hz, fs_) + bridgeLoss_.delayAt(hz, fs_);
+    topLP_.setCutoff(std::min(loss_.topHz * def_.hf, 0.45f * fs_), fs_);
+    const float filt = nutLoss_.delayAt(hz, fs_) + bridgeLoss_.delayAt(hz, fs_) + topLP_.delayAt(hz, fs_);
     const float net = std::max(period - filt, 8.f);
     const float netNote = std::max(fs_ / noteHz - filt, 8.f);
     float dB = 0.5f * beta * netNote;
@@ -262,7 +266,7 @@ class BowedString {
     nutToTouch_.write(reflNut);
     fromTouch_.write(vt - atTouchB);
 
-    arrive_ = bridgeLoss_.process(atBridge);
+    arrive_ = topLP_.process(bridgeLoss_.process(atBridge));
     lv_ = std::fabs(atBridge) + std::fabs(atNut);
     fb_ = fb;
     pluck_ = pluck;
@@ -282,6 +286,7 @@ class BowedString {
         for (Delay* d : lines()) d->clear();
         nutLoss_.clear();
         bridgeLoss_.clear();
+        topLP_.y = 0.f;
         torX_ = torY_ = torX2_ = torY2_ = 0.f;
         asleep_ = true;
       }
@@ -326,8 +331,9 @@ class BowedString {
   int width_ = 0;
   float share_ = 0.8f, torX2_ = 0.f, torY2_ = 0.f;
   LossShelf nutLoss_, bridgeLoss_;
+  OnePoleLP topLP_;
   StringDef def_{"", 69, 0.2f, 0.7f};
-  LossDef loss_{2.f, 25.f, 2000.f, 3.f, 5.f, 0.1f};
+  LossDef loss_{2.f, 25.f, 2000.f, 3.f, 5.f, 0.1f, 20000.f};
   float fs_ = 96000.f, smooth_ = 0.01f, torA_ = 0.99f, torX_ = 0.f, torY_ = 0.f;
   float dN_ = 100.f, dB_ = 10.f, tdN_ = 100.f, tdB_ = 10.f, betaActual_ = 0.1f;
   float dT_ = 50.f, tdT_ = 50.f, touchQ_ = 0.f, touchTarget_ = 0.f, touchR_ = 0.f, pluck_ = 0.f;
