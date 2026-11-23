@@ -673,8 +673,42 @@ the total bridge force (KB §12.3a):
   to semitone and differs left and right ("directional tone colour"). Above
   1 kHz, left and right differ by 4–9 dB RMS, and each has 3–6 dB of fine
   structure per 1/3 octave.
-- **Low cut:** a 4th-order high-pass at 230 Hz. The violin radiates little
-  below its A0 air mode (~280 Hz) and is weak at the open G (KB §12.7).
+- **Low cut:** a 6th-order Chebyshev high-pass (0.5 dB ripple) at 245 Hz.
+  The violin radiates little below its A0 air mode (~280 Hz) and is weak at
+  the open G (KB §12.7): below A0 the air in the f-holes and the plates move
+  in antiphase and cancel, like a vented speaker box, so the fall is steep.
+  Until the low-notes PR it was a 4th-order Butterworth at 230 Hz. The
+  modes' band-pass skirts fall only 6 dB/oct below them, so the modes just
+  above A0 leaked into the open-G region (`radiation_lab`: 198 Hz band 10 dB
+  over the target re 250 Hz). Against the VSCO notes (aligned on harmonics
+  3–8, mean of p and f) the G3 fundamental was +17 dB and A3's +8 dB, which
+  with the Helmholtz sawtooth gave an "electronic" low end; now +2.7 and
+  +1.7 dB. C4 and E4 are unchanged (C4's fundamental is ~10 dB weaker than
+  the recording's: its A0 region differs from the library curve). The
+  fundamental re the strongest harmonic at mf: C3 −29 → −59 dB, E3 −17 →
+  −40, G3 −12 → −26, A3 0 → −4. Loudness is unchanged (±0.5 dB, C3–E4).
+
+**Force-dependent brightness (the low-notes PR).** A real string brightens
+with bow force: more force sharpens the Helmholtz corner (KB §2 "corner
+rounding"; §11.5: log centroid rises linearly with log force). The string
+here barely does: at fixed v_b and β, 0.4 → 1.6 N on G3 (all Helmholtz)
+raises 4–8 and 8–16 kHz by under 3 dB and doesn't move the centroid
+(`string_lab tone`), because the lumped loss filters set the corner. The
+VSCO notes brighten by +3..+15 dB above 4 kHz from p to f; the synth's p was
+up to 12 dB too fizzy at 8–16 kHz on low notes (what read as "bow noise",
+though its inter-harmonic noise is below the recordings') and its f a little
+dull. So the output (after the bridge, outside the loop: bowing is
+untouched) is tilted by 8 dB per octave of bow force re mf [T], half on a
+first-order shelf at 2.5 kHz and half at 7 kHz, clamped to ±9 dB. The force
+is the players' line from `computeTargets`: f ∝ e^(3.62·dynamic) ×
+2^(1.5·pressure) × 2^(2.09·contact), so aftertouch and bowing nearer the
+bridge brighten too, as the player doc says they should (§1). It is zero at
+dynamics 0.557 (mf, the middle of the p/f pair the radiation was fitted
+on), so the radiation target still holds (`radiation_target.py` unchanged
+within ~1 dB per band), and neutral when not bowing. Measured over G3–E5:
+the p→f spread above 4 kHz is within 2 dB of the recordings (median; it
+was 7–8 dB short), and p and f each within 2.6 dB of them per band. G3 and
+C4 at p remain ~8 dB bright at 8–16 kHz (at about −47 dB re the total).
 
 **Calibration.** At `prepare`, the residues are fitted (10 + 10 iterations,
 ~4 ms) so the channels' mean power, smoothed, follows a target curve: 1/12

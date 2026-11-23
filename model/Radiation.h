@@ -49,7 +49,12 @@ struct RadiationSettings {
 class Radiation {
  public:
   // lowCutHz: below the instrument's lowest air mode it radiates very little
-  // (violin: weak at the open G, KB §12.7); a 4th-order high-pass there.
+  // (violin: weak at the open G, KB §12.7): below the air mode the f-holes'
+  // air and the plates move in antiphase and cancel, like a vented speaker
+  // box. A sharp-cornered Chebyshev high-pass there (kLowCutOrder, 0.5 dB
+  // ripple). The modes' band-pass skirts fall only 6 dB/oct below them, so
+  // with a gentle cut the modes just above A0 leaked into the open-G region:
+  // the G3 fundamental came out ~17 dB stronger than in the recordings.
   void prepare(float fs, const float* targetHz, const float* targetDb, int targetCount, uint32_t seed, float baseHillHz,
                float lowCutHz) {
     fs_ = fs;
@@ -154,7 +159,7 @@ class Radiation {
   float targetDb(float hz) const { return target(hz); }
 
  private:
-  // Butterworth high-pass sections (Q 0.54 and 1.31: 4th order).
+  // High-pass biquad sections.
   struct Biquad {
     float b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0, s1 = 0, s2 = 0;
     float process(float x) {
@@ -170,10 +175,19 @@ class Radiation {
              (1.0 + static_cast<double>(a1) * z1 + static_cast<double>(a2) * z2);
     }
   };
+  // Chebyshev type I high-pass: the low-pass prototype's pole pairs, each
+  // mapped to a high-pass section (natural frequency fc/|p|, Q |p|/-2Re p),
+  // then the RBJ bilinear high-pass. Passband ripple peaks at +kLowCutRipple.
   void setupLowCut() {
-    const float qs[2] = {0.5412f, 1.3066f};
-    for (int i = 0; i < 2; ++i) {
-      const double w0 = 2 * 3.141592653589793 * lowCut_ / fs_, cw = std::cos(w0), al = std::sin(w0) / (2 * qs[i]);
+    const double pi = 3.141592653589793, n = kLowCutSections * 2;
+    const double eps = std::sqrt(std::pow(10.0, kLowCutRipple / 10.0) - 1.0);
+    const double mu = std::asinh(1.0 / eps) / n;
+    for (int i = 0; i < kLowCutSections; ++i) {
+      const double th = pi * (2 * i + 1) / (2 * n);
+      const double re = -std::sinh(mu) * std::sin(th), im = std::cosh(mu) * std::cos(th);
+      const double mag = std::sqrt(re * re + im * im);
+      const double f0 = std::min(lowCut_ / mag, 0.45 * fs_), q = mag / (-2 * re);
+      const double w0 = 2 * pi * f0 / fs_, cw = std::cos(w0), al = std::sin(w0) / (2 * q);
       const double a0 = 1 + al;
       hp_[i].b0 = static_cast<float>((1 + cw) / 2 / a0);
       hp_[i].b1 = static_cast<float>(-(1 + cw) / a0);
@@ -411,7 +425,9 @@ class Radiation {
 
   std::vector<Mode> modes_;
   std::vector<float> b0_, a1_, a2_, s1_, s2_, rl_, rr_;  // audio-loop copies (SoA)
-  Biquad hp_[2];
+  static constexpr int kLowCutSections = 3;    // order 6
+  static constexpr double kLowCutRipple = 0.5;  // dB
+  Biquad hp_[kLowCutSections];
   std::vector<float> tHz_, tDb_;
   RadiationSettings settings_;
   float fs_ = 48000.f, baseHill_ = 2600.f, gain_ = 1.f, norm_ = 1.f, lowCut_ = 230.f, voiceNow_ = 0.f;

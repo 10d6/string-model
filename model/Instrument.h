@@ -132,6 +132,7 @@ class Instrument {
     }
     tick_ = 0;
     dcX_ = dcY_ = 0.f;
+    for (auto& t : tilt_) t.lp = 0.f;
     bridge_.reset();
     uPrev_ = 0.f;
   }
@@ -153,7 +154,7 @@ class Instrument {
     }
     float x[4];
     for (int k = 0; k < os_; ++k) x[k] = internalSample(vb, ic);
-    const float y = dec_.process(x);
+    const float y = tilt_[1].process(tilt_[0].process(dec_.process(x)));
     // DC blocker (5 Hz).
     const float out = y - dcX_ + dcR_ * dcY_;
     dcX_ = y;
@@ -164,6 +165,21 @@ class Instrument {
  private:
   static constexpr int kControl = 16;  // host samples per control tick
   static constexpr float kWindDirect = 1.f;  // winding noise straight to the bridge [T]
+  static constexpr float kTiltDb = 8.f;      // dB (at the top) per octave of bow force re mf [T]
+  static constexpr float kTiltMax = 9.f;     // dB
+  // First-order high shelf: x + (g - 1) x highpass(x) at fc.
+  struct Shelf {
+    float a = 0.f, g = 1.f, lp = 0.f;
+    void set(float fc, float gain, float fs) {
+      a = 1.f - std::exp(-2.f * 3.14159265f * fc / fs);
+      g = gain;
+    }
+    float process(float x) {
+      lp += a * (x - lp);
+      return x + (g - 1.f) * (x - lp);
+    }
+  };
+  Shelf tilt_[2];
 
   // One internal-rate sample: every string's bow junction, then the bridge
   // they share, solved together without a delay (Bridge.h):
@@ -239,6 +255,16 @@ class Instrument {
     bridge_.setHill(ic.hillHz * (1.f - 0.35f * ic.mute), 1.f - 0.4f * ic.mute);
     perf_.controlTick(pc, kControl / host_);
     perf_.strings(target_, pc);
+    // Force-dependent brightness (KB §2 "corner rounding", §11.5: log centroid
+    // rises linearly with log bow force). The string here barely brightens
+    // with force (string_lab, G3: +3 dB at 8-16 kHz for x4 force; VSCO p -> f:
+    // +7..15 dB), as its lumped loss filters set the corner. So the output is
+    // tilted instead, outside the loop: kTiltDb per octave of force re mf,
+    // half on a shelf at 2.5 kHz, half at 7 kHz [T, fitted to VSCO p/f].
+    const float tiltDb = std::clamp(kTiltDb * perf_.brightness(), -kTiltMax, kTiltMax);
+    const float g = std::pow(10.f, 0.5f * tiltDb / 20.f);
+    tilt_[0].set(2500.f, g, host_);
+    tilt_[1].set(7000.f, g, host_);
     const float beta = perf_.beta();
     for (int s = 0; s < 4; ++s) {
       if (!target_[s].stopped || ic.intonation <= 0.f) corr_[s] *= 0.995f;
