@@ -28,20 +28,25 @@ struct StringDef {
   int openNote;   // MIDI note of the open string
   float z0;       // transverse wave impedance (kg/s)
   float zr;       // torsional impedance seen at the surface (kg/s)
-  // Scales the low-pass corners of the terminations: thicker, wound strings
-  // lose their high partials faster (internal viscous loss grows with
-  // frequency and diameter, KB §2.3) [T]. 1 = the plain E.
+  // Scales the treble damping down (rates / hf): thicker, wound strings lose
+  // their high partials faster (internal viscous loss grows with frequency
+  // and diameter, KB §2.3) [T]. 1 = the plain E.
   float hf = 1.f;
 };
 
-// Lumped losses for a string family [T]: decay of the low partials, and the
-// low-passes that make high partials decay faster (and round the corner).
+// A string family's damping as decay rates (1/s, amplitude) that depend on a
+// partial's frequency, not on the note (Valette-Cuesta, KB §2.3):
+//   sigma(f) = low + (high - low) f^2 / (f^2 + fT^2)
+// for the string itself, plus the stopping finger's on stopped notes. Fitted
+// to the Philharmonia pizzicato's per-partial decay (tools/partial_q.py),
+// the bridge and body's own losses included by the model [T].
 struct LossDef {
-  float openT60;     // s, low partials of an open string on the instrument
-  float stoppedT60;  // s, finger-stopped (finger is far lossier than the nut)
-  float bridgeHz;    // bridge-end low-pass
-  float nutHz;       // open-string nut low-pass
-  float fingerHz;    // stopping-finger low-pass
+  float lowRate;      // 1/s, the string's own, low partials
+  float highRate;     // 1/s, the string's own, high partials (/ hf per string)
+  float fT;           // Hz, where the rise is half-way
+  float fingerLow;    // 1/s, added by a stopping finger, low partials
+  float fingerHigh;   // 1/s, added by a stopping finger, high partials
+  float bridgeShare;  // of the string's own loss, at the bridge end (the bow-bridge segment is short)
 };
 
 enum class FrictionModel { Thermal, Classic, Enhanced };
@@ -67,7 +72,8 @@ class BowedString {
 
   void reset() {
     for (Delay* d : lines()) d->clear();
-    nutLP_.y = bridgeLP_.y = 0.f;
+    nutLoss_.clear();
+    bridgeLoss_.clear();
     torX_ = torY_ = torX2_ = torY2_ = 0.f;
     touchR_ = 0.f;
     thermal.reset();
@@ -86,11 +92,17 @@ class BowedString {
   // slide: finger speed (m/s) during a shift; a sliding finger presses
   // lighter, so the stop is lossier [T].
   void setGeometry(float hz, float noteHz, float beta, bool stopped, float slide = 0.f) {
-    const float t60 = (stopped ? loss_.stoppedT60 : loss_.openT60) / (1.f + 1.5f * slide);
-    nutLP_.setCutoff((stopped ? loss_.fingerHz : loss_.nutHz) * def_.hf, fs_);
-    bridgeLP_.setCutoff(loss_.bridgeHz * def_.hf, fs_);
+    // Losses per round trip (1/hz s): each end's shelf takes its share of the
+    // rates. A sliding finger presses lighter, so the stop is lossier [T].
+    const float hi = loss_.highRate / std::max(def_.hf, 0.1f);
+    const float sb = loss_.bridgeShare;
+    const float fk = stopped ? 1.f + 1.5f * slide : 0.f;
+    const float nLow = (1.f - sb) * loss_.lowRate + fk * loss_.fingerLow;
+    const float nHigh = (1.f - sb) * hi + fk * loss_.fingerHigh;
+    nutLoss_.set(std::exp(-nLow / hz), std::exp(-nHigh / hz), loss_.fT, fs_);
+    bridgeLoss_.set(std::exp(-sb * loss_.lowRate / hz), std::exp(-sb * hi / hz), loss_.fT, fs_);
     const float period = fs_ / hz;
-    const float filt = nutLP_.delayAt(hz, fs_) + bridgeLP_.delayAt(hz, fs_);
+    const float filt = nutLoss_.delayAt(hz, fs_) + bridgeLoss_.delayAt(hz, fs_);
     const float net = std::max(period - filt, 8.f);
     const float netNote = std::max(fs_ / noteHz - filt, 8.f);
     float dB = 0.5f * beta * netNote;
@@ -102,7 +114,7 @@ class BowedString {
     // vibrating length from the finger/nut end: the round trip finger ->
     // touch -> finger, including the nut filter's delay, is q of the period,
     // so the touched partial is in tune. Off, the split just sits mid-way.
-    const float tauN = nutLP_.delayAt(hz, fs_);
+    const float tauN = nutLoss_.delayAt(hz, fs_);
     tdT_ = std::clamp(touchQ_ > 0.f ? 0.5f * (noteHz > 0.f ? fs_ / noteHz : period) * touchQ_ - 0.5f * tauN : 0.5f * dN, kMinD,
                       dN - kMinD);
     if (first_) {
@@ -114,14 +126,10 @@ class BowedString {
     betaActual_ = dB / (dN + dB);
     // Torsion high-pass y = a (y1 + x - x1), corner at 2 x the pitch [T].
     torA_ = std::exp(-2.f * 3.14159265f * 2.f * hz / fs_);
-    // Loop gain for the wanted T60 of the low partials. The low-passes take a
-    // little more from higher fundamentals, so high notes decay faster (as
-    // with a constant Q). The gain is NOT raised to make up for that: the
-    // loop's gain at DC (g) must not exceed the fundamental's, or the
-    // waveguide holds a DC wave (a uniform slope a fixed string can't have)
-    // that the bow's one-way drag feeds and that barely decays.
-    const float gLoop = std::pow(10.f, -3.f / (t60 * hz));
-    gNut_ = gBridge_ = std::sqrt(gLoop);
+    // The shelves' gain falls with frequency, so the loop's gain at DC never
+    // exceeds the fundamental's: a DC wave (a uniform slope a fixed string
+    // can't have, that the bow's one-way drag would feed) decays at the low
+    // rate.
   }
 
   // A light finger touch (harmonics, KB §11.2): at q of the vibrating length
@@ -244,7 +252,7 @@ class BowedString {
       fromB2_.write(0.f);
     }
 
-    const float reflNut = -gNut_ * nutLP_.process(atNut) + fingerNoise_;
+    const float reflNut = -nutLoss_.process(atNut) + fingerNoise_;
     // Touch junction: a resistance R between the two sides,
     // v = 2Z (a1 + a2) / (2Z + R); each side gets v - its own incoming wave
     // (R = 0: transparent).
@@ -254,7 +262,7 @@ class BowedString {
     nutToTouch_.write(reflNut);
     fromTouch_.write(vt - atTouchB);
 
-    arrive_ = gBridge_ * bridgeLP_.process(atBridge);
+    arrive_ = bridgeLoss_.process(atBridge);
     lv_ = std::fabs(atBridge) + std::fabs(atNut);
     fb_ = fb;
     pluck_ = pluck;
@@ -272,7 +280,8 @@ class BowedString {
     if (fb_ <= 0.f && pluck_ == 0.f && level_ < 1e-7f) {
       if (++quiet_ > 2048) {
         for (Delay* d : lines()) d->clear();
-        nutLP_.y = bridgeLP_.y = 0.f;
+        nutLoss_.clear();
+        bridgeLoss_.clear();
         torX_ = torY_ = torX2_ = torY2_ = 0.f;
         asleep_ = true;
       }
@@ -316,14 +325,14 @@ class BowedString {
   }
   int width_ = 0;
   float share_ = 0.8f, torX2_ = 0.f, torY2_ = 0.f;
-  OnePoleLP nutLP_, bridgeLP_;
+  LossShelf nutLoss_, bridgeLoss_;
   StringDef def_{"", 69, 0.2f, 0.7f};
-  LossDef loss_{2.f, 1.f, 7000.f, 9000.f, 4000.f};
+  LossDef loss_{2.f, 25.f, 2000.f, 3.f, 5.f, 0.1f};
   float fs_ = 96000.f, smooth_ = 0.01f, torA_ = 0.99f, torX_ = 0.f, torY_ = 0.f;
   float dN_ = 100.f, dB_ = 10.f, tdN_ = 100.f, tdB_ = 10.f, betaActual_ = 0.1f;
   float dT_ = 50.f, tdT_ = 50.f, touchQ_ = 0.f, touchTarget_ = 0.f, touchR_ = 0.f, pluck_ = 0.f;
   float touchGlide_ = 0.001f;
-  float gNut_ = 0.99f, gBridge_ = 0.99f, level_ = 0.f, arrive_ = 0.f, lv_ = 0.f, fb_ = 0.f, fingerNoise_ = 0.f;
+  float level_ = 0.f, arrive_ = 0.f, lv_ = 0.f, fb_ = 0.f, fingerNoise_ = 0.f;
   int quiet_ = 0;
   bool asleep_ = true, first_ = true, slipping_ = false;
 };

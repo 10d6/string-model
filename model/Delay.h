@@ -68,4 +68,47 @@ struct OnePoleLP {
   }
 };
 
+// First-order loss shelf for a string termination: per pass, gain gLow on the
+// low partials and gHigh (< gLow) on the high ones, crossing over around
+// fT. On a log scale the loss is ~ ln(1/gLow) + ln(gLow/gHigh) f^2/(f^2 + fT^2):
+// Valette-Cuesta's damping (KB §2.3), rising like f^2 and saturating.
+// Analog H(s) = gHigh (s + wz)/(s + wp), wp = wT sqrt(gHigh/gLow), wz = wT
+// sqrt(gLow/gHigh); bilinear, pre-warped at fT. Minimum phase, stable.
+struct LossShelf {
+  float b0 = 1.f, b1 = 0.f, a1 = 0.f, x1 = 0.f, y = 0.f;
+  void set(float gLow, float gHigh, float fT, float fs) {
+    gHigh = std::min(gHigh, gLow);
+    const float k = std::tan(3.14159265f * std::min(fT, 0.45f * fs) / fs);  // pre-warped wT / (2 fs)
+    const float r = std::sqrt(gHigh / gLow);
+    const float p = k * r, z = k / r;  // pole and zero, warped
+    // H(z) = gHigh (1 + z - (1 - z) z^-1) / (1 + p - (1 - p) z^-1)
+    const float n = 1.f / (1.f + p);
+    b0 = gHigh * (1.f + z) * n;
+    b1 = -gHigh * (1.f - z) * n;
+    a1 = -(1.f - p) * n;
+  }
+  float process(float x) {
+    y = b0 * x + b1 * x1 - a1 * y;
+    x1 = x;
+    return y;
+  }
+  void clear() { x1 = y = 0.f; }
+  // Phase delay in samples at frequency hz (for tuning the loop).
+  float delayAt(float hz, float fs) const {
+    const float w = 2.f * 3.14159265f * hz / fs;
+    if (w <= 0.f) return (b1 + b0 * 0.f) == 0.f ? 0.f : 0.f;
+    // H = (b0 + b1 e^{-jw}) / (1 + a1 e^{-jw})
+    const float nr = b0 + b1 * std::cos(w), ni = -b1 * std::sin(w);
+    const float dr = 1.f + a1 * std::cos(w), di = -a1 * std::sin(w);
+    const float ph = std::atan2(ni, nr) - std::atan2(di, dr);
+    return -ph / w;
+  }
+  float gainAt(float hz, float fs) const {
+    const float w = 2.f * 3.14159265f * hz / fs;
+    const float nr = b0 + b1 * std::cos(w), ni = -b1 * std::sin(w);
+    const float dr = 1.f + a1 * std::cos(w), di = -a1 * std::sin(w);
+    return std::sqrt((nr * nr + ni * ni) / (dr * dr + di * di));
+  }
+};
+
 }  // namespace sm

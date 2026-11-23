@@ -63,8 +63,9 @@ inline const InstrumentDef& violin() {
           {"A", 69, 0.20f, 0.70f, 0.85f},
           {"E", 76, 0.19f, 0.65f, 1.00f},
       },
-      // open T60, stopped T60, bridge LP, nut LP, finger LP  [T]
-      {2.2f, 0.9f, 9000.f, 12000.f, 5000.f},
+      // String damping, rates 1/s (tools/partial_q.py on the Philharmonia
+      // pizzicato) [T]: low, high, transition Hz; finger low, high; bridge share
+      {2.6f, 40.f, 2000.f, 7.5f, 18.f, 0.1f},
       0.62f,
       0.22f,
       // Demoucron at 13 cm/s: mf beta 0.07, 0.47 N (pp 0.16/0.17 N, ff 0.04/1.15 N)
