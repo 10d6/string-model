@@ -5,7 +5,7 @@ How each part of String Model is measured, the numbers it measured at last
 from the repo root after `cmake --build build` (Release). Python tools take
 `RENDER=path/to/stringmodel_render` to measure another build.
 
-## Reference numbers (as of Phase 7a, after PRs #10–#15)
+## Reference numbers (as of Phase 7b, after PRs #10–#16)
 
 | What | Command | Last result |
 |---|---|---|
@@ -24,7 +24,9 @@ from the repo root after `cmake --build build` (Release). Python tools take
 | Articulation pitch | `python3 tools/note_pitch.py tests/spiccato.json` (any scenario) | spiccato/sautillé within ~10–15 cents; the first note from rest can read flat in an 80 ms window |
 | Bow-change gap | `LAB_HF=1 tools/bow_change_gap.sh 69` | A4 mf: ~15 ms more than 6 dB down |
 | Directivity | `./build/radiation_lab directivity` | 250/500 Hz omni ±1 dB; 4 kHz front +2, back −3.2, below −3.5; 8 kHz front-up +6.7, back −7.2 dB; semitone-to-semitone directivity index varies 4.9 dB (KB 2.2–8.1) |
-| Perceptual distance | `python3 tools/perceptual.py --data <phil wav>` (2.5 min) | score 53.2 (attack 72.6, early 40.5, sustain 31.8); yardsticks: another take 20.5, another violin 35.4 |
+| Distance trim | render a phrase at 1.5–10 m, Room 20/60% | total level within 0.3 dB (0.5 m: +2.4) |
+| Room feed | wet (Room 100% − 0%) band levels re 200–1000 Hz | 3.6/7.3/7.0/8 dB darker at 1–2/2–4/4–8/8–16 kHz than the 7a feed |
+| Perceptual distance | `python3 tools/perceptual.py --data <phil wav>` (2.5 min) | score 53.4 (attack 72.4, early 40.0, sustain 32.1); yardsticks: another take 20.5, another violin 35.4 |
 | Default mic vs VSCO | `tools/radiation_target.py <Arco Vib> build/stringmodel_render - 3`, half-octave means | within ±4.1 dB, RMS 2.5 dB (pre-7a 2.3; the largest is now 2.2–3.2 kHz, +4.1) |
 | Low end vs VSCO | fundamental (h1) re harmonics 3–8, synth − real, mean of p and f | G3 +2.7, A3 +1.7, C4 −10.7, E4 −1.9 dB (was +17.1, +7.9) |
 | Brightness vs dynamics | f − p band levels above 4 kHz, synth − real, median G3–E5 | 4–8 kHz −2.1, 8–16 kHz −0.4 dB (was −7.3, −8.0) |
@@ -86,8 +88,8 @@ The release differs by ~50 % between two takes (a player ends a 0.5 s and a
   +6.8 high); the synth (calibrated on VSCO) is off by about the same
   (+7.8, +6.0). Much of the sustain distance is the two libraries' mics.
 
-**Baseline (Phase 7a main, 448 notes, 0.5 and 1 s):** score 53.2 (attack 72.6,
-early 40.5, sustain 31.8; release 77.0). Rise: recordings 84 ms, synth 26 ms
+**Baseline (Phase 7b main, 448 notes, 0.5 and 1 s):** score 53.4 (attack 72.4,
+early 40.0, sustain 32.1; release 74.3; 7a: 53.2, the same within noise). Rise: recordings 84 ms, synth 26 ms
 (median); by dynamic, pp–mp 153–186 ms against 31–34 ms (the player swells
 soft notes: their first 100 ms peak 5–7 dB under the sustain; the synth's is
 +0.5 to +1.6 dB over), mf–ff 34–65 ms against 20–28. Shimmer: recordings
