@@ -491,23 +491,30 @@ the VSCO player): both recorded players vibrate from the onset, VSCO's at
 12–21 cents and the Philharmonia player's at ~31 (5–95% of the pitch, held
 notes), so the default sits between them, moderate like the other habits.
 
-**Bow wander (`Bow Wander`, default 0.6; the shimmer PR).** A real bow is not
-steady: the stick and hair are springy and the string kicks them, the hand
-has its own tremor (KB §3: force fluctuations reach ~10%), and the player
-corrects what they hear and feel after a reaction time. The performer keeps
-three deviations, in log units, of bow speed, contact (β) and force, each
-x' = −1.5 x − 6 x(t − 0.12 s) + noise, stepped every 4 ms [T]. It wanders
-with a spectrum peak at 1.7 Hz and ~0.2 s correlation, with a little
-overshoot, not jitter. Spread at Wander 1: speed 0.20, contact 0.22, force
-0.08 (fitted to the Philharmonia recordings' common level wobble, 2.26 dB:
-the synth gives 2.28 at 1, 1.60 at 0.6). Speed and contact move the force
-along the players' line, so the note stays in the Helmholtz window; the force
-also wobbles on its own. Arco and harmonics only. It fades out from 10 to 20
-semitones above the open string: up there the window is narrow and players
-hold the bow steady near the bridge (B6 broke into octave jumps at full
-wander). Held notes G3–E6 at three dynamics: 1 of 900 100-ms windows outside
-0.9–1.1 slips per period at 0.6, 6 at 1 (0 without). It moves the open
-strings' pitch by up to ~1 cent (the flattening depends on force).
+**Bow wander (`Bow Wander`, default 0.5; the shimmer PR).** A real bow is not
+steady (the stick and hair are springy and the string kicks them; the hand
+has its own tremor; KB §3: force fluctuations reach ~10%), and the player
+corrects what they hear and feel after a reaction time. What the owner hears
+in a good player is the *colour* drifting at a steady level, and that is what
+this models: the contact point drifts and the bow speed follows it in
+proportion, so vb/β, and the level (L = 7.7 ln(vb/β)), stays put while the
+bowing point's notches move; and the force wobbles on its own. Both feed the
+force-dependent brightness tilt (the contact drift as the contact control
+does, −2.0 octaves of force per unit). Each deviation (log units) is
+x' = −1.5 x − 6 x(t − 0.12 s) + noise, stepped every 4 ms [T]: a wander with a
+spectrum peak at 1.7 Hz and ~0.2 s correlation, not jitter. Spread at Wander
+1: contact 0.15 (a 30 mm contact ±4.5 mm), force 0.10; the brightness drive
+moves ±0.26 octaves of force (±2 dB in the top octave). Arco and harmonics;
+fades out from 10 to 20 semitones above the open string (high notes broke up
+into octave jumps). A first version let speed and contact drift apart: the
+level sagged and it sounded like an unsteady player (the owner); the
+recordings' level wobble (2.3 dB) is mostly their player's note shaping and
+vibrato through the body, not something to copy as bow noise. Measured on
+held notes: level wobble 1.54 dB at 0, 1.48 at 0.5, 1.39 at 1 (no dips: the
+2nd-percentile sag 2.2 → 2.0 dB); overtone balance (2–8 kHz against
+0.3–1 kHz) 1.36 → 1.34 → 1.50 dB (recordings 2.39: most of theirs is vibrato
+through the body and their room). Held notes G3–E6 at three dynamics: 0 of
+900 100-ms windows outside 0.9–1.1 slips per period at 0.5, 1 at 1.
 
 **Intonation (the player's ear).** Bowing flattens the pitch, by about 10 cents
 at mf here. On stopped notes, the time between slip onsets is compared with

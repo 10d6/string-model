@@ -42,7 +42,7 @@ struct PerformerControls {
   float contact = 0.f;        // -1 tasto .. +1 ponticello
   float bite = 0.3f;          // 0..1 attack harshness
   float swell = 0.75f;        // 0..1 Attack Swell: notes grow into their level (1 = the Philharmonia player)
-  float wander = 0.6f;        // 0..1 Bow Wander: the bow's slow unsteadiness under the player's corrections
+  float wander = 0.5f;        // 0..1 Bow Wander: the overtone balance drifting at a steady level
   bool legato = true;
   float slurRange = 12.f;     // semitones: overlapping keys further apart take a new bow
   float bowChange = 0.02f;    // s, reversal time (full speed one way to the other)
@@ -484,7 +484,11 @@ class Performer {
     // contact moves beta by 2^(-1.5 c)). Not bowing: neutral. ~20 ms glide.
     {
       const bool bowed = bowing_ && art_ != kPizzicato;
-      const float want = bowed ? std::clamp(5.23f * (dyn_ - 0.557f) + 1.5f * pressureIn_ + 2.09f * contactIn_, -3.f, 3.f) : 0.f;
+      // The bow wander shifts it too (the overtone balance at a steady level):
+      // its force wobble directly, its contact drift as the contact control
+      // does (beta x e^a ~ contact -0.96 a: -2.0 a octaves).
+      const float wanderBright = wanderAmtNow_ * (-2.0f * wander_[0] + 1.4427f * wander_[2]);
+      const float want = bowed ? std::clamp(5.23f * (dyn_ - 0.557f) + 1.5f * pressureIn_ + 2.09f * contactIn_ + wanderBright, -3.f, 3.f) : 0.f;
       bright_ += (want - bright_) * (1.f - std::exp(-dtControl / 0.02f));
     }
     // Open-string bow allowance: eases in and out with the bow (~30 ms).
@@ -1195,8 +1199,8 @@ class Performer {
       vb *= std::exp(-kSwellSpeed * swellNow / 7.7f);
       beta *= std::exp((1.f - kSwellSpeed) * swellNow / 7.7f);
     }
-    // Bow wander (controlTick): speed and contact drift, arco and harmonics;
-    // the force follows them on the players' line below, plus its own wobble.
+    // Bow wander (controlTick): the contact drifts with the speed in step, and
+    // the force wobbles on its own; arco and harmonics.
     // High on a string the Helmholtz window is narrow and players hold the bow
     // steady near the bridge: the wander fades from 10 to 20 semitones above
     // the open string (B6 on the E string broke up into octave jumps) [T].
@@ -1205,9 +1209,16 @@ class Performer {
     if (wanders) {
       const float up = note_ >= 0 ? static_cast<float>(note_ - def_->strings[str_].openNote) : 0.f;
       wanderAmt = c.wander * std::clamp((20.f - up) / 10.f, 0.f, 1.f);
-      vb *= std::exp(wanderAmt * wander_[0]);
-      beta *= std::exp(wanderAmt * wander_[1]);
+      // The contact point drifts and the bow speed follows it in proportion:
+      // vb/beta, so the level, stays put (KB §11.5: L = 7.7 ln(vb/beta)); what
+      // moves is which overtones are strong (the bowing point's notches) and,
+      // through the tilt, the brightness. (A first version let speed and
+      // contact drift apart: the level sagged, like an unsteady player.)
+      const float drift = std::exp(wanderAmt * wander_[0]);
+      vb *= drift;
+      beta *= drift;
     }
+    wanderAmtNow_ = wanderAmt;
     // A touched string vibrates in k segments, like a string 1/k as long:
     // the bow goes k times closer to the bridge (relative), with less force
     // (updateForceFactors). Measured: 1.99-4.00 x f0, in tune.
@@ -1264,14 +1275,16 @@ class Performer {
   float accel_ = 5.f, accelChange_ = 5.f, attackK_ = 10.f, accent_ = 0.f;
   float swellDb_ = 0.f, swellT_ = 0.3f;  // the attack swell's depth (dB) and length (s)
   float kSwellSpeed = 0.4f;             // share of the swell taken by bow speed (the rest by distance)
-  // Bow wander: speed, contact (beta), force; spread (log units, at Wander 1) [T:
-  // fitted to the Philharmonia recordings' common level wobble].
-  static constexpr float kWanderSigma[3] = {0.20f, 0.22f, 0.08f};
+  // Bow wander: the contact drift (speed in step), unused, force; spread (log
+  // units, at Wander 1) [T: the overtone balance's wobble in the Philharmonia
+  // recordings, at a steady level].
+  static constexpr float kWanderSigma[3] = {0.15f, 0.f, 0.10f};
   static constexpr float kWanderStep = 0.004f, kWanderLam = 1.5f, kWanderK = 6.f;
   static constexpr float kWanderUnit = 0.371f;  // the process's spread per unit of noise (simulated)
   static constexpr int kWanderHist = 30;        // x kWanderStep = 0.12 s: the reaction time
   float wander_[3]{}, wanderHist_[3][kWanderHist]{}, wanderClock_ = 0.f;
   int wanderPos_ = 0;
+  float wanderAmtNow_ = 0.f;  // the wander's amount now (fades high on a string)
   float landRate_ = 0.01f, liftRate_ = 0.01f, accentDecay_ = 0.999f;
   float force_[4]{}, fFactor_[4]{1, 1, 1, 1}, offTime_[4]{}, fingerOffAt_[4]{};
   bool stopping_ = false, muting_ = false;

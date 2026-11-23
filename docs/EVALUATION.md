@@ -26,8 +26,8 @@ from the repo root after `cmake --build build` (Release). Python tools take
 | Directivity | `./build/radiation_lab directivity` | 250/500 Hz omni ±1 dB; 4 kHz front +2, back −3.2, below −3.5; 8 kHz front-up +6.7, back −7.2 dB; semitone-to-semitone directivity index varies 4.9 dB (KB 2.2–8.1) |
 | Distance trim | render a phrase at 1.5–10 m, Room 20/60% | total level within 0.3 dB (0.5 m: +2.4) |
 | Room feed | wet (Room 100% − 0%) band levels re 200–1000 Hz | 3.6/7.3/7.0/8 dB darker at 1–2/2–4/4–8/8–16 kHz than the 7a feed |
-| Perceptual distance | `python3 tools/perceptual.py --data <phil wav>` (2.5 min) | score 39.6 (attack 42.9, early 34.3, sustain 32.9; before the attack swell 53.4 / 72.4 / 40.0 / 32.1); rise 127 ms (recordings 84); shimmer 1.9 dB (recordings 2.9); yardsticks: another take 20.5, another violin 35.4 |
-| Shimmer split | held p/mf/f notes, 1–1.5 s, after 0.35 s, 0.5–8 kHz | common level wobble 1.60 dB (recordings 2.26; Wander 1: 2.28); band against band 1.56 (2.55); harmonic bands 2.19 (3.33). Before the shimmer PR: 1.46 / 0.85 / 1.51 |
+| Perceptual distance | `python3 tools/perceptual.py --data <phil wav>` (2.5 min) | score 42.7 (attack 47.4, early 35.8, sustain 31.9; before the attack swell 53.4 / 72.4 / 40.0 / 32.1); rise 94 ms (recordings 84); shimmer 2.0 dB (recordings 2.9); yardsticks: another take 20.5, another violin 35.4 |
+| Shimmer split | held p/mf/f notes, 1–1.5 s, after 0.35 s, 0.5–8 kHz | band against band ~1.6 dB (recordings 2.55; before the shimmer PR 0.85); level wobble 1.48 (2.29), overtone balance 1.34 (2.39), at Bow Wander 0.5 |
 | Default mic vs VSCO | `tools/radiation_target.py <Arco Vib> build/stringmodel_render - 3`, half-octave means | within ±4.1 dB, RMS 2.5 dB (pre-7a 2.3; the largest is now 2.2–3.2 kHz, +4.1) |
 | Low end vs VSCO | fundamental (h1) re harmonics 3–8, synth − real, mean of p and f | G3 +2.7, A3 +1.7, C4 −10.7, E4 −1.9 dB (was +17.1, +7.9) |
 | Brightness vs dynamics | f − p band levels above 4 kHz, synth − real, median G3–E5 | 4–8 kHz −2.1, 8–16 kHz −0.4 dB (was −7.3, −8.0) |
@@ -185,6 +185,12 @@ p-p (5–95 %), from the onset; the synth 17 (VSCO's calmer player), after
   And check a filter in place: the radiation's own fit hid how much its
   band-pass skirts leaked below A0 until `radiation_lab` was read relative
   to the 250 Hz band.
+- **Matching a number isn't matching the sound.** The first Bow Wander
+  matched the recordings' level wobble (2.28 against 2.26 dB) and improved
+  the perceptual score by 2 points, and the owner heard an unsteady player:
+  the recordings' wobble is mostly their player shaping notes and vibrato
+  through the body, not the bow sagging. Ask what a number is made of before
+  fitting to it, and let the owner's ear overrule the score.
 - **Split a measure before trusting it.** The synth's sustain shimmered half
   as much as the recordings'. Splitting it showed the bigger gap was bands
   moving against each other (vibrato through the body's peaks), not the whole

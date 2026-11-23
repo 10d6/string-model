@@ -124,7 +124,7 @@ struct StringModel : Synth {
     // A player habit (the Philharmonia recordings): bowed notes grow into their level.
     attackSwell = b.add("bow.swell").name("Attack Swell").range(0, 1).def(0.75).smoothing(0).group("Bow");
     // A player habit (the Philharmonia recordings): the bow's slow unsteadiness, corrected by ear.
-    bowWander = b.add("bow.wander").name("Bow Wander").range(0, 1).def(0.6).smoothing(0).group("Bow");
+    bowWander = b.add("bow.wander").name("Bow Wander").range(0, 1).def(0.5).smoothing(0).group("Bow");
   }
 
   std::unique_ptr<Voice> makeVoice() override { return std::make_unique<SilentVoice>(); }

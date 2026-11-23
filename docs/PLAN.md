@@ -54,7 +54,7 @@ details: [MODEL.md](MODEL.md).
 | 7a | Directional body: per-mode radiation patterns (random spherical harmonics + the measured front-up beam), a spaced omni pair you place with Mic Angle and Mic Elevation, the default reproducing the earlier sound | done (#16) |
 | 7b | Distance and the room: Mic Distance (1/r direct, the room stays, re-gained), the room fed by the power response, player shadowing | done (#17) |
 | — | The perceptual distance to the Philharmonia recordings (tools, #18); the attack swell, its first fix (#19) | done |
-| — | Shimmer: a sharper, denser upper body (48/oct, Q 80), vibrato defaults 22 cents after 0.1 s, Bow Wander (the bow's drift under the player's corrections) (**this PR**) | |
+| — | Shimmer: a sharper, denser upper body (48/oct, Q 80), vibrato defaults 22 cents after 0.1 s, Bow Wander (the overtone balance drifting at a steady level) (**this PR**) | |
 | 7c | Next: close mics: the near field (equivalent sources) and the bow-noise source, mic types with proximity effect, presets. (Swapped with the old 7b: at 1.5 m a cardioid's proximity boost starts ~20 Hz, so mic types only matter close.) | |
 | 7 | Mic placement and room: close / studio / overhead / room positions (KB §12.3–12.4), near-field sources and bow noise for close mics, the room fed by the body's power response (darker, smoother), the room's level per output | |
 | 8 | Cello: Kaplan string data, body with a strong ~175 Hz mode (the wolf note should appear by itself, plus a "wolf eliminator"), heavier bow. Then viola/bass | |
@@ -78,9 +78,9 @@ details: [MODEL.md](MODEL.md).
 - **From the perceptual distance (Philharmonia, docs/EVALUATION.md), by size:**
   1. ~~Soft attacks~~: done (the attack swell): 53.4 → 41.6, attack 72 → 47.
   2. ~~Shimmer~~: mostly done (the shimmer PR): band against band 0.85 → 1.56 dB
-     (recordings 2.55), common wobble 1.46 → 1.60 (2.26; 2.28 at Wander 1).
-     The rest: rooms (the recordings' studio adds some), and players' larger
-     vibrato.
+     (recordings 2.55); Bow Wander shifts the overtone balance at a steady
+     level (the owner's ear: the level must not sag). The rest: rooms (the
+     recordings' studio adds some), and players' larger vibrato.
   3. Vibrato style: defaults moved to 22 cents after 0.1 s. Still open:
      players finger notes that would be open strings when they want vibrato.
   4. The calibration target: VSCO's mics are ~7 dB brighter above 500 Hz than
