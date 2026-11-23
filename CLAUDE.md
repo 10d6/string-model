@@ -61,6 +61,7 @@ python3 synthkit/tools/stress.py build/stringmodel_render 300 --tail 5   # rando
 python3 tools/calibrate_force.py                   # Helmholtz window vs the playability assistant
 ./build/radiation_lab                              # radiation vs its target, stereo difference per band
 python3 tools/analyze.py build/renders/legato-scale.wav   # spectrogram, level, pitch per note
+python3 tools/partial_q.py --data ~/data/phil/wav         # each partial's decay (Q) after a pluck vs the Philharmonia: the string's losses
 ./build/string_lab guettler 1 62 0.1 enhanced     # attacks from rest: perfect / within 50 ms
 ./build/radiation_lab character                    # body controls per third-octave band
 ./build/radiation_lab directivity                  # radiation patterns: per octave band, semitone to semitone
@@ -107,6 +108,9 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
   the Schelleng map still holds Demoucron's pp/mf/ff points, and update
   MODEL.md. After changing the string, bridge or assistant, rerun
   `tools/calibrate_force.py`: every row should straddle 0 with margin.
+- After changing the string's losses, the bridge or the body, rerun
+  `tools/partial_q.py`: the stopped/open median Q per band should stay near
+  the recordings' (docs/EVALUATION.md).
 - After changing friction, string, bridge or the open-string allowance, also
   run `tools/open_strings.py` and `tools/harmonics_tuning.py`; after changing
   the performer's bowing rules, `bowing_lab` (no mid-note rebows); after
