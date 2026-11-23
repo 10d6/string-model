@@ -102,7 +102,10 @@ class BowedString {
     nutLoss_.set(std::exp(-nLow / hz), std::exp(-nHigh / hz), loss_.fT, fs_);
     bridgeLoss_.set(std::exp(-sb * loss_.lowRate / hz), std::exp(-sb * hi / hz), loss_.fT, fs_);
     const float period = fs_ / hz;
-    const float filt = nutLoss_.delayAt(hz, fs_) + bridgeLoss_.delayAt(hz, fs_);
+    // The loss shelves delay low partials more than high ones: tune at the
+    // partial that sounds (the k-th, for a harmonic touched at 1/k).
+    const float fTune = touchQ_ > 0.f ? hz / touchQ_ : hz;
+    const float filt = nutLoss_.delayAt(fTune, fs_) + bridgeLoss_.delayAt(fTune, fs_);
     const float net = std::max(period - filt, 8.f);
     const float netNote = std::max(fs_ / noteHz - filt, 8.f);
     float dB = 0.5f * beta * netNote;
@@ -114,7 +117,7 @@ class BowedString {
     // vibrating length from the finger/nut end: the round trip finger ->
     // touch -> finger, including the nut filter's delay, is q of the period,
     // so the touched partial is in tune. Off, the split just sits mid-way.
-    const float tauN = nutLoss_.delayAt(hz, fs_);
+    const float tauN = nutLoss_.delayAt(fTune, fs_);
     tdT_ = std::clamp(touchQ_ > 0.f ? 0.5f * (noteHz > 0.f ? fs_ / noteHz : period) * touchQ_ - 0.5f * tauN : 0.5f * dN, kMinD,
                       dN - kMinD);
     if (first_) {
