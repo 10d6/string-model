@@ -45,7 +45,7 @@ struct PerformerControls {
   bool legato = true;
   float slurRange = 12.f;     // semitones: overlapping keys further apart take a new bow
   float bowChange = 0.02f;    // s, reversal time (full speed one way to the other)
-  float vibDepth = 22.f;      // cents, peak-to-peak at mf
+  float vibDepth = 26.f;      // cents, peak-to-peak at mf
   float vibRate = 5.5f;       // Hz
   float vibDelay = 0.1f;      // s
   float shiftTime = 0.04f;    // s
@@ -140,6 +140,7 @@ class Performer {
     damp_ = 0.f;
     primed_ = false;
     vibPhase_ = 0.f;
+    vibDrift_ = 0.f;
     noteAge_ = 0.f;
     now_ = 0.f;
     accent_ = 0.f;
@@ -337,6 +338,14 @@ class Performer {
       vibRateJit_ = 1.f + 0.05f * bipolar();
       vibDepthJit_ = 1.f + 0.15f * bipolar();
     }
+    // The vibrato's centre wanders (the finger rolls about a centre that
+    // itself drifts): measured 2.2 cents (std over ~0.2 s and up) on the
+    // Philharmonia violin, 3.4 on VSCO's, against 0.6 for a fixed centre (the
+    // tracker's noise). With a fixed centre each partial keeps a steady line
+    // at its centre pitch ~14 dB over the vibrato's smear (recordings ~7):
+    // heard as a ring, like beating. An Ornstein-Uhlenbeck drift, kVibDriftTau,
+    // kVibDriftCents (std) [T].
+    vibDrift_ += (-vibDrift_ / kVibDriftTau) * dt + kVibDriftCents * std::sqrt(6.f * dt / kVibDriftTau) * bipolar();
     for (int s = 0; s < 4; ++s) {
       if (shiftT_[s] < 1.f) {
         shiftT_[s] = std::min(1.f, shiftT_[s] + dt / shiftDur_[s]);
@@ -410,7 +419,11 @@ class Performer {
       if (!stopped) tune += 0.01f * c.intonStyle * openPureCents(s);
       const float noteHz = mtof(n + tune, c.a4);
       float vib = 0.f;
-      if (stopped && (lead || s == str_)) vib = vibCents_ * std::sin(6.2831853f * vibPhase_);
+      if (stopped && (lead || s == str_)) {
+        // The centre drift goes with the vibrato (a straight note stays put).
+        const float withVib = std::min(1.f, vibCents_ / 10.f);
+        vib = vibCents_ * std::sin(6.2831853f * vibPhase_) + withVib * vibDrift_;
+      }
       out[s].noteHz = noteHz;
       out[s].hz = noteHz * std::pow(2.f, vib / 1200.f);
       out[s].stopped = stopped;
@@ -1250,6 +1263,8 @@ class Performer {
   float dropT_[4]{1, 1, 1, 1}, dropDur_[4]{0.0025f, 0.0025f, 0.0025f, 0.0025f};
   float tapStart_[4]{-1.f, -1.f, -1.f, -1.f}, tapAmp_[4]{}, tapNow_[4]{}, tapPending_[4]{};
   float hand_ = 2.f;  // the first finger's place, semitones above the open string (2: first position)
+  float vibDrift_ = 0.f;  // the vibrato centre's drift, cents
+  static constexpr float kVibDriftTau = 0.25f, kVibDriftCents = 2.5f;
   float noteAge_ = 0.f, now_ = 0.f, vibPhase_ = 0.f, vibCents_ = 0.f, vibRateNow_ = 5.5f, vibRateJit_ = 1.f,
         vibDepthJit_ = 1.f;
   uint32_t rng_ = 1;

@@ -486,10 +486,26 @@ dynamics. Forces on the high G string reach the 3 N cap at mf and above.
 **Vibrato (stopped, bowed strings).** `Vibrato Depth` is peak-to-peak at mf,
 scaled 0.6–1.4× by dynamics; the rate is ×0.9–1.1. It ramps in over 350 ms
 after `Vibrato Delay`, with ±5% rate and ±15% depth drift per cycle.
-Defaults 22 cents after 0.1 s (until the shimmer PR, 16 cents after 0.25 s,
+Defaults 26 cents after 0.1 s (until the shimmer PR, 16 cents after 0.25 s,
 the VSCO player): both recorded players vibrate from the onset, VSCO's at
-12–21 cents and the Philharmonia player's at ~31 (5–95% of the pitch, held
-notes), so the default sits between them, moderate like the other habits.
+~11–21 cents and the Philharmonia player's at ~31–36, so the default sits
+between them, moderate like the other habits.
+
+**The vibrato's centre wanders (the shimmer PR).** The owner heard a ring in
+the synth's vibrato, like beating, that real vibrato doesn't have. A vibrato
+around a perfectly fixed centre leaves each partial a steady line at its
+centre pitch (the frequency modulation's carrier): the per-cycle rate and
+depth drift smear the sidebands but not that line, so it rings against the
+moving ones. Measured (`tools/perceptual.py`, ring: the line's level over
+the vibrato's smear, partials 2–8): synth 11.7 dB, recordings ~7. Real
+players' centres wander: 2.2 cents (std, on a ~0.17 s moving mean) on the
+Philharmonia violin, 3.4 on VSCO's, against 0.6 for the synth (the tracker's
+noise). Their cycle-to-cycle irregularity disagreed (Philharmonia 3% period,
+5% width, like the synth's; VSCO 30%, 46%, partly its narrow vibrato), so it
+isn't the consistent difference. Now the centre drifts, an
+Ornstein-Uhlenbeck process (τ 0.25 s, 2.5 cents std) scaled with the
+vibrato (none on a straight note) [T]: measured 2.7 cents. With the wider
+default, ring 8.3 dB.
 
 **Bow wander (tried and left out, the shimmer PR).** A delayed-correction
 loop drifting bow speed, contact and force. Letting speed and contact drift

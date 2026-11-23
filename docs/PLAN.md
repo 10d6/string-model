@@ -54,7 +54,7 @@ details: [MODEL.md](MODEL.md).
 | 7a | Directional body: per-mode radiation patterns (random spherical harmonics + the measured front-up beam), a spaced omni pair you place with Mic Angle and Mic Elevation, the default reproducing the earlier sound | done (#16) |
 | 7b | Distance and the room: Mic Distance (1/r direct, the room stays, re-gained), the room fed by the power response, player shadowing | done (#17) |
 | — | The perceptual distance to the Philharmonia recordings (tools, #18); the attack swell, its first fix (#19) | done |
-| — | Shimmer: a sharper, denser upper body (48/oct, Q 80), vibrato defaults 22 cents after 0.1 s (**this PR**; Bow Wander tried and left out) | |
+| — | Shimmer: a sharper, denser upper body (48/oct, Q 80), vibrato defaults 26 cents after 0.1 s, the vibrato's centre wanders (no more ring) (**this PR**; Bow Wander tried and left out) | |
 | 7c | Next: close mics: the near field (equivalent sources) and the bow-noise source, mic types with proximity effect, presets. (Swapped with the old 7b: at 1.5 m a cardioid's proximity boost starts ~20 Hz, so mic types only matter close.) | |
 | 7 | Mic placement and room: close / studio / overhead / room positions (KB §12.3–12.4), near-field sources and bow noise for close mics, the room fed by the body's power response (darker, smoother), the room's level per output | |
 | 8 | Cello: Kaplan string data, body with a strong ~175 Hz mode (the wolf note should appear by itself, plus a "wolf eliminator"), heavier bow. Then viola/bass | |
@@ -82,7 +82,8 @@ details: [MODEL.md](MODEL.md).
      corrections) was tried and left out: the level sagged, and at a steady
      level the owner wasn't convinced. The rest: rooms (the recordings'
      studio adds some), players' larger vibrato, their note shaping.
-  3. Vibrato style: defaults moved to 22 cents after 0.1 s. Still open:
+  3. Vibrato: defaults moved to 26 cents after 0.1 s; its centre now
+     wanders, so it no longer rings (ring 11.7 → 8.3 dB, recordings ~7). Still open:
      players finger notes that would be open strings when they want vibrato.
   4. The calibration target: VSCO's mics are ~7 dB brighter above 500 Hz than
      Philharmonia's; the synth follows VSCO. Choose (or average) deliberately.

@@ -16,7 +16,7 @@ from the repo root after `cmake --build build` (Release). Python tools take
 | Force window | `python3 tools/calibrate_force.py` (~25 min) | every row straddles 0 (margin ≥ 0.2) |
 | Radiation residual | `python3 tools/radiation_target.py "<VSCO>/Strings/Solo Violin/Arco Vib" build/stringmodel_render - 3` | matches Phase 5 within ~1 dB per band. The bands at 1.26, 2, 3.2 and 4 kHz were already off since Phase 3/5 (few notes per band) |
 | Body controls | `./build/radiation_lab character` | Air +9 → +6 dB at 250 Hz; Nasality +9 → +7–8 dB at 0.8–1.3 kHz; Brilliance +9 → +6–9 dB at 2–3.2 kHz; Softness 12 → −10 dB above 6 kHz; Voice ±10% moves 400–800 Hz bands 5–7 dB |
-| Open strings in tune | `python3 tools/open_strings.py` | within ±1 cent at mf with Bow Wander 0, up to −1.8 at the default 0.6 (the bow's drift moves the force-dependent flattening); ±4.6 from pp to ff (E) |
+| Open strings in tune | `python3 tools/open_strings.py` | within ±1 cent at mf, ±3.9 from pp to ff (E at ff) |
 | Harmonics | `python3 tools/harmonics_tuning.py` | within ±3 cents (B6 −5), fundamental 30–65 dB down |
 | Intonation Style | `python3 tools/intonation_check.py` | style 1 vs 0: C# +8, F# +6, B +4, G −4; double stops pure (third −14, sixths +14) |
 | Vibrato Shaping | `python3 tools/vibrato_extent.py` | B6 wider (20 → 22 cents); B4 after a fast run 5 cents, full (18) within ~1 s |
@@ -26,7 +26,7 @@ from the repo root after `cmake --build build` (Release). Python tools take
 | Directivity | `./build/radiation_lab directivity` | 250/500 Hz omni ±1 dB; 4 kHz front +2, back −3.2, below −3.5; 8 kHz front-up +6.7, back −7.2 dB; semitone-to-semitone directivity index varies 4.9 dB (KB 2.2–8.1) |
 | Distance trim | render a phrase at 1.5–10 m, Room 20/60% | total level within 0.3 dB (0.5 m: +2.4) |
 | Room feed | wet (Room 100% − 0%) band levels re 200–1000 Hz | 3.6/7.3/7.0/8 dB darker at 1–2/2–4/4–8/8–16 kHz than the 7a feed |
-| Perceptual distance | `python3 tools/perceptual.py --data <phil wav>` (2.5 min) | score ~42.7 (attack ~47.4, early ~35.8, sustain ~31.9; before the attack swell 53.4 / 72.4 / 40.0 / 32.1); rise 94 ms (recordings 84); shimmer 2.0 dB (recordings 2.9); yardsticks: another take 20.5, another violin 35.4 |
+| Perceptual distance | `python3 tools/perceptual.py --data <phil wav>` (2.5 min) | score 41.9 (attack 45.3, early 35.2, sustain 32.1; before the attack swell 53.4 / 72.4 / 40.0 / 32.1); rise 94 ms (recordings 84); shimmer 2.1 dB (recordings 2.9); ring 8.3 dB (recordings ~7; before the centre drift 11.7); yardsticks: another take 20.5, another violin 35.4 |
 | Shimmer split | held p/mf/f notes, 1–1.5 s, after 0.35 s, 0.5–8 kHz | band against band ~1.6 dB (recordings 2.55; before the shimmer PR 0.85); level wobble 1.54 (2.29), overtone balance 1.36 (2.39) |
 | Default mic vs VSCO | `tools/radiation_target.py <Arco Vib> build/stringmodel_render - 3`, half-octave means | within ±4.1 dB, RMS 2.5 dB (pre-7a 2.3; the largest is now 2.2–3.2 kHz, +4.1) |
 | Low end vs VSCO | fundamental (h1) re harmonics 3–8, synth − real, mean of p and f | G3 +2.7, A3 +1.7, C4 −10.7, E4 −1.9 dB (was +17.1, +7.9) |
@@ -185,6 +185,12 @@ p-p (5–95 %), from the onset; the synth 17 (VSCO's calmer player), after
   And check a filter in place: the radiation's own fit hid how much its
   band-pass skirts leaked below A0 until `radiation_lab` was read relative
   to the 250 Hz band.
+- **Trust what the owner hears, then find it in the data.** "A ring like
+  beating" in the vibrato turned out to be a steady line at each partial's
+  centre pitch, visible at once in a zoomed long-term spectrum and twice as
+  prominent as in the recordings; measuring the recordings' vibrato showed
+  the cause (their centre wanders). The perceptual score couldn't see it
+  (the sustain is averaged): the tool now reports it as ring.
 - **Matching a number isn't matching the sound.** The first Bow Wander
   matched the recordings' level wobble (2.28 against 2.26 dB) and improved
   the perceptual score by 2 points, and the owner heard an unsteady player:

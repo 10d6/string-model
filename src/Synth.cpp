@@ -88,7 +88,7 @@ struct StringModel : Synth {
     friction = b.add("bow.friction").name("Friction Model").choices({"Thermal", "Classic", "Enhanced Thermal"}).def(2).group("Bow");
     chordWindow = b.add("chord.window").name("Chord Window").range(0, 0.08).def(0.035).unit("s").smoothing(0).group("Bow");
     rollTime = b.add("chord.roll").name("Chord Roll").range(0.02, 0.2).def(0.06).unit("s").smoothing(0).group("Bow");
-    vibDepth = b.add("vib.depth").name("Vibrato Depth").range(0, 60).def(22).unit("ct").smoothing(0).group("Left Hand");
+    vibDepth = b.add("vib.depth").name("Vibrato Depth").range(0, 60).def(26).unit("ct").smoothing(0).group("Left Hand");
     vibRate = b.add("vib.rate").name("Vibrato Rate").range(3, 9).def(5.5).unit("Hz").smoothing(0).group("Left Hand");
     vibDelay = b.add("vib.delay").name("Vibrato Delay").range(0, 1).def(0.1).unit("s").smoothing(0).group("Left Hand");
     shiftTime = b.add("finger.shift").name("Shift Time").range(0, 0.3).def(0.04).unit("s").smoothing(0).group("Left Hand");
