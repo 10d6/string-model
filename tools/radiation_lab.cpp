@@ -89,7 +89,8 @@ int directivity() {
     dirs.push_back({std::atan2(std::sin(phi), std::cos(phi)) * 57.29578f, std::asin(z) * 57.29578f});
   }
   const std::pair<const char*, std::pair<float, float>> named[] = {
-      {"front", {0, 0}}, {"fr-up", {0, 35}}, {"left", {90, 0}}, {"right", {-90, 0}}, {"back", {180, 0}}, {"top", {0, 90}}, {"bottom", {0, -60}}};
+      {"front", {0, 0}}, {"fr-up", {0, 35}}, {"left", {90, 0}}, {"right", {-90, 0}}, {"back", {180, 0}}, {"top", {0, 90}}, {"bottom", {0, -60}},
+      {"head", {-110, 44}}, {"torso", {-150, -44}}};
   const float octs[] = {250, 500, 1000, 2000, 4000, 8000};
   // Power per direction per 1/12-octave point from 177 Hz to 11.3 kHz.
   std::vector<float> fr;
@@ -105,8 +106,8 @@ int directivity() {
   };
   std::vector<std::vector<double>> P(G);
   for (int i = 0; i < G; ++i) measure(dirs[i].first, dirs[i].second, P[i]);
-  std::vector<std::vector<double>> N(7);
-  for (int i = 0; i < 7; ++i) measure(named[i].second.first, named[i].second.second, N[i]);
+  std::vector<std::vector<double>> N(9);
+  for (int i = 0; i < 9; ++i) measure(named[i].second.first, named[i].second.second, N[i]);
   auto band = [&](const std::vector<double>& p, float c) {
     double s = 0;
     int n = 0;
@@ -114,7 +115,7 @@ int directivity() {
       if (fr[j] >= c / std::sqrt(2.f) && fr[j] < c * std::sqrt(2.f)) s += p[j], ++n;
     return s / n;
   };
-  std::printf("octave  front  fr-up   left  right   back    top bottom   (dB re sphere mean)  within 3 dB of max   DI\n");
+  std::printf("octave  front  fr-up   left  right   back    top bottom   head  torso   (dB re sphere mean)  within 3 dB of max   DI\n");
   for (float c : octs) {
     double mean = 0, mx = 0;
     std::vector<double> b(G);
@@ -122,7 +123,7 @@ int directivity() {
     int within = 0;
     for (int i = 0; i < G; ++i) within += b[i] > mx / 2 ? 1 : 0;
     std::printf("%6.0f ", c);
-    for (int i = 0; i < 7; ++i) std::printf(" %+6.1f", 10 * std::log10(band(N[i], c) / mean));
+    for (int i = 0; i < 9; ++i) std::printf(" %+6.1f", 10 * std::log10(band(N[i], c) / mean));
     std::printf("   %25.0f%%   %4.1f dB\n", 100.0 * within / G, 10 * std::log10(mx / mean));
   }
   double lo = 1e9, hi = -1e9;
