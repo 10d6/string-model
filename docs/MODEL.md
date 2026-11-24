@@ -92,7 +92,7 @@ lumped into the terminations as first-order loss shelves (below).
   - Making the ends lossless only at DC made a ~5 Hz resonance.
 - **Open strings carry a bow allowance while bowed [T].** Bowing flattens a
   string, and no finger can correct an open one. Violinists tune while
-  bowing, so the performer raises an open string the bow is on by G +18.5,
+  bowing, so the performer raises an open string the bow is on by G +15.5,
   D +10.3, A +11, E +9.2 cents at p–mf (`openTuneCents`), falling smoothly
   to 70% by ff, where the faster bow with its force at the cap flattens the
   string less. Earlier values: G +16.5, D/A/E +6.5 at every dynamic (the
@@ -100,8 +100,8 @@ lumped into the terminations as first-order loss shelves (below).
   E +16 (low-pass losses). It eases in and out over
   ~30 ms as the bow lands and leaves. Harmonics, bowed much lighter, get
   0.55× of it. Unbowed open strings sit at true pitch, so they ring in
-  sympathy with stopped notes. `tools/open_strings.py`: within ±0.7 cent at
-  p and mf, ±1.7 at ff.
+  sympathy with stopped notes. `tools/open_strings.py`: D, A, E within
+  ±1.7 cents; G +3.1 at p, −0.7 at mf, −2.3 at ff.
   - Until the open-strings PR the allowance (+7/+4/+9/+12) applied to every
     open string. It was held to 60% so unbowed strings could still ring,
     which left bowed open strings 4–10 cents flat.
@@ -373,7 +373,9 @@ What this shows:
   - **A margin**, most at pp: log₂ F += 1.5 (0.1 + 0.8 (1 − d)² + k d²).
     Soft notes sat at the bottom of the window; with the loss shelves, so
     did ff close to the bridge on the lower strings: k = G 0.6, D 0.3,
-    A 0.3, E 0 (`ffLift`; the E is near the top of its window at ff).
+    A 0.3, E 0 (`ffLift`; the E is near the top of its window at ff). Since
+    the long-note change the open G at pp double-slipped now and then with
+    the full pp lift, so the G's is 0.3 instead of 0.8 (`ppLift`).
   - **The E string × 1.22.**
   - **High positions:** × (max(1, f/(1.5 f_open)))^0.7. Short, high strings
     are loaded by the body. A6 went from −19 cents and unstable to −3 cents.

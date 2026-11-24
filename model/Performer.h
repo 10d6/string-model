@@ -1196,7 +1196,7 @@ class Performer {
     // During an attack swell, by the dynamic the note is at now (the level
     // law: ~23 dB per unit of d), so the quiet start is lifted like pp.
     const float dNow = std::max(0.f, d - swellNow / 23.1f);
-    const float margin = 0.1f + 0.8f * (1.f - dNow) * (1.f - dNow) + def_->ffLift[str_] * dNow * dNow;
+    const float margin = 0.1f + (0.8f + def_->ppLift[str_]) * (1.f - dNow) * (1.f - dNow) + def_->ffLift[str_] * dNow * dNow;
     f *= std::pow(2.f, 1.5f * (pressureIn_ + margin));
     vbT_ = vb;
     betaT_ = beta;
