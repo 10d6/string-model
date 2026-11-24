@@ -13,6 +13,17 @@
 // A string terminated by the moving bridge reflects r = u − a (a: incoming
 // velocity wave) and pushes on it with F = Z (a − r) = Z (2a − u). That's
 // the reflectance −1 + 2 Z Y of KB §5.1, solved exactly.
+//
+// Per-string mode strengths (the cello, cello doc §3.1): a mode may couple to
+// each string with its own weight w_s (the string's notch on the bridge sits
+// where the mode moves more or less). The mode is driven by Σ w_s F_s and
+// moves string s's end by w_s times its velocity, so the strings see a 4x4
+// admittance Y_st = Σ_k w_ks w_kt Y_k (still passive), and the solve is
+//
+//   u = (I + Y0 Z)^-1 (Y0 S + h),  S_s = 2 Z_s a_s,
+//
+// with the inverse precomputed whenever the coefficients change. With no
+// weighted modes (the violin) the scalar path above is used, unchanged.
 #pragma once
 
 #include <cmath>
@@ -24,7 +35,8 @@ namespace sm {
 struct BridgeMode {
   float hz;      // resonance
   float q;       // quality factor
-  float peak;    // admittance at resonance (s/kg) = Q / (m ω)
+  float peak;    // admittance at resonance (s/kg) = Q / (m ω), at a string weighted 1
+  float w[4] = {1.f, 1.f, 1.f, 1.f};  // per-string weight (residue ∝ w²); all 1: shared
 };
 
 class Bridge {
@@ -35,6 +47,7 @@ class Bridge {
                float denseFrom, float denseTo, float spacing) {
     fs_ = fs;
     modes_.clear();
+    weighted_ = false;
     for (int i = 0; i < count; ++i) add(modes[i]);
     // Dense high band (KB §5.3): random modes with mean spacing `spacing`,
     // Q falling with frequency, levels shaped by the bridge hill (a broad
@@ -62,6 +75,7 @@ class Bridge {
   void reset() {
     for (auto& m : modes_) m.s1 = m.s2 = 0.f;
     hist_ = 0.f;
+    for (float& h : histW_) h = 0.f;
   }
 
   // Move the bridge hill (KB §5.3): the dense band's levels follow the hill
@@ -101,6 +115,36 @@ class Bridge {
   }
   float coupling() const { return coupling_; }
 
+  // The strings' impedances (for the weighted solve). Before prepare().
+  void setStringImpedances(const float z[4]) {
+    for (int s = 0; s < 4; ++s) z_[s] = z[s];
+  }
+  // Any mode with per-string weights: the strings need solveWeighted().
+  bool weighted() const { return weighted_; }
+  // Bridge velocity at each string from S_s = 2 Z_s a_s (weighted solve).
+  void solveWeighted(const float S[4], float u[4]) const {
+    for (int s = 0; s < 4; ++s) {
+      float v = 0.f;
+      for (int t = 0; t < 4; ++t) v += A_[s][t] * S[t] + M_[s][t] * histW_[t];
+      u[s] = v;
+    }
+  }
+  // Advance with each string's force (weighted modes take Σ w_s F_s).
+  void advanceWeighted(const float F[4]) {
+    const float total = F[0] + F[1] + F[2] + F[3];
+    for (float& h : histW_) h = 0.f;
+    for (auto& m : modes_) {
+      const float f = m.weighted ? m.w[0] * F[0] + m.w[1] * F[1] + m.w[2] * F[2] + m.w[3] * F[3] : total;
+      const float y = m.b0 * f + m.s1;
+      m.s1 = -m.a1 * y + m.s2;
+      m.s2 = m.b2 * f - m.a2 * y;
+      if (m.weighted)
+        for (int s = 0; s < 4; ++s) histW_[s] += m.w[s] * m.s1;
+      else
+        for (float& h : histW_) h += m.s1;
+    }
+  }
+
   // Direct term and history of the bridge velocity for this sample.
   float y0() const { return y0_; }
   float history() const { return hist_; }
@@ -124,15 +168,17 @@ class Bridge {
   }
   int modeCount() const { return static_cast<int>(modes_.size()); }
 
-  // |Y| at a frequency, for tests and documentation.
-  float magnitude(float hz) const {
+  // |Y| at a frequency, for tests and documentation; string >= 0: the
+  // driving-point admittance at that string (weighted modes x w_s²).
+  float magnitude(float hz, int string = -1) const {
     double re = 0, im = 0;
     const double w = 2 * 3.141592653589793 * hz;
     for (const auto& m : modes_) {
       const double wk = 2 * 3.141592653589793 * m.hz, mass = m.q / (wk * m.peak);
       // s/(m (s² + wk/Q s + wk²)), s = jw
       const double dr = wk * wk - w * w, di = w * wk / m.q;
-      const double nr = 0, ni = w / mass;
+      const double ws = (string >= 0 && m.weighted) ? double(m.w[string]) * m.w[string] : 1.0;
+      const double nr = 0, ni = ws * w / mass;
       const double d2 = dr * dr + di * di;
       re += (nr * dr + ni * di) / d2;
       im += (ni * dr - nr * di) / d2;
@@ -146,6 +192,8 @@ class Bridge {
     float hz0 = 0, q0 = 0, peak0 = 0;  // as defined (a wolf eliminator moves hz, q, peak)
     float b0 = 0, b2 = 0, a1 = 0, a2 = 0, s1 = 0, s2 = 0;
     float dense = 0;  // dense-band mode: its random level factor (0 = signature mode)
+    float w[4] = {1.f, 1.f, 1.f, 1.f};
+    bool weighted = false;
   };
 
   // |hill(f)|: 2nd-order resonance magnitude, normalised to 1 at the centre.
@@ -164,6 +212,11 @@ class Bridge {
     m.hz0 = b.hz;
     m.q0 = b.q;
     m.peak0 = b.peak;
+    for (int s = 0; s < 4; ++s) {
+      m.w[s] = b.w[s];
+      if (b.w[s] != 1.f) m.weighted = true;
+    }
+    weighted_ = weighted_ || m.weighted;
     modes_.push_back(m);
   }
 
@@ -182,10 +235,47 @@ class Bridge {
       m.a2 = static_cast<float>((K * K - a * K + b) / a0);
       y0_ += m.b0;
     }
+    if (weighted_) updateWeighted();
+  }
+
+  // Y0_st = Σ_k w_ks w_kt b0_k; M = (I + Y0 Z)^-1; A = M Y0.
+  void updateWeighted() {
+    double Y0[4][4] = {};
+    for (const auto& m : modes_)
+      for (int s = 0; s < 4; ++s)
+        for (int t = 0; t < 4; ++t) Y0[s][t] += double(m.w[s]) * m.w[t] * m.b0;
+    double a[4][8] = {};
+    for (int s = 0; s < 4; ++s) {
+      for (int t = 0; t < 4; ++t) a[s][t] = (s == t ? 1.0 : 0.0) + Y0[s][t] * z_[t];
+      a[s][4 + s] = 1.0;
+    }
+    for (int c = 0; c < 4; ++c) {  // Gauss-Jordan with partial pivoting (the matrix is well conditioned)
+      int p = c;
+      for (int r = c + 1; r < 4; ++r)
+        if (std::fabs(a[r][c]) > std::fabs(a[p][c])) p = r;
+      for (int k = 0; k < 8; ++k) std::swap(a[c][k], a[p][k]);
+      const double piv = a[c][c];
+      for (int k = 0; k < 8; ++k) a[c][k] /= piv;
+      for (int r = 0; r < 4; ++r) {
+        if (r == c) continue;
+        const double f = a[r][c];
+        for (int k = 0; k < 8; ++k) a[r][k] -= f * a[c][k];
+      }
+    }
+    for (int s = 0; s < 4; ++s)
+      for (int t = 0; t < 4; ++t) {
+        M_[s][t] = static_cast<float>(a[s][4 + t]);
+        double v = 0;
+        for (int k = 0; k < 4; ++k) v += a[s][4 + k] * Y0[k][t];
+        A_[s][t] = static_cast<float>(v);
+      }
   }
 
   std::vector<Mode> modes_;
   float damper_ = 0.f;
+  bool weighted_ = false;
+  float z_[4] = {1.f, 1.f, 1.f, 1.f};
+  float M_[4][4] = {}, A_[4][4] = {}, histW_[4] = {};
   float fs_ = 96000.f, y0_ = 0.f, coupling_ = 1.f, hist_ = 0.f, hillHz_ = 0.f, hillLevel_ = 1.f;
   BridgeMode hill_{2600.f, 3.f, 0.15f};
 };

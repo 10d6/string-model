@@ -65,7 +65,8 @@ details: [MODEL.md](MODEL.md).
 | 7 | Mic placement and room: close / studio / overhead / room positions (KB §12.3–12.4), near-field sources and bow noise for close mics, the room fed by the body's power response (darker, smoother), the room's level per output | |
 | 8 | Cello: Kaplan string data, body with a strong ~175 Hz mode (the wolf note should appear by itself, plus a "wolf eliminator"), heavier bow. Then viola/bass. Seven PRs, below ("Phase 8: the cello") | in progress |
 | 8.1 | Plumbing: `InstrumentDef` with the instrument's body shape and hand; both instruments prepared, a real-time-safe Instrument switch (fade, ring-out); per-instrument library-mic IR (the cello section's, CC0), radiation shape, body-control centres, room power; a first cello from the KB; labs/tools take the instrument; the violin bit-identical | done (#27) |
-| 8.2 | Strings and the bowing window: losses fitted to the Iowa pizzicato; the stick test (KB §7.3) in `instrument_lab` and `calibrate_force.py`; checks against the published cello data (Galluzzo's D window, flattening, ALFs); the measured cello rosin tried and not kept; force ∝ Z₀, per-string contact limits from the coupled windows, a slower pp bow; the wolf on F3 and a **Wolf Eliminator**; open strings; `iowa.py`, `wolf_check.py`, `window_map.py`, `schelleng_check.py`; the violin bit-identical (**PR #28**) | |
+| 8.2 | Strings and the bowing window: losses fitted to the Iowa pizzicato; the stick test (KB §7.3) in `instrument_lab` and `calibrate_force.py`; checks against the published cello data (Galluzzo's D window, flattening, ALFs); the measured cello rosin tried and not kept; force ∝ Z₀, per-string contact limits from the coupled windows, a slower pp bow; the wolf on F3 and a **Wolf Eliminator**; open strings; `iowa.py`, `wolf_check.py`, `window_map.py`, `schelleng_check.py`; the violin bit-identical | done (#28) |
+| 8.3 | Body and wolf: the measured cello modes (A0 100, T1 140, the wolf mode 185, 209, 281, 433 Hz; hill 1.35 kHz); **per-string mode strengths** (a 4×4 bridge solve; the violin keeps the scalar one); `wolf_check.py` with the six acceptance tests (five pass); a gentler body-force term so the G string's wolf shows; losses, playability, open strings rechecked; the violin bit-identical (**this PR**) | |
 
 ## Next
 
@@ -121,16 +122,25 @@ numbers instead, and nothing is fitted to those datasets.
    - Dynamic range vs the Iowa arco: D/A/G within ~3 dB; the C 4 dB vs 13,
      the model's main cello limit (its narrow windows).
    - The wolf (175 Hz, 0.13 s/kg), the Wolf Eliminator, open strings.
-3. **Body and wolf** (cello doc §3, §5, §8): the measured modes (A0 100 Hz
-   Q 40, T1 140 Hz weak, the wolf mode 185 Hz Q 50 m_eff 0.30 kg, 209 and 281
-   Hz, the dense band from ~400 Hz, the bridge hill at 1.35 kHz Q 3);
-   **per-string mode strengths** for the 185 and 209 Hz modes (the wolf
-   strongest on the C, 209 on the A; the strings no longer share one
-   admittance: a change to the bridge solve); the six wolf acceptance tests
-   in `wolf_check.py` (beating 4-14 Hz, faster with bow speed and slower
-   with force, the worst note rising as the bow nears the bridge, odd
-   harmonics splitting, the eliminator, lower Z₀ shrinking the range);
-   recheck playability after. Optional: tailpiece modes near 65 Hz and A0.
+3. **Body and wolf** (8.3, done; MODEL.md "The cello"). What it found:
+   - The measured modes went in (A0 100, T1 140, the wolf mode 185 Hz at
+     0.17 s/kg, 209, 281, 433 Hz; the hill at 1.35 kHz). The cello doc's
+     dense band from ~400 Hz ([D]) didn't: it made the open strings'
+     partials at 500 Hz-1 kHz decay twice as fast as the Iowa pizzicato's,
+     so the band starts at 800 Hz as before.
+   - Per-string strengths for the wolf and 209 Hz modes: a 4×4 bridge
+     solve (`Bridge::solveWeighted`), checked against the scalar one with
+     unit weights (-111 dB). The cello runs at 10x real time natively
+     (14x), 5.9x in the browser (6.6x).
+   - The wolf passes five of the six acceptance tests; the worst note does
+     not rise as the bow nears the bridge (test 3). Bowing pinned from the
+     first sample locks the wolf note into multiple slipping; pinned after
+     the performer's attack it beats at 5-6 Hz (measured 4-14).
+   - The assistant's body-force term pressed 2.8x harder on the wolf note
+     and hid the G string's wolf (a cellist leaning into it); at half the
+     sensitivity the G wolfs at mf and the C at every dynamic, and the
+     calibration improved (mean margin 0.62, every cell clean).
+   - Not done: tailpiece modes (optional, cello doc §3.3).
 4. **Pizzicato.** `pizz_decay.py` on the Iowa pizzicato → the second
    polarisation (still the violin's); the Philharmonia's two cello
    pizzicato notes as a listening check.

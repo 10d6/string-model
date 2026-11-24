@@ -407,7 +407,8 @@ class Performer {
   float fingerNote(int s) const { return fingerTo_[s]; }
   // The labs only: pin the bow's contact point (beta), speed (m/s) and force on
   // the string (N) after the dynamics law; 0 = the law's.
-  float labBeta = 0.f, labVb = 0.f, labForce = 0.f;  // the note (MIDI) string s is fingered for
+  float labBeta = 0.f, labVb = 0.f, labForce = 0.f;
+  float labPinAfter = 0.f;  // s into the note before the pins apply (after the performer's own attack)  // the note (MIDI) string s is fingered for
 
   // At control rate: pitch, vibrato and force targets per string.
   void strings(StringTarget out[4], const PerformerControls& c) const {
@@ -887,7 +888,7 @@ class Performer {
       float body = 1.f;
       if (bridge_) {
         const float hz = mtof(fingerTo_[s], 440.f);
-        const float load = std::min(1.f, def_->bodyForceK * z * bridge_->magnitude(hz));
+        const float load = std::min(1.f, def_->bodyForceK * z * bridge_->magnitude(hz, s));
         body = std::pow(2.f, 1.5f * load);
       }
       fFactor_[s] = std::pow(z / def_->zRef, def_->forceZExp) * pos * body * def_->forceTrim[s] * (count >= 2 ? 1.0f : 1.f);
@@ -1249,8 +1250,9 @@ class Performer {
     if (art_ == kHarmonics && touchQ_[str_] > 0.f) beta /= std::sqrt(std::round(1.f / touchQ_[str_]));
     beta *= std::pow(2.f, -1.5f * contactIn_);
     beta = std::clamp(beta, 0.015f, 0.3f);
-    if (labBeta > 0.f) beta = labBeta;
-    if (labVb > 0.f) vb = labVb;
+    const bool pinned = noteAge_ >= labPinAfter;
+    if (labBeta > 0.f && pinned) beta = labBeta;
+    if (labVb > 0.f && pinned) vb = labVb;
     // Base force on the players' line at the reference impedance; per-string
     // factors (impedance, position, double stops) are in fFactor_.
     float f = def_->forceRef * (vb / def_->vbRef) * std::pow(beta / def_->betaRef, -1.39f);
@@ -1262,7 +1264,7 @@ class Performer {
     const float dNow = std::max(0.f, d - swellNow / 23.1f);
     const float margin = 0.1f + (0.8f + def_->ppLift[str_]) * (1.f - dNow) * (1.f - dNow) + def_->ffLift[str_] * dNow * dNow;
     f *= std::pow(2.f, 1.5f * (pressureIn_ + margin));
-    if (labForce > 0.f) f = labForce / fFactor_[str_];
+    if (labForce > 0.f && pinned) f = labForce / fFactor_[str_];
     vbT_ = vb;
     betaT_ = beta;
     fT_ = f;
