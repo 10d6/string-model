@@ -56,7 +56,8 @@ details: [MODEL.md](MODEL.md).
 | — | The perceptual distance to the Philharmonia recordings (tools, #18); the attack swell, its first fix (#19) | done |
 | — | Shimmer: a sharper, denser upper body (48/oct, Q 80), vibrato defaults 26 cents after 0.1 s, the vibrato's centre wanders (no more ring) (Bow Wander tried and left out) | done (#20) |
 | — | String losses: decay rates by frequency, not by note (loss shelves fitted to the Philharmonia pizzicato's per-partial Q, `tools/partial_q.py`); stopped notes' treble rings as long as the recordings'; everything that rests on the string recalibrated | done (#21) |
-| — | Bow brightness: long notes keep their contact point (Demoucron), so the string's own brightening with force survives; the output tilt does only the rest (8 → 5 dB per octave of force) (**this PR**) | |
+| — | Bow brightness: long notes keep their contact point (Demoucron), so the string's own brightening with force survives; the output tilt does only the rest (8 → 5 dB per octave of force) | done (#22) |
+| — | Attack rise: the swell's depth and length per dynamic, fitted to the recordings' rise per dynamic (**this PR**) | |
 | 7c | Next: close mics: the near field (equivalent sources) and the bow-noise source, mic types with proximity effect, presets. (Swapped with the old 7b: at 1.5 m a cardioid's proximity boost starts ~20 Hz, so mic types only matter close.) | |
 | 7 | Mic placement and room: close / studio / overhead / room positions (KB §12.3–12.4), near-field sources and bow noise for close mics, the room fed by the body's power response (darker, smoother), the room's level per output | |
 | 8 | Cello: Kaplan string data, body with a strong ~175 Hz mode (the wolf note should appear by itself, plus a "wolf eliminator"), heavier bow. Then viola/bass | |
@@ -89,7 +90,8 @@ details: [MODEL.md](MODEL.md).
      players finger notes that would be open strings when they want vibrato.
   4. The calibration target: VSCO's mics are ~7 dB brighter above 500 Hz than
      Philharmonia's; the synth follows VSCO. Choose (or average) deliberately.
-  5. Attack rise: 106 ms (recordings 84); the loss shelves added ~5%.
+  5. ~~Attack rise~~: per dynamic now within ~15 ms of the recordings except
+     mp (174 vs 201) and the note-length effect a keyboard can't know.
 
 - **Brightness from the bow, not the output:** the string now gives about
   half of the recordings' p→f brightening; the tilt (5 dB per octave of

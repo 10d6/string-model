@@ -762,6 +762,26 @@ class Performer {
     else computeTargets(c);
   }
 
+  // The swell's depth (dB, at Attack Swell 1) by dynamic, fitted to the
+  // Philharmonia rise times per dynamic (pp..ff at velocities 20..120, i.e.
+  // dynamics 0.24..0.79 at the default Velocity -> Dynamics): within 3 dB of
+  // the sustain after ~150 / 160 / 170+ / 75 / 50 / 35 ms [T].
+  static float swellTable(float d, const float* v) {
+    static constexpr float kD[6] = {0.24f, 0.35f, 0.46f, 0.571f, 0.681f, 0.792f};
+    if (d <= kD[0]) return v[0];
+    for (int i = 1; i < 6; ++i)
+      if (d < kD[i]) return v[i - 1] + (v[i] - v[i - 1]) * (d - kD[i - 1]) / (kD[i] - kD[i - 1]);
+    return v[5];
+  }
+  static float swellDepth(float d) {
+    static constexpr float kDb[6] = {18.5f, 20.f, 23.f, 12.f, 6.6f, 5.9f};
+    return swellTable(d, kDb);
+  }
+  static float swellLength(float d) {  // s
+    static constexpr float kT[6] = {0.36f, 0.36f, 0.356f, 0.2f, 0.268f, 0.26f};
+    return swellTable(d, kT);
+  }
+
   // A new stroke: a bow change if the bow is moving, else from the air.
   void startStroke(float vel, const PerformerControls& c, bool change) {
     noteAge_ = 0.f;
@@ -780,9 +800,8 @@ class Performer {
     // time, and in fast passages less still (notes under ~0.3 s apart).
     computeDyn(c);
     {
-      const float x = std::clamp(dyn_ - 0.45f, 0.f, 0.25f);
-      swellDb_ = c.swell * std::clamp(15.f - 45.f * (dyn_ - 0.45f), 4.f, 15.f);
-      swellT_ = 0.36f - 0.4f * x;
+      swellDb_ = c.swell * swellDepth(dyn_);
+      swellT_ = swellLength(dyn_);
       if (change && bowing_) {
         swellDb_ *= 0.4f * std::clamp((gapRaw_ - 0.12f) / 0.25f, 0.f, 1.f);
         swellT_ *= 0.5f;
