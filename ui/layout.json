@@ -210,7 +210,7 @@
     "bow.contact": "Where the bow meets the string: over the fingerboard (dark, soft) to near the bridge (glassy). CC 74.",
     "bow.bite": "How hard notes start: higher means a faster bow acceleration and a stronger accent on loud notes.",
     "bow.change": "How quickly the bow reverses, on detached notes and when a long note runs out of bow. Slower is more audible.",
-    "bow.sustain": "On held notes the bow slows after the attack and moves toward the bridge to keep the same loudness, so it lasts longer between bow changes. 1 keeps the attack speed.",
+    "bow.sustain": "Below 1, held notes save bow: after the attack the bow slows (at the same contact point, as players do), so the note settles a little softer and the bow lasts longer between bow changes. 1 keeps the attack speed.",
     "bow.auto": "On: a long note changes bow when the bow runs out (every few seconds, as a player would). Off (the default): an endless bow, so long notes never break.",
     "bow.legato": "On: overlapping keys slur: the bow keeps going and the left hand changes the note. Within the hand's reach a finger lands or lifts (a quick, clean change); further away the hand shifts. Slur Range sets the widest interval that slurs. Off: every note changes bow.",
     "body.coupling": "How strongly the strings drive the bridge and body. It sets sympathetic ringing (open strings sound along with notes that match their harmonics) and how much the body loads the strings. 0: a rigid bridge.",

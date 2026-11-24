@@ -1,6 +1,6 @@
 {
  "patch": "init",
- "length": 9.5,
+ "length": 10,
  "params": {
   "room.mix": 0
  },
@@ -152,7 +152,7 @@
  ],
  "expect": {
   "soundBy": 0.08,
-  "silentAfter": 9.3,
+  "silentAfter": 9.8,
   "levelAt": [
    {
     "t": 1.2,

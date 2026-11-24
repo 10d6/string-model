@@ -100,8 +100,9 @@ inline const InstrumentDef& violin() {
       // near the top).
       {0.6f, 0.3f, 0.3f, 0.f},
       // Full compensation of the flattening under the bow (enhanced friction,
-      // two-point bow), averaged over dynamics 0.15-0.85 (tools/open_strings.py).
-      {16.5f, 6.5f, 6.5f, 6.5f},
+      // two-point bow) at p-mf; the performer scales it down above mf
+      // (tools/open_strings.py).
+      {18.5f, 10.3f, 11.f, 9.2f},
       data::kViolinRadiationHz, data::kViolinRadiationDb, data::kViolinRadiationCount,
       245.f,  // below A0 (~280 Hz) the violin radiates little; weak at the open G (KB §12.7)
       1.19f,  // same loudness (300 Hz-5 kHz) as the Library Mic (Smooth) output

@@ -164,7 +164,7 @@ class Instrument {
  private:
   static constexpr int kControl = 16;  // host samples per control tick
   static constexpr float kWindDirect = 1.f;  // winding noise straight to the bridge [T]
-  static constexpr float kTiltDb = 8.f;      // dB (at the top) per octave of bow force re mf [T]
+  static constexpr float kTiltDb = 5.f;      // dB (at the top) per octave of bow force re mf [T]
   static constexpr float kTiltMax = 9.f;     // dB
   // First-order high shelf: x + (g - 1) x highpass(x) at fc.
   struct Shelf {
@@ -255,11 +255,12 @@ class Instrument {
     perf_.controlTick(pc, kControl / host_);
     perf_.strings(target_, pc);
     // Force-dependent brightness (KB §2 "corner rounding", §11.5: log centroid
-    // rises linearly with log bow force). The string here barely brightens
-    // with force (string_lab, G3: +3 dB at 8-16 kHz for x4 force; VSCO p -> f:
-    // +7..15 dB), as its lumped loss filters set the corner. So the output is
-    // tilted instead, outside the loop: kTiltDb per octave of force re mf,
-    // half on a shelf at 2.5 kHz, half at 7 kHz [T, fitted to VSCO p/f].
+    // rises linearly with log bow force). With the loss shelves the string
+    // gives about half of the recordings' p -> f brightening by itself (VSCO
+    // G3-E5 median, 2-4/4-8/8-16 kHz: +1.3/+2.9/+3.4 dB of +2.5/+6.4/+8.0); the
+    // output is tilted for the rest, outside the loop: kTiltDb per octave of
+    // force re mf, half on a shelf at 2.5 kHz, half at 7 kHz [T, fitted to
+    // VSCO p/f: +3.0/+6.1/+8.2 dB].
     const float tiltDb = std::clamp(kTiltDb * perf_.brightness(), -kTiltMax, kTiltMax);
     const float g = std::pow(10.f, 0.5f * tiltDb / 20.f);
     tilt_[0].set(2500.f, g, host_);
