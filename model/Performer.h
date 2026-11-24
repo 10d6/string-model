@@ -883,10 +883,10 @@ class Performer {
       float body = 1.f;
       if (bridge_) {
         const float hz = mtof(fingerTo_[s], 440.f);
-        const float load = std::min(1.f, 25.f * z * bridge_->magnitude(hz));
+        const float load = std::min(1.f, def_->bodyForceK * z * bridge_->magnitude(hz));
         body = std::pow(2.f, 1.5f * load);
       }
-      fFactor_[s] = std::pow(z / def_->zRef, 1.39f) * pos * body * def_->forceTrim[s] * (count >= 2 ? 1.0f : 1.f);
+      fFactor_[s] = std::pow(z / def_->zRef, def_->forceZExp) * pos * body * def_->forceTrim[s] * (count >= 2 ? 1.0f : 1.f);
       fMax_[s] = def_->forceMax * pos;
       // Harmonics: a much lighter bow; quarter touches lighter still. Through
       // the synth: octaves within ~5 cents, thirds/quarters within ~15 [T].
@@ -1204,6 +1204,12 @@ class Performer {
     const float ratio = 0.6f * std::exp(3.0f * d);
     const float vbAttack = std::max(0.10f * std::exp(1.4f * d), ratio * 0.02f);  // beta can't go below 0.02
     float beta = vbAttack / ratio;
+    // Heavier strings (InstrumentDef): Schelleng's window narrows as Z0 / beta,
+    // so the contact point's range is compressed toward the middle and moves
+    // away from the bridge on the heavier strings. The violin's is as measured
+    // (Demoucron).
+    if (def_->betaPow != 1.f) beta = def_->betaMid * std::pow(beta / def_->betaMid, def_->betaPow);
+    if (def_->betaZExp != 0.f) beta *= std::pow(def_->strings[str_].z0 / def_->betaZRef, def_->betaZExp);
     // Long notes save bow (KB §7.3 step 2; Demoucron: 12 cm/s on whole notes,
     // 22 on halves, 54 on quarters): after the attack the bow slows to
     // sustainSpeed x the attack speed, and to no more than kLongVb, keeping

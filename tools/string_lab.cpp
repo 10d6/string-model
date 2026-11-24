@@ -136,7 +136,11 @@ int main(int argc, char** argv) {
     // from the first slip), "-" = no Helmholtz within 0.4 s.
     const float beta = vb;
     const float accs[] = {0.25f, 0.5f, 1.f, 2.f, 4.f, 8.f};
-    const float forces[] = {0.05f, 0.1f, 0.2f, 0.4f, 0.8f, 1.6f, 3.2f};
+    // Heavier strings: the forces move up by octaves, as in the sweep below.
+    const float z0g = labInstrument().strings[s].z0;
+    const float fScaleG = z0g > 0.4f ? std::pow(2.f, std::round(std::log2(std::pow(z0g / 0.3f, 1.39f)))) : 1.f;
+    float forces[] = {0.05f, 0.1f, 0.2f, 0.4f, 0.8f, 1.6f, 3.2f};
+    for (float& f : forces) f *= fScaleG;
     const float hz = midiHz(note), P = kFs / hz;
     std::printf("acc \\ F  ");
     for (float f : forces) std::printf("%6.2f", f);
@@ -194,7 +198,13 @@ int main(int argc, char** argv) {
   // Sweep: rows beta, columns force. Cell: H = Helmholtz (1 slip/period within
   // 3%, pitch within 15 cents), m = multiple slip, r = raucous/other, . = no tone.
   const float betas[] = {0.02f, 0.03f, 0.045f, 0.065f, 0.09f, 0.13f, 0.18f};
-  const float forces[] = {0.02f, 0.04f, 0.08f, 0.15f, 0.3f, 0.6f, 1.2f, 2.4f, 4.8f};
+  // Heavier strings need more force (Schelleng: F_max ~ Z0, F_min ~ Z0^2):
+  // the columns move up by octaves of force on strings above 0.4 kg/s
+  // (the cello's), so the window stays on the map.
+  const float z0 = labInstrument().strings[s].z0;
+  const float fScale = z0 > 0.4f ? std::pow(2.f, std::round(std::log2(std::pow(z0 / 0.3f, 1.39f)))) : 1.f;
+  float forces[] = {0.02f, 0.04f, 0.08f, 0.15f, 0.3f, 0.6f, 1.2f, 2.4f, 4.8f};
+  for (float& f : forces) f *= fScale;
   std::printf("beta \\ F  ");
   for (float f : forces) std::printf("%6.2f", f);
   std::printf("\n");

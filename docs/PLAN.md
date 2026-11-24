@@ -64,7 +64,8 @@ details: [MODEL.md](MODEL.md).
 | 7c | On hold (the owner's choice, after 7b): close mics: the near field (equivalent sources) and the bow-noise source, mic types with proximity effect, presets. (Swapped with the old 7b: at 1.5 m a cardioid's proximity boost starts ~20 Hz, so mic types only matter close.) | |
 | 7 | Mic placement and room: close / studio / overhead / room positions (KB §12.3–12.4), near-field sources and bow noise for close mics, the room fed by the body's power response (darker, smoother), the room's level per output | |
 | 8 | Cello: Kaplan string data, body with a strong ~175 Hz mode (the wolf note should appear by itself, plus a "wolf eliminator"), heavier bow. Then viola/bass. Six PRs, below ("Phase 8: the cello") | in progress |
-| 8.1 | Plumbing: `InstrumentDef` with the instrument's body shape and hand; both instruments prepared, a real-time-safe Instrument switch (fade, ring-out); per-instrument library-mic IR (the cello section's, CC0), radiation shape, body-control centres, room power; a first cello from the KB; labs/tools take the instrument; the violin bit-identical (**this PR**) | |
+| 8.1 | Plumbing: `InstrumentDef` with the instrument's body shape and hand; both instruments prepared, a real-time-safe Instrument switch (fade, ring-out); per-instrument library-mic IR (the cello section's, CC0), radiation shape, body-control centres, room power; a first cello from the KB; labs/tools take the instrument; the violin bit-identical | done (#27) |
+| 8.2 | Strings and the wolf: the cello's losses fitted to the Iowa pizzicato (moved up from 8.3: losses set the bowing window, so they come before force); the playability assistant calibrated on the cello strings (force ∝ Z₀, a compressed contact-point law, ff lifts; `tools/playability.py`); the wolf on F3 at a realistic strength and a **Wolf Eliminator**; open strings in tune; `tools/iowa.py`, `wolf_check.py`; the violin bit-identical (**this PR**) | |
 
 ## Next
 
@@ -94,23 +95,31 @@ them before per-note tools).
 ### The PRs
 
 1. **Plumbing** (8.1, done): the violin renders bit-identical to before.
-2. **Strings, bridge and the wolf.** Kaplan strings (KB §2.1) are in;
-   `string_lab sweep` and `calibrate_force.py` on the cello strings →
-   `forceRef`, caps, trims, lifts (bow forces up to several N); the bridge
-   solve's stability on C/G near the strong modes (KB §6.4); the wolf on
-   E–F3 of the G and C strings (165–185 Hz, beating at a few Hz; a small
-   envelope-modulation check); a **Wolf Eliminator** control (a tuned damper:
-   more damping on that mode, or detuned), at the end of the parameter list;
-   open strings in tune (`open_strings.py`, `openTuneCents`). The first cello
-   already has a wolf, far too strong: in `tests/cello.json` E3 and F3 (on
-   the 175 Hz mode) double their period for most of a 1.4 s note (the pitch
-   tracker hears them an octave down); F#3 and A4 start 65–70 cents flat and
-   the ear correction pulls them in over ~0.8 s; the open C sits 10–25 cents
-   flat.
-3. **Losses and pizzicato.** `partial_q.py` on the Iowa (and the two
-   Philharmonia) pizzicato → `LossDef` (now a guess between the Kaplan Q
-   model and the violin's fit); check against the Kaplan Q model;
-   `pizz_decay.py` → the second polarisation.
+2. **Strings, losses and the wolf** (8.2, done; MODEL.md "Instruments",
+   EVALUATION.md "Cello"). What it found:
+   - The losses had to come first: Schelleng's F_min grows with the
+     string's loss per period, and the 8.1 guess lost more per period on the
+     C than the violin's G does. Fitted to 1,400 partials of the Iowa
+     pizzicato.
+   - `calibrate_force.py` counts slips in `instrument_lab`; on the cello at
+     f-ff that count runs 3-9% high while the sound is steady Helmholtz (the
+     two-point bow), so `tools/playability.py` judges the synth's sound.
+   - The violin's force law scaled as Z₀^1.39 asks 2x too much on the C; the
+     window's centre grows as Z₀. The heavy strings also want the contact
+     point's range compressed (pp nearer the bridge, ff farther than the
+     violin's law) and farther out on the heavier strings. No measured
+     cellists' contact points exist in the KB: worth checking against
+     Chudy et al. (player doc P9) if it can be read.
+   - The 8.1 wolf (0.25 s/kg) doubled the period at every dynamic; at 0.13
+     it is the classic one (`tools/wolf_check.py`). No bridge-solve
+     instability on the C/G near the strong modes (stress tests, `--check`).
+   - Attacks from rest (`string_lab guettler`, forces scaled): fewer within
+     50 ms on the low strings (C 6 / G 7 / D 11 / A 15 of 42; the violin's D
+     19), but 50 ms is only 3 periods of the open C: judge attacks in
+     periods (PR 5).
+3. **Pizzicato.** `pizz_decay.py` on the Iowa pizzicato → the second
+   polarisation (still the violin's); the Philharmonia's two cello pizzicato
+   notes as a check.
 4. **Radiation and output.** Today's target is the cello-section library
    curve alone (`combine_target.py <csv> -`). Replace its upper band with a
    measurement against the Iowa anechoic arco (`radiation_target.py`,
@@ -140,6 +149,10 @@ them before per-note tools).
   the defaults, so a preset without `instrument` is a violin preset: the four
   body presets stay violin presets, and the cello gets its own (PR 4). The
   body controls themselves are offsets that work on either instrument.
+- **The wolf is on by default** (Wolf Eliminator 0), as the body makes it:
+  F3 on the G string won't speak at pp, and beats at mf-ff (worse on the C).
+  The owner may prefer an eliminator fitted by default, as most cellists
+  have; ~0.5 cures the G string, 1 the C.
 - **Bridge Hill** stays the violin's frequency (its range and default are
   released); other instruments scale it to their own hill (cello ×0.62).
 - **String** and its keyswitches name strings lowest to highest

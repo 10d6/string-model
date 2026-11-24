@@ -68,6 +68,10 @@ python3 tools/partial_q.py --data ~/data/phil/wav         # each partial's decay
 python3 tools/room_power.py [--instrument cello]    # each Space's wet/direct power (after changing the room or radiation level)
 SM_INSTRUMENT=cello ./build/instrument_lab hold 50 4 0.7   # any lab on the cello (default: the violin)
 python3 tools/analyze.py x.wav --fmin 58           # the cello's low notes need the lower pitch floor
+python3 tools/playability.py                        # the cello's assistant in each window, through the synth (INST=violin)
+python3 tools/wolf_check.py --string 1              # the cello's wolf: beating and Helmholtz % per note and dynamic
+python3 tools/partial_q.py --instrument cello --iowa ~/data/iowa/cello/wav/pizz --dyn pp,mf,ff   # cello losses vs Iowa
+python3 tools/open_strings.py --instrument cello    # cello open strings under the bow
 printf '2.5 69 1 .6\n2.95 69 0 .5\n3 74 1 .6\n4 74 0 .5\n' | ./build/bowing_lab 0.5 92 3 4   # bow direction, rebows
 
 # evaluation scripts (docs/EVALUATION.md has the reference numbers)
@@ -153,7 +157,9 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
   synth prepares them all and switches without allocating. A change meant
   for one instrument must leave the other's renders unchanged: compare
   `--check` renders' hashes with a base build (8.1 kept the violin
-  bit-identical).
+  bit-identical). On the cello, check the bowing window with
+  `tools/playability.py` (the slip count in `calibrate_force.py` misreads
+  its heavy strings at f-ff), and the wolf with `tools/wolf_check.py`.
 - **Cello data (outside the repo, never commit):** the Iowa MIS cello
   (anechoic; arco and pizzicato pp/mf/ff, a run of notes per file; free of
   restrictions, so it may be fitted for shipped parameters) decoded to

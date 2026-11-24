@@ -19,6 +19,10 @@
         },
         {
           "param": "body.mute"
+        },
+        {
+          "param": "body.wolf",
+          "label": "Wolf Elim."
         }
       ]
     },
@@ -223,6 +227,7 @@
     "finger.intonation": "How much the player corrects the pitch drop that heavy bowing causes on stopped notes. Open strings can't be corrected.",
     "out.mode": "Modelled: a synthetic body in stereo, calibrated to real recordings (CC0), with the controls beside it. Library Mic: the bridge force through a response measured from CC0 recordings (solo violin; for the cello, a cello section), with body, mics and room baked in. Pickup: the raw bridge force, like an electric instrument.",
     "body.hill": "The bridge's main resonance on the body (the 'bridge hill', around 2.6 kHz on a violin; the cello's sits lower, around 1.6 kHz, and moves with this control in proportion): lower is darker and warmer, higher is brighter. It moves the string's damping too, not just the tone.",
+    "body.wolf": "A wolf eliminator (cello). On a cello the string and the body's strong resonance near 175 Hz (around F3 on the G and C strings) trade energy: the note beats, growls, and at light bowing won't speak at all. Real cellists clamp a small mass on a string behind the bridge to damp that resonance. 0: no eliminator, the wolf as the body makes it; 1: fully damped, the note even (and the body a little less resonant there).",
     "body.mute": "A mute on the bridge: its extra mass lowers and weakens the bridge hill, so the tone goes veiled and quieter in the highs.",
     "body.resonance": "The low body resonances' peaks and dips, which make some notes louder than their neighbours (around C#5-D5 especially). 1: as measured on a real violin. 0: smoothed out, for an even instrument. (Modelled output.)",
     "out.width": "The spacing of the stereo mic pair (Modelled output). At 1 the two mics are 60 cm apart, so each hears the violin from a slightly different direction and the treble differs between your ears, as in a real room. At 0 both are in one spot: mono.",
@@ -257,6 +262,9 @@
     "mic.elevation": "The mics' height, as an angle seen from the violin (Modelled output). 0°: level with it; 30° (default): a little above, the usual close-mic height; 90°: straight overhead. Below 0° the treble falls away: the violin radiates little toward the floor.",
     "mic.distance": "How far the mics are from the violin (Modelled output). Further away, the direct sound falls while the room stays, so you hear more room and a softer edge; the level is re-gained so it stays about as loud. 1.5 m is the default. Closer than 40 cm currently behaves like 40 cm (close-mic sound is coming).",
     "bow.swell": "How much a bowed note grows into its level, as players do. Real soft notes start gently and swell over about a fifth of a second; loud ones settle faster. 0: every note starts at full level at once (the old behaviour); 1: as the Philharmonia violinist plays. Slurred notes don't swell, and a new bow in a fast passage only a little."
+  },
+  "enabledWhen": {
+    "body.wolf": { "when": { "param": "instrument", "is": "Cello" }, "why": "The violin has no wolf note: choose the Cello." }
   },
   "keyboard": true
 }

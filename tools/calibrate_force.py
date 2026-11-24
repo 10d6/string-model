@@ -5,11 +5,14 @@ Pressure offset and report the lowest and highest values that give clean
 Helmholtz motion (slip rate within 2% of the pitch). A well-placed assistant
 has the window straddling 0.
 
-    python3 tools/calibrate_force.py [build/instrument_lab]
+    python3 tools/calibrate_force.py [build/instrument_lab] [--instrument cello]
 """
 import os, re, subprocess, sys
-lab = sys.argv[1] if len(sys.argv) > 1 else "build/instrument_lab"
-strings = {"G": 55, "D": 62, "A": 69, "E": 76}
+cello = "cello" in sys.argv[1:]
+args = [a for a in sys.argv[1:] if a not in ("--instrument", "cello")]
+lab = args[0] if args else "build/instrument_lab"
+strings = {"C": 36, "G": 43, "D": 50, "A": 57} if cello else {"G": 55, "D": 62, "A": 69, "E": 76}
+if cello: os.environ["SM_INSTRUMENT"] = "cello"
 pressures = [round(-0.8 + 0.1 * i, 1) for i in range(19)]  # -0.8 .. 1.0
 def clean(note, dyn, p):
     env = dict(os.environ, LAB_DYN=str(dyn), LAB_PRESSURE=str(p))

@@ -60,18 +60,57 @@ library-mic IR) rings out over 0.25 s with no input, then it is reset, so a
 switch needs no allocation. The labs test the violin unless
 `SM_INSTRUMENT=cello` is set (`tools/LabInstrument.h`).
 
-**The first cello (8.1)** is the KB alone, to be calibrated in the next PRs
-(docs/PLAN.md "Phase 8"): Kaplan strings (Z₀ 1.46 / 1.00 / 0.67 / 0.56 kg/s,
-KB §2.1), Z_R 3.3 Z₀ (KB §2.4), scale 0.69 m; bridge modes A0 102 Hz (weak),
-the main body mode 175 Hz (Q 50, 0.25 s/kg: strong, for the wolf), 226,
-320, 433 (Q 53, m_eff 180 g, KB §5.4), 547, 742 Hz; a bridge hill at 1.6 kHz
-(0.06 s/kg) over a dense band from 0.8 to 5 kHz every ~100 Hz [T]; the
-violin's force law scaled by (Z/Z_ref)^1.39 (a few newtons on the C), forces
-capped at 12 N; losses between the Kaplan strings' Q and the violin's fit
-(σ_L 1.2/s, σ_H 40/s, f_T 1.5 kHz) [T]. Its radiation target is the CC0
-cello-section library curve alone (KB §12.7) and its Library Mic outputs the
-section's responses. Levels: as loud as the violin through the Library Mic
-(Smooth); Modelled 1.5 dB above it, as on the violin.
+**The cello** (8.1 the KB alone; 8.2 strings, losses, playability, wolf):
+- Strings: Kaplan (Z₀ 1.46 / 1.00 / 0.67 / 0.56 kg/s, KB §2.1), Z_R 3.3 Z₀
+  (KB §2.4), scale 0.69 m.
+- Losses fitted to the Iowa MIS pizzicato (every partial's decay, pp/mf/ff,
+  all strings; `tools/partial_q.py --iowa`): σ_L 1.4/s, σ_H 24/s (the C ÷
+  0.8), f_T 900 Hz; a stopping finger adds 2.9 / 5/s. Median Q per band
+  within ~15% of the recordings' up to 2 kHz (EVALUATION.md). Far less
+  treble loss than the violin: cello partials ring long.
+- Bridge modes: A0 102 Hz (weak), the main body mode 175 Hz (Q 50,
+  0.13 s/kg), 226, 320, 433 (Q 53, m_eff 180 g, KB §5.4), 547, 742 Hz; a
+  hill at 1.6 kHz (0.06 s/kg) over a dense band from 0.8 to 5 kHz every
+  ~100 Hz [T].
+- **The wolf** comes from the 175 Hz mode alone, through the bridge solve
+  (KB §5.4): Z₀|Y| there is 0.13 on the G string and 0.19 on the C, twice
+  and three times the violin's strongest coupling (its B1 modes, ~0.06).
+  F3 (174.6 Hz) can't hold Helmholtz motion at pp on either string; at
+  mf–ff it beats at 1–2 Hz by 1–3 dB, worse on the C (`tools/wolf_check.py`).
+  Its neighbours are unaffected. At 0.25 s/kg (8.1) it doubled its period at
+  every dynamic.
+- **Wolf Eliminator** (`body.wolf`, 0–1; `InstrumentDef::wolfMode`,
+  `Bridge::setDamper`): a mass damper on that mode, as a real eliminator
+  clamped on a string's afterlength: its Q ÷ (1 + 3 a), its frequency
+  × (1 − 0.03 a), its mass kept, so its peak admittance falls with its Q.
+  ~0.5 cures the G string, 1 the C. (The radiation's own modes don't follow
+  it: the change in the radiated 175 Hz peak is left out.) Greyed for the
+  violin, which has no `wolfMode`.
+- **The playability assistant** (`tools/playability.py`; the violin's
+  calibration in `instrument_lab` counts slips, which run a few percent
+  high on the cello's strings at f–ff while the sound is steady): clean at
+  Pressure 0 with a mean margin of 0.56 (the violin 0.62). Three changes
+  from the violin's law, all `InstrumentDef` fields that the violin leaves
+  at its own values:
+  - force across strings × (Z₀/Z_ref)^1.0 (`forceZExp`; the violin's 1.39
+    asked 2× too much on the C; `string_lab sweep`: the window's centre
+    grows as Z₀, as Schelleng's F_max does);
+  - the body-force term `bodyForceK` 8 (the violin's 25 counted nearly every
+    cello note: Z₀|Y| ~0.04 is common on these strings);
+  - the contact point: β = 0.07 (β_violin/0.07)^0.6, then × (Z₀/0.67)^0.7
+    per string (`betaPow`, `betaZExp`): pp nearer the bridge (11.8 vs 16.7%
+    of the string on the D), ff farther (5.0 vs 3.9%), and the C string
+    1.7× farther out than the D. Schelleng's window narrows as Z₀/β, and
+    the heavy strings at the violin's pp contact point slipped irregularly
+    [T: the KB has no measured cellists' contact points];
+  - ff lifts 0.6 / 0.6 / 0.6 / 1.0 (C..A), forces capped at 20 N (ff on the
+    C reaches ~10 N at Pressure +1).
+- Open strings: the allowance 17 / 19 / 13 / 10.5 cents (C..A), within
+  ~4.6 cents p..ff (`open_strings.py --instrument cello`).
+- Radiation: the CC0 cello-section library curve alone (KB §12.7); the
+  Library Mic outputs the section's responses. Levels: as loud as the
+  violin through the Library Mic (Smooth); Modelled 1.5 dB above it, as on
+  the violin.
 
 ## String (KB §6.1, §10)
 
@@ -1155,6 +1194,10 @@ SM_INSTRUMENT=cello ./build/<any lab> ...                            # the labs 
 ./build/radiation_lab character [a0 nasal brilliance softness voice%] # body controls per band
 ./build/radiation_lab directivity                                  # one omni around the violin: per octave, per semitone
 python3 tools/room_power.py [--instrument cello]                    # each Space's wet/direct power (the distance trim)
+python3 tools/playability.py   (INST=violin for the violin)          # the assistant's place in each window, through the synth
+python3 tools/wolf_check.py [--string 1] [--notes 50-56] [--param body.wolf=0.5]   # the wolf: beating, Helmholtz %
+python3 tools/partial_q.py --instrument cello --iowa <Iowa pizz wav dir> [--dyn pp,mf,ff]   # the cello's losses
+python3 tools/iowa.py <Iowa wav> ...                                 # the notes found in Iowa MIS files
 ./build/bowing_lab <metric> [bpm num den] < events                   # bow direction per note, mid-note rebows
   instrument_lab env also: LAB_FRICTION=0|1|2, LAB_BOWWIDTH=<m>, LAB_AVARY
 python3 tools/open_strings.py | harmonics_tuning.py | intonation_check.py | vibrato_extent.py
