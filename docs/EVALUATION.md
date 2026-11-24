@@ -5,7 +5,7 @@ How each part of String Model is measured, the numbers it measured at last
 from the repo root after `cmake --build build` (Release). Python tools take
 `RENDER=path/to/stringmodel_render` to measure another build.
 
-## Reference numbers (as of the attack-rise PR, #23)
+## Reference numbers (as of the left-hand PR, #24)
 
 | What | Command | Last result |
 |---|---|---|
@@ -17,7 +17,9 @@ from the repo root after `cmake --build build` (Release). Python tools take
 | Radiation residual | `python3 tools/radiation_target.py "<VSCO>/Strings/Solo Violin/Arco Vib" build/stringmodel_render - 3` | target re-measured for the loss shelves; half-octave bands within ±3 dB (MODEL.md). The bands at 1.26, 2, 3.2 and 4 kHz were already off since Phase 3/5 (few notes per band) |
 | Body controls | `./build/radiation_lab character` | Air +9 → +6 dB at 250 Hz; Nasality +9 → +7–8 dB at 0.8–1.3 kHz; Brilliance +9 → +6–9 dB at 2–3.2 kHz; Softness 12 → −10 dB above 6 kHz; Voice ±10% moves 400–800 Hz bands 5–7 dB |
 | Open strings in tune | `python3 tools/open_strings.py` | D, A, E within ±1.7 cents at every dynamic; G +3.1 / −0.7 / −2.3 at p / mf / ff |
-| Harmonics | `python3 tools/harmonics_tuning.py` | within ±4 cents except G5 +6 and B6 −12 (B6 reads −10 to −30 by dynamic in the base build too, and broke at mf/f there), fundamental 30–67 dB down |
+| Harmonics | `python3 tools/harmonics_tuning.py` | within ±3 cents (B6 −1), fundamental 35–68 dB down |
+| Harmonic timbre | `python3 tools/harmonic_timbre.py --data <phil wav>` | (synth harmonic − arco) − (real harmonic − arco), partials 2–6: −0.5 / +1.9 / +2.6 / −2.1 / −2.0 dB, mean 1.8 (before the left-hand PR +0.7 / +5.6 / +9.9 / +6.7 / +12.2, 7.0) |
+| Portamento | `python3 tools/portamento_glide.py` | glide (10–90%) on the leaps that shift: 0–12 ms at 0, 78–116 at 0.3, 178–292 at 1 (before the left-hand PR none slid at any setting) |
 | Intonation Style | `python3 tools/intonation_check.py` | style 1 vs 0: C# +8, F# +6, B +4, G −4; double stops pure (third −14, sixths +14) |
 | Vibrato Shaping | `python3 tools/vibrato_extent.py` | shape 0 / 0.7: B4 26 / 20 cents, B6 27 / 32; B4 after a fast run 15 / 14, then 31 / 28 (vibrato default 26 cents) |
 | Pizzicato decay | `python3 tools/pizz_decay.py "<VSCO>/Strings/Solo Violin/Pizz"` | score 0.98 (before the loss shelves 0.92–0.93; 1 polarisation: 1.71) |

@@ -285,7 +285,7 @@ class BowedString {
         for (Delay* d : lines()) d->clear();
         nutLoss_.clear();
         bridgeLoss_.clear();
-        torX_ = torY_ = torX2_ = torY2_ = 0.f;
+            torX_ = torY_ = torX2_ = torY2_ = 0.f;
         asleep_ = true;
       }
     } else {

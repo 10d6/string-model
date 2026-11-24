@@ -99,6 +99,7 @@ class Instrument {
  public:
   void prepare(double hostRate) {
     host_ = static_cast<float>(hostRate);
+    harmGlide_ = 1.f - std::exp(-1.f / (0.02f * host_));  // ~20 ms in/out
     os_ = hostRate < 70000.0 ? 2 : 1;
     fs_ = host_ * static_cast<float>(os_);
     dec_.prepare(os_);
@@ -153,7 +154,10 @@ class Instrument {
     }
     float x[4];
     for (int k = 0; k < os_; ++k) x[k] = internalSample(vb, ic);
-    const float y = tilt_[1].process(tilt_[0].process(dec_.process(x)));
+    float y = tilt_[1].process(tilt_[0].process(dec_.process(x)));
+    harmMix_ += (harmMixTarget_ - harmMix_) * harmGlide_;
+    const float yh = harmLP_.process(y);
+    y += harmMix_ * (yh - y);
     // DC blocker (5 Hz).
     const float out = y - dcX_ + dcR_ * dcY_;
     dcX_ = y;
@@ -164,7 +168,8 @@ class Instrument {
  private:
   static constexpr int kControl = 16;  // host samples per control tick
   static constexpr float kWindDirect = 1.f;  // winding noise straight to the bridge [T]
-  static constexpr float kTiltDb = 5.f;      // dB (at the top) per octave of bow force re mf [T]
+  static constexpr float kTiltDb = 5.f;
+  static constexpr float kHarmLP = 3.f;  // harmonics' low-pass, x the sounding pitch [T]      // dB (at the top) per octave of bow force re mf [T]
   static constexpr float kTiltMax = 9.f;     // dB
   // First-order high shelf: x + (g - 1) x highpass(x) at fc.
   struct Shelf {
@@ -179,6 +184,26 @@ class Instrument {
     }
   };
   Shelf tilt_[2];
+  // Harmonics' purity (see controlTick): 2-pole low-pass, crossfaded in.
+  struct LowPass2 {
+    float b0 = 1.f, b1 = 0.f, b2 = 0.f, a1 = 0.f, a2 = 0.f, z1 = 0.f, z2 = 0.f;
+    void set(float fc, float fs) {  // RBJ, Q 0.707
+      const float w = 2.f * 3.14159265f * std::min(fc, 0.45f * fs) / fs, al = std::sin(w) / (2.f * 0.70710678f), c = std::cos(w);
+      const float n = 1.f / (1.f + al);
+      b0 = b2 = 0.5f * (1.f - c) * n;
+      b1 = (1.f - c) * n;
+      a1 = -2.f * c * n;
+      a2 = (1.f - al) * n;
+    }
+    float process(float x) {  // transposed direct form II
+      const float y = b0 * x + z1;
+      z1 = b1 * x - a1 * y + z2;
+      z2 = b2 * x - a2 * y;
+      return y;
+    }
+  };
+  LowPass2 harmLP_;
+  float harmMix_ = 0.f, harmMixTarget_ = 0.f, harmGlide_ = 0.f;
 
   // One internal-rate sample: every string's bow junction, then the bridge
   // they share, solved together without a delay (Bridge.h):
@@ -265,6 +290,21 @@ class Instrument {
     const float g = std::pow(10.f, 0.5f * tiltDb / 20.f);
     tilt_[0].set(2500.f, g, host_);
     tilt_[1].set(7000.f, g, host_);
+    // Harmonics sound purer than a stopped note at the same pitch: partials
+    // 3-6 are 5-12 dB weaker in the Philharmonia recordings (harmonic vs
+    // arco-normal, same pitch: mics and body cancel), while the touched
+    // waveguide gives the stopped note's spectrum. The finger pad (~1 cm)
+    // damps the higher partials, but any loss in the loop stops the light bow
+    // a harmonic needs, so the output is low-passed instead, outside the loop,
+    // at kHarmLP x the sounding pitch while a bowed string is touched [T].
+    {
+      harmMixTarget_ = 0.f;
+      for (int s = 0; s < 4; ++s)
+        if (target_[s].touchQ > 0.f && target_[s].force > 0.f) {
+          harmLP_.set(kHarmLP * target_[s].hz / target_[s].touchQ, host_);
+          harmMixTarget_ = 1.f;
+        }
+    }
     const float beta = perf_.beta();
     for (int s = 0; s < 4; ++s) {
       if (!target_[s].stopped || ic.intonation <= 0.f) corr_[s] *= 0.995f;

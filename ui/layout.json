@@ -157,6 +157,9 @@
           "param": "finger.portamento"
         },
         {
+          "param": "finger.avoidOpen"
+        },
+        {
           "param": "finger.intonation"
         },
         {
@@ -247,7 +250,8 @@
     "finger.style": "How the player tunes. 0: equal temperament. Higher: as string players do, by ear from the open strings: leading tones a little high, notes that match an open string tuned to it, double stops pure.",
     "vib.shape": "How much the vibrato follows the music. 0: the same vibrato on every note. Higher: wider in high positions, narrower in fast passages (opening up on a held note), widening through long notes, a little faster on weak beats.",
     "bow.metric": "How much the player follows the meter when a host transport is playing: stronger beats a little louder, down-bows on strong beats and up-bows on pickups. 0 plays every note evenly. Off without a playing transport.",
-    "finger.portamento": "Audible slides on slow, slurred shifts of a third or more, as in older or more romantic styles. 0 shifts cleanly; fast passages never slide.",
+    "finger.portamento": "Audible slides on slow, slurred leaps of a third or more, as in older or more romantic styles: above 0 the player keeps such leaps on one string and slides. 0 shifts cleanly and crosses strings instead; fast passages never slide.",
+    "finger.avoidOpen": "Notes that would be open strings (D4, A4, E5) are played with the fourth finger on the string below when the playing isn't fast, so they can take vibrato, as players do. Off always uses the open string. Needs vibrato on; arco and martelé.",
     "bow.slurRange": "The widest interval that slurs. Overlapping keys further apart than this change bow instead, so only close notes are slurred. 24 slurs any leap.",
     "mic.angle": "Where the mics stand around the player (Modelled output). 0°: in front, facing the player; 90°: on the player's left, where the scroll points; −90°: on the right; 180°: behind. The violin's treble beams forward and up, so the sides are a little darker and behind is darker still. Every place has its own colour, changing from note to note.",
     "mic.elevation": "The mics' height, as an angle seen from the violin (Modelled output). 0°: level with it; 30° (default): a little above, the usual close-mic height; 90°: straight overhead. Below 0° the treble falls away: the violin radiates little toward the floor.",

@@ -11,7 +11,7 @@ for dyn in (0.15, 0.5, 0.85):
         ev += [{"t": t, "on": n, "vel": 80}, {"t": t + 2.0, "off": n}]
         t += 2.3
     sr, x = render({"patch": "init", "length": t + 0.5,
-                    "params": {"room.mix": 0, "finger.style": 0, "bow.dynamics": dyn}, "events": ev})
+                    "params": {"room.mix": 0, "finger.style": 0, "bow.dynamics": dyn, "finger.avoidOpen": 0}, "events": ev})
     row = []
     for i, n in enumerate((55, 62, 69, 76)):
         seg = x[int((i * 2.3 + 0.6) * sr):int((i * 2.3 + 1.9) * sr)]

@@ -76,7 +76,8 @@ struct PerformerControls {
   float intonStyle = 0.7f;   // 0 equal temperament .. 1 expressive (§3.2)
   float vibShape = 0.7f;     // 0 the same vibrato on every note .. 1 by context (§3.1)
   float metric = 0.5f;       // 0..1: metric emphasis and bowing to the meter (§2, §4)
-  float portamento = 0.3f;   // 0..1: audible slides on slow slurred leaps (§3.3)  // bow reversals per second (VSCO solo violin median, KB §11.2)
+  float portamento = 0.3f;   // 0..1: audible slides on slow slurred leaps (§3.3)
+  bool avoidOpen = true;     // notes that would be open strings are stopped on the string below when they can take vibrato  // bow reversals per second (VSCO solo violin median, KB §11.2)
 };
 
 enum Articulation { kArco = 0, kMartele, kSpiccato, kTremolo, kPizzicato, kHarmonics, kSautille };
@@ -660,26 +661,42 @@ class Performer {
     updateForceFactors();
   }
 
-  int chooseString(int note, bool slur, int forced) const {
+  int chooseString(int note, bool slur, const PerformerControls& c) const {
     // A chosen string (keyswitch / String parameter) plays every note it
     // reaches: from its open note up two octaves.
+    const int forced = c.forcedString;
     if (forced >= 0 && forced < 4) {
       const int open = def_->strings[forced].openNote;
       if (note >= open && note <= open + 24) return forced;
     }
-    // Stay on the current string through a slur if it reaches within 7 semitones.
+    const bool slow = gapRaw_ >= 0.25f;
     if (slur) {
       const int open = def_->strings[str_].openNote;
-      if (note >= open && note <= open + 7) return str_;
+      // Portamento (player doc §3.3): a player who slides keeps a slow,
+      // slurred leap of a third or more on the string and shifts, from a
+      // stopped note, up to an octave above the open string [T].
+      if (c.portamento > 0.f && gapRaw_ >= 0.3f && note_ > open && std::abs(note - note_) >= 3 && note > open &&
+          note <= open + 12)
+        return str_;
+      // Otherwise stay on the current string if it reaches within 7 semitones
+      // (and the note isn't its open string we'd rather stop on the string below).
+      if (note >= open && note <= open + 7 && !(note == open && str_ > 0 && wantsStopped(slow, c))) return str_;
     }
     int s = 0;
     for (int i = 0; i < 4; ++i)
       if (def_->strings[i].openNote <= note) s = i;
+    // An open string can't take vibrato: unless the playing is fast, a player
+    // stops the note with the fourth finger on the string below (player doc
+    // §3.1; PLAN "Ideas") [T].
+    if (s > 0 && note == def_->strings[s].openNote && wantsStopped(slow, c)) --s;
     return s;
+  }
+  bool wantsStopped(bool slow, const PerformerControls& c) const {
+    return c.avoidOpen && slow && c.vibDepth > 0.f && (c.articulation == kArco || c.articulation == kMartele);
   }
 
   void play(int note, float vel, bool slur, const PerformerControls& c) {
-    int s = chooseString(note, slur, c.forcedString);
+    int s = chooseString(note, slur, c);
     const float prevNote = note_ >= 0 ? static_cast<float>(note_) : static_cast<float>(note);
     vel_now_ = vel;
     note_ = note;
@@ -1083,7 +1100,7 @@ class Performer {
 
   // Pluck note on its string (pizzicato): the finger stops it, the bow is away.
   void pluckNote(int note, float vel, const PerformerControls& c, float delay) {
-    const int s = chooseString(note, false, c.forcedString);
+    const int s = chooseString(note, false, c);
     vel_now_ = vel;
     note_ = note;
     float n = static_cast<float>(std::max(note, def_->strings[0].openNote - 7));
@@ -1200,10 +1217,12 @@ class Performer {
       vb *= std::exp(-kSwellSpeed * swellNow / 7.7f);
       beta *= std::exp((1.f - kSwellSpeed) * swellNow / 7.7f);
     }
-    // A touched string vibrates in k segments, like a string 1/k as long:
-    // the bow goes k times closer to the bridge (relative), with less force
-    // (updateForceFactors). Measured: 1.99-4.00 x f0, in tune.
-    if (art_ == kHarmonics && touchQ_[str_] > 0.f) beta /= std::round(1.f / touchQ_[str_]);
+    // A touched string vibrates in k segments, like a string 1/k as long: the
+    // bow goes closer to the bridge, by sqrt(k) (relative to the whole string;
+    // by k it sat as far along the segment as a stopped note's bow, and the
+    // harmonic kept a stopped note's spectrum), with less force
+    // (updateForceFactors) [T: Philharmonia harmonics].
+    if (art_ == kHarmonics && touchQ_[str_] > 0.f) beta /= std::sqrt(std::round(1.f / touchQ_[str_]));
     beta *= std::pow(2.f, -1.5f * contactIn_);
     beta = std::clamp(beta, 0.015f, 0.3f);
     // Base force on the players' line at the reference impedance; per-string
