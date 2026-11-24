@@ -1107,7 +1107,7 @@ python3 tools/radiation_target.py <VSCO Arco Vib dir> [render] [csv|-] [mode]   
 python3 tools/combine_target.py <library csv> <measured csv> <out csv>          # the radiation target
 ./build/instrument_lab release <note> <1 lift|2 stop|3 finger off> [relVel]   # decay and the pitch left ringing
   env: LAB_HF=1 (measure above 1 kHz), LAB_DYN, LAB_PRESSURE, LAB_COUPLING, LAB_MUTE, LAB_STRING, LAB_CHANGE, LAB_FLOOR,
-       LAB_WIDTH, LAB_SUSTAIN, LAB_BMIN, LAB_MINACC, LAB_TRACE=from,to
+       LAB_WIDTH, LAB_SUSTAIN, LAB_MINACC, LAB_AVOIDOPEN=1 (the open-string habit; off in the labs), LAB_TRACE=from,to
 python3 tools/analyze.py render.wav [out.png]                        # spectrogram, level, pitch per note
 ./build/string_lab guettler <string> <note> <beta> [classic|enhanced]  # attacks from rest (Guettler plane)
   env: LAB_WIDTH=<samples> LAB_SHARE, LAB_HFLOOR LAB_HSPEED LAB_TDROPE (enhanced friction)
@@ -1120,6 +1120,13 @@ python3 tools/open_strings.py | harmonics_tuning.py | intonation_check.py | vibr
 python3 tools/pizz_decay.py <VSCO Pizz dir>                          # two-stage decay vs recordings
 python3 tools/note_pitch.py <scenario> [wav]                         # pitch per note, peak below
 LAB_HF=1 tools/bow_change_gap.sh [note]                              # automatic bow change gap
+python3 tools/partial_q.py --data <phil wav>                          # each partial's decay (Q) after a pluck
+python3 tools/harmonic_timbre.py --data <phil wav> [render]           # harmonics vs arco, real vs synth
+python3 tools/portamento_glide.py [render]                            # glide times at Portamento 0 / 0.3 / 1
+python3 tools/brightness_spread.py --vsco <Arco Vib> [render ...]     # f - p colour, recordings vs synth
+python3 tools/force_brightness.py [enhanced classic thermal]          # the string alone: brightness vs force
+python3 tools/fundamental_strength.py --data <phil wav> [render]      # 1st partial re 2-4, recordings vs synth
+./build/performer_fuzz [n] [doubled]                                  # key handling: one key -> one note
 ```
 
 What each check should show, and the latest numbers: [EVALUATION.md](EVALUATION.md).

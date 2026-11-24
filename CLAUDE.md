@@ -73,13 +73,17 @@ python3 tools/open_strings.py                      # open strings in tune under 
 python3 tools/harmonics_tuning.py                  # natural/artificial harmonics
 python3 tools/harmonic_timbre.py --data ~/data/phil/wav   # harmonics' timbre vs the Philharmonia (harmonic vs arco, partials 2-6)
 python3 tools/portamento_glide.py                  # Portamento: glide times on slow slurred leaps
+python3 tools/brightness_spread.py --vsco "<VSCO>/Strings/Solo Violin/Arco Vib" [render ...]   # f - p colour vs the recordings
+python3 tools/force_brightness.py                  # the string alone (string_lab): brightness vs bow force
+python3 tools/fundamental_strength.py --data ~/data/phil/wav   # 1st partial re 2-4 per note vs the recordings
+./build/performer_fuzz 50 && ./build/performer_fuzz 50 doubled  # key handling: random fast playing, then one key -> one note
 python3 tools/intonation_check.py                  # Intonation Style: scale, double stops
 python3 tools/vibrato_extent.py                    # Vibrato Shaping
 python3 tools/pizz_decay.py "<VSCO>/Strings/Solo Violin/Pizz"   # two-stage decay vs recordings
 python3 tools/note_pitch.py tests/spiccato.json    # pitch per note of any scenario
 LAB_HF=1 tools/bow_change_gap.sh 69                # automatic bow change gap
 python3 tools/perceptual.py --data ~/data/phil/wav [--json out.json]   # perceptual distance to the Philharmonia recordings (2.5 min)
-python3 tools/perceptual.py --compare a.json b.json # two builds, note by note
+python3 tools/perceptual.py --compare a.json b.json [--by-note] # two builds: note by note, per dynamic
 python3 tools/perceptual.py --yardstick             # recording vs recording
 
 # browser page (API.md §11)
@@ -113,6 +117,10 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
 - After changing the string's losses, the bridge or the body, rerun
   `tools/partial_q.py`: the stopped/open median Q per band should stay near
   the recordings' (docs/EVALUATION.md).
+- After changing the string, friction, the brightness tilt or the
+  performer's dynamics law, rerun `tools/brightness_spread.py` (f − p within
+  ~1 dB of VSCO per band). After changing the key logic, run
+  `performer_fuzz` (single and doubled) and the stress test.
 - After changing friction, string, bridge or the open-string allowance, also
   run `tools/open_strings.py` and `tools/harmonics_tuning.py`; after changing
   the performer's bowing rules, `bowing_lab` (no mid-note rebows); after
@@ -128,8 +136,17 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
   `player_technique_and_responsiveness.md` (cite §). Model what players
   measurably do, not what they say (docs/EVALUATION.md "Lessons").
 - Bowing is chaotic: judge changes over several notes/strings/dynamics,
-  A/B against a base build in a worktree, and keep margins in test
-  expectations. docs/EVALUATION.md has the techniques.
+  A/B against a base build in a worktree (at the current `main`), and keep
+  margins in test expectations. docs/EVALUATION.md has the techniques and
+  the lessons; read its Lessons before a model change.
+- **Data outside the repo** (never commit it): the Philharmonia violin WAVs
+  (the owner's zip, decoded to e.g. `~/data/phil/wav`; the tools take
+  `--data`), VSCO-2-CE (`fetch_vsco.sh` from instrument-research: Arco Vib,
+  Pizz and Trem for the solo violin), the KB (clone 10d6/instrument-research
+  next to this repo). A fresh session has none of it: fetch VSCO, ask the
+  owner for the Philharmonia zip.
+- **Phase 8 (cello)** starts from docs/PLAN.md "Starting the cello": the
+  steps to redo and the violin-specific constants still hard-coded.
 
 ## Working with the owner
 
@@ -159,7 +176,7 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
 
 ## CI
 
-Every PR: native checks, the browser page (Chromium test + browser-vs-native
+Every PR: native checks (`--check`, and `performer_fuzz` single and doubled), the browser page (Chromium test + browser-vs-native
 comparison on `tests/chord.json`; chaotic passages diverge between the two
 builds, see `ci.yml`) and a Pages preview linked on the PR. Plugin builds for Windows,
 macOS and Linux (plugin check, pluginval, auval; a zip per OS) are off for
