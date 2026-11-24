@@ -65,7 +65,9 @@ python3 tools/partial_q.py --data ~/data/phil/wav         # each partial's decay
 ./build/string_lab guettler 1 62 0.1 enhanced     # attacks from rest: perfect / within 50 ms
 ./build/radiation_lab character                    # body controls per third-octave band
 ./build/radiation_lab directivity                  # radiation patterns: per octave band, semitone to semitone
-python3 tools/room_power.py                         # each Space's wet/direct power (after changing the room or radiation level)
+python3 tools/room_power.py [--instrument cello]    # each Space's wet/direct power (after changing the room or radiation level)
+SM_INSTRUMENT=cello ./build/instrument_lab hold 50 4 0.7   # any lab on the cello (default: the violin)
+python3 tools/analyze.py x.wav --fmin 58           # the cello's low notes need the lower pitch floor
 printf '2.5 69 1 .6\n2.95 69 0 .5\n3 74 1 .6\n4 74 0 .5\n' | ./build/bowing_lab 0.5 92 3 4   # bow direction, rebows
 
 # evaluation scripts (docs/EVALUATION.md has the reference numbers)
@@ -145,8 +147,20 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
   Pizz and Trem for the solo violin), the KB (clone 10d6/instrument-research
   next to this repo). A fresh session has none of it: fetch VSCO, ask the
   owner for the Philharmonia zip.
-- **Phase 8 (cello)** starts from docs/PLAN.md "Starting the cello": the
-  steps to redo and the violin-specific constants still hard-coded.
+- **Phase 8 (cello)** follows docs/PLAN.md "Phase 8: the cello": six PRs,
+  the recordings, the decisions, and the violin-specific constants still
+  hard-coded. Each instrument is an `InstrumentDef` (`model/defs/`); the
+  synth prepares them all and switches without allocating. A change meant
+  for one instrument must leave the other's renders unchanged: compare
+  `--check` renders' hashes with a base build (8.1 kept the violin
+  bit-identical).
+- **Cello data (outside the repo, never commit):** the Iowa MIS cello
+  (anechoic; arco and pizzicato pp/mf/ff, a run of notes per file; free of
+  restrictions, so it may be fitted for shipped parameters) decoded to
+  `~/data/iowa/cello/wav/{arco,pizz}`, and the owner's Philharmonia cello
+  zip decoded to `~/data/phil-cello/wav`. VSCO-2-CE has only a cello section
+  (its library-mic curve is in `data/cello/`). A fresh session: ask the
+  owner for the zips again (the workspace can't download them).
 
 ## Working with the owner
 

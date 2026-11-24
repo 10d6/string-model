@@ -10,7 +10,8 @@
 //   - below ~600 Hz the body radiates as a monopole: the same residue in
 //     every direction (KB §5.5, §12.1, §12.3a low band);
 //   - above, each mode has a random radiation pattern on the sphere: real
-//     spherical harmonics up to order ceil(k a) + 1 (a = 0.2 m), random
+//     spherical harmonics up to order ceil(k a) + 1 (a = the body's
+//     effective radius: violin 0.2 m, cello 0.4 m), random
 //     Gaussian coefficients, so it is smooth at 1 kHz and changes every few
 //     degrees at 8 kHz; times the measured overall shape (the treble beams
 //     front-up, weaker toward the floor; KB §12.1) [T]. Blended over
@@ -45,6 +46,18 @@
 #include <vector>
 
 namespace sm {
+
+// The body's size and how it radiates, per instrument (InstrumentDef).
+// The defaults are the violin's.
+struct RadiationShape {
+  float lowestHz = 180.f;    // the mode bank's first mode (below the lowest air mode)
+  float monopoleHz = 600.f;  // below: one monopole residue; patterns blend in over the octave above (KB §12.3a)
+  float radius = 0.2f;       // m, effective radius for the patterns' order (KB §12.3a: violin 0.2, cello 0.4)
+  float beamEl = 0.61f;      // rad, the treble beam's elevation (violin: front-up, KB §12.1)
+  float calibFromHz = 160.f; // the calibration grid's lowest frequency
+  float a0Hz = 280.f;        // Air Resonance's centre (the A0 air mode, KB §5.2/§5.4)
+  float nasalHz = 1100.f;    // Nasality's centre (KB §5.8)
+};
 
 struct RadiationSettings {
   float hillHz = 2600.f;   // bridge hill centre; the target was measured at baseHillHz
@@ -83,8 +96,9 @@ class Radiation {
   // with a gentle cut the modes just above A0 leaked into the open-G region:
   // the G3 fundamental came out ~17 dB stronger than in the recordings.
   void prepare(float fs, const float* targetHz, const float* targetDb, int targetCount, uint32_t seed, float baseHillHz,
-               float lowCutHz) {
+               float lowCutHz, const RadiationShape& shape = RadiationShape{}) {
     fs_ = fs;
+    shape_ = shape;
     lowCut_ = lowCutHz;
     setupLowCut();
     baseHill_ = baseHillHz;
@@ -355,7 +369,7 @@ class Radiation {
     };
     // 16 modes per octave up to 1 kHz, kHighDensity above; Q kLowQ below
     // 1 kHz, kHighQ above (falling slowly with frequency).
-    float lhz = std::log2(180.f);
+    float lhz = std::log2(shape_.lowestHz);
     for (;;) {
       const float base = std::pow(2.f, lhz);
       if (base > 10000.f || base > 0.42f * fs_) break;
@@ -374,9 +388,9 @@ class Radiation {
       gauss();
       // Radiation pattern: a monopole below 600 Hz, random spherical
       // harmonics above, blended over an octave (KB §12.3a).
-      m.blend = std::clamp((std::log2(hz) - std::log2(600.f)) / 1.f, 0.f, 1.f);
+      m.blend = std::clamp((std::log2(hz) - std::log2(shape_.monopoleHz)) / 1.f, 0.f, 1.f);
       if (m.blend > 0.f) {
-        const float ka = 2.f * 3.14159265f * hz * kRadius / kSound;
+        const float ka = 2.f * 3.14159265f * hz * shape_.radius / kSound;
         m.order = std::min(static_cast<int>(std::ceil(ka)) + 1, kMaxOrder1 - 1);
       }
       coefficients(hz, m.q, m.b0, m.a1, m.a2);
@@ -438,9 +452,9 @@ class Radiation {
   // and at 2-6.3 kHz the bottom elevations are considerably weaker. Gain
   // (linear) toward unit direction d in the player's frame (x front, y the
   // player's left, z up) [T: kBeamDb, kFloorDb, the axis].
-  static float envelope(float hz, const float d[3]) {
+  float envelope(float hz, const float d[3]) const {
     const float w = std::clamp(std::log2(hz / 1000.f) / 2.f, 0.f, 1.f);  // 0 at 1 kHz .. 1 at 4 kHz+
-    const float ce = std::cos(kBeamEl), se = std::sin(kBeamEl);
+    const float ce = std::cos(shape_.beamEl), se = std::sin(shape_.beamEl);
     const float cosg = d[0] * ce + d[2] * se;
     float db = w * kBeamDb * (cosg - 1.f);
     const float wf = std::clamp(std::log2(hz / 1500.f) / 0.5f, 0.f, 1.f) * std::clamp(std::log2(9000.f / hz) / 0.5f, 0.f, 1.f);
@@ -546,7 +560,7 @@ class Radiation {
   // browser is when audio starts.
   void calibrate() {
     std::vector<float> grid;
-    for (float f = 160.f; f < std::min(12000.f, 0.45f * fs_); f *= std::pow(2.f, 1.f / 32.f)) grid.push_back(f);
+    for (float f = shape_.calibFromHz; f < std::min(12000.f, 0.45f * fs_); f *= std::pow(2.f, 1.f / 32.f)) grid.push_back(f);
     const std::size_t K = modes_.size(), G = grid.size();
     std::vector<std::complex<float>> H(K * G);
     std::vector<float> hpPow(G), wDetail(K * G), wSmooth(K * G);
@@ -644,7 +658,7 @@ class Radiation {
       // placed where the mode sounds (after Voice) [T: widths].
       const float hz = m.hz * voiceScale(m.hz, s.voice);
       const float soft = 1.f / (1.f + std::pow(4000.f / hz, 4.f));
-      const float db = s.a0 * bump(hz, 280.f, 0.2f) + s.nasal * bump(hz, 1100.f, 0.4f) +
+      const float db = s.a0 * bump(hz, shape_.a0Hz, 0.2f) + s.nasal * bump(hz, shape_.nasalHz, 0.4f) +
                        s.brilliance * bump(hz, hill, 0.4f) - s.softness * soft;
       a *= std::pow(10.f, db / 20.f);
       // Each mic's own residue (its direction; the pair's spacing is the width).
@@ -672,15 +686,14 @@ class Radiation {
   }
 
   // Radiation geometry [T]: effective radius, speed of sound, the mic pair.
-  static constexpr float kRadius = 0.2f;       // m (violin, KB §12.3a)
   static constexpr float kSound = 343.f;       // m/s
-  static constexpr int kMaxOrder1 = 40;        // harmonic orders 0..39 (ka ~ 37 at 10 kHz)
+  static constexpr int kMaxOrder1 = 40;        // harmonic orders 0..39 (violin: ka ~ 37 at 10 kHz; the cello reaches the cap at ~5 kHz,
+                                               // where patterns already change every few degrees)
   static constexpr float kRefDistance = 1.5f;  // m: the calibration's distance (the default)
   static constexpr float kMinDistance = 0.4f;  // m: closer needs the near field (Phase 7c)
   static constexpr float kHeadDb = 6.f;        // dB, treble shade toward the player's head [T]
   static constexpr float kTorsoDb = 8.f;       // dB, toward the torso [T]
   static constexpr float kSpacing = 0.6f;      // m between the omnis at width 1
-  static constexpr float kBeamEl = 0.61f;      // rad (35 deg): the treble beam's elevation
   static constexpr float kBeamDb = 4.5f;       // dB per unit of (cos angle - 1) from the beam, at 4 kHz+
   static constexpr float kFloorDb = 3.f;       // dB toward straight down, 2-6.3 kHz
   static constexpr int kMicEvery = 16;         // control ticks between pattern re-evaluations
@@ -696,6 +709,7 @@ class Radiation {
   Biquad hp_[kLowCutSections];
   std::vector<float> tHz_, tDb_;
   RadiationSettings settings_;
+  RadiationShape shape_;
   float fs_ = 48000.f, baseHill_ = 2600.f, gain_ = 1.f, norm_ = 1.f, lowCut_ = 230.f, voiceNow_ = 0.f;
 };
 

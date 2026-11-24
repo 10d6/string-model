@@ -11,6 +11,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include "LabInstrument.h"
 #include "../model/Instrument.h"
 using namespace sm;
 
@@ -31,7 +32,7 @@ static void writeWav(const char* path, const std::vector<float>& x, float fs) {
 
 int main(int argc, char** argv) {
   const float sr = 48000;
-  Instrument inst; inst.prepare(sr);
+  Instrument inst; inst.prepare(sr, labInstrument());
   PerformerControls pc; InstrumentControls ic;
   const char* mode = argc > 1 ? argv[1] : "detache";
   if (const char* e = std::getenv("LAB_FRICTION")) ic.friction = static_cast<FrictionModel>(std::atoi(e));  // 0 thermal, 1 classic, 2 enhanced

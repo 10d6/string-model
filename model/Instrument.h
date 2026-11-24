@@ -17,6 +17,7 @@
 #include "BowedString.h"
 #include "Bridge.h"
 #include "Performer.h"
+#include "defs/Instruments.h"
 
 namespace sm {
 
@@ -97,13 +98,14 @@ struct InstrumentControls {
 
 class Instrument {
  public:
-  void prepare(double hostRate) {
+  // def: which instrument (model/defs/; it must outlive this object).
+  void prepare(double hostRate, const InstrumentDef& def = violin()) {
     host_ = static_cast<float>(hostRate);
     harmGlide_ = 1.f - std::exp(-1.f / (0.02f * host_));  // ~20 ms in/out
     os_ = hostRate < 70000.0 ? 2 : 1;
     fs_ = host_ * static_cast<float>(os_);
     dec_.prepare(os_);
-    def_ = &violin();
+    def_ = &def;
     for (int s = 0; s < 4; ++s) {
       str_[s].prepare(fs_, 40.f);
       str_[s].setDef(def_->strings[s], def_->loss);

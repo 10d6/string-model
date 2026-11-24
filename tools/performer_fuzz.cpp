@@ -15,6 +15,7 @@
 #include <cstring>
 #include <random>
 #include <vector>
+#include "LabInstrument.h"
 #include "../model/Instrument.h"
 
 using namespace sm;
@@ -29,7 +30,7 @@ int main(int argc, char** argv) {
       std::mt19937 rng(static_cast<unsigned>(seed * 7 + art));
       std::uniform_real_distribution<float> u(0.f, 1.f);
       Instrument inst;
-      inst.prepare(48000.0);
+      inst.prepare(48000.0, labInstrument());
       PerformerControls pc;
       InstrumentControls ic;
       pc.articulation = art;

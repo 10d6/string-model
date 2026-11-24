@@ -3,55 +3,10 @@
 // dynamics). [T] marks tuning guesses.
 #pragma once
 
-#include "../BowedString.h"
-#include "../Bridge.h"
+#include "../InstrumentDef.h"
 #include "../data/ViolinRadiation.h"
 
 namespace sm {
-
-struct InstrumentDef {
-  const char* name;
-  StringDef strings[4];
-  LossDef loss;
-  float bowLength;     // m, usable hair length
-  float zRef;          // impedance the force law below was measured on (kg/s)
-  float forceRef;      // N at vbRef and betaRef (players' line, KB §11.5)
-  float vbRef, betaRef;
-  float forceMax;      // N, clamp for the assistant
-  float outputGain;    // bridge force (N) -> output units
-  // Bridge admittance in the bowing direction (KB §5.1-5.3).
-  BridgeMode modes[8];
-  int modeCount;
-  BridgeMode hill;     // bridge hill: shapes the dense band's levels
-  float denseFrom, denseTo, denseSpacing;
-  uint32_t bodySeed;
-  float forceTrim[4];  // per-string force calibration (tools/calibrate_force.py) [T]
-  float ffLift[4];     // extra Pressure (x d^2) per string: ff close to the bridge needs more on the low strings [T]
-  float ppLift[4];     // extra Pressure (x (1-d)^2) per string: the open G at pp double-slips now and then with the full lift [T]
-  // The bow flattens an open string, and no finger can correct it: the
-  // performer raises a bowed open string by this much, only while the bow is
-  // on it (unbowed open strings stay at true pitch to ring in sympathy) [T].
-  float openTuneCents[4];
-  // Radiation (Radiation.h): the calibration target and its measured hill,
-  // the low cut below the lowest air mode, and a gain matching the
-  // library-mic output's loudness.
-  const float* radiationHz;
-  const float* radiationDb;
-  int radiationCount;
-  float radiationLowCut;
-  float radiationGain;
-  float scaleLength;      // m, nut to bridge (for the finger's speed along the string)
-  float winding[4];       // 0..1 per string: how much a sliding finger rubs a winding (0 = plain)
-  float windingPitch;     // m between turns of the winding
-  // Pizzicato's second (vertical) polarisation, KB §4/§11.2: weakly coupled
-  // to the bridge, so it rings on after the horizontal one has given its
-  // energy to the body (the two-stage decay). Fitted to VSCO-2-CE solo
-  // violin pizzicato (docs/MODEL.md) [T].
-  float vertT60 = 2.5f;          // x the string's own T60
-  float vertGain = 1.f;          // its bridge force into the output, x the horizontal's
-  float vertDetuneCents = 1.5f;  // slightly different stiffness/termination: slow beating
-  float pluckAngleMin = 0.25f, pluckAngleMax = 0.8f;  // rad from the bowing plane
-};
 
 inline const InstrumentDef& violin() {
   // Z0 = mu*c from mid-range values of KB §2.1; ZR ~ 3.5 Z0 [T]

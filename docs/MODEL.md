@@ -35,6 +35,44 @@ Per-note voices render separately in 32-sample blocks and couldn't do that.
 The strings run at 2× the host rate below 70 kHz (96 kHz at 48 kHz). A
 49-tap Blackman–Harris FIR decimates them back to the host rate.
 
+## Instruments (Phase 8)
+
+Each instrument is an `InstrumentDef` (`model/InstrumentDef.h`; the data in
+`model/defs/Violin.h`, `model/defs/Cello.h`, listed in order of the
+Instrument switch in `model/defs/Instruments.h`): its strings, losses,
+bridge modes and dense band, bow and force law, output levels, radiation
+target, and two smaller parts:
+- `RadiationShape` (`model/Radiation.h`): the mode bank's lowest mode, the
+  monopole band, the body's effective radius, the treble beam's elevation,
+  and where Air Resonance and Nasality act (violin: 180 Hz, 600 Hz, 0.2 m,
+  +35°, 280 Hz, 1.1 kHz; cello: 60 Hz, 300 Hz, 0.4 m, −11°, 102 Hz, 660 Hz;
+  KB §5.4, §12.1, §12.3a).
+- `HandDef` (`model/InstrumentDef.h`, used by `model/Performer.h`): the left hand's reach around its place,
+  where a shift lands, the widest chord, vibrato's register centre (violin:
+  −1/+5 semitones, third/second finger, a fifth, A4; cello in the neck
+  positions: −1/+4, a minor third with an extension, a fourth-ish chord span
+  of 5 semitones, A3) [T].
+
+The synth prepares every instrument in `prepare` (strings, bridge,
+radiation, library-mic IRs) and plays one. Switching stops the notes: the old
+instrument's bridge force fades over 30 ms and its body (radiation or
+library-mic IR) rings out over 0.25 s with no input, then it is reset, so a
+switch needs no allocation. The labs test the violin unless
+`SM_INSTRUMENT=cello` is set (`tools/LabInstrument.h`).
+
+**The first cello (8.1)** is the KB alone, to be calibrated in the next PRs
+(docs/PLAN.md "Phase 8"): Kaplan strings (Z₀ 1.46 / 1.00 / 0.67 / 0.56 kg/s,
+KB §2.1), Z_R 3.3 Z₀ (KB §2.4), scale 0.69 m; bridge modes A0 102 Hz (weak),
+the main body mode 175 Hz (Q 50, 0.25 s/kg: strong, for the wolf), 226,
+320, 433 (Q 53, m_eff 180 g, KB §5.4), 547, 742 Hz; a bridge hill at 1.6 kHz
+(0.06 s/kg) over a dense band from 0.8 to 5 kHz every ~100 Hz [T]; the
+violin's force law scaled by (Z/Z_ref)^1.39 (a few newtons on the C), forces
+capped at 12 N; losses between the Kaplan strings' Q and the violin's fit
+(σ_L 1.2/s, σ_H 40/s, f_T 1.5 kHz) [T]. Its radiation target is the CC0
+cello-section library curve alone (KB §12.7) and its Library Mic outputs the
+section's responses. Levels: as loud as the violin through the Library Mic
+(Smooth); Modelled 1.5 dB above it, as on the violin.
+
 ## String (KB §6.1, §10)
 
 Four one-way fractional delay lines (4-point Lagrange) carry velocity waves:
@@ -851,8 +889,9 @@ directly (it is already smooth) and turn off the automatic bow change.
 
 **Modelled (default): `model/Radiation.h`.** A bank of body modes driven by
 the total bridge force (KB §12.3a):
-- 16 per octave from 180 Hz to 1 kHz (Q 22), and 48 per octave from 1 to
-  10 kHz (Q ~80, falling slowly), with a little random jitter: 199 modes.
+- 16 per octave from 180 Hz (the cello: 60 Hz; `RadiationShape`) to 1 kHz
+  (Q 22), and 48 per octave from 1 to 10 kHz (Q ~80, falling slowly), with a
+  little random jitter: 199 modes (the cello 225).
   Until the shimmer PR, 24 per octave at Q ~40 (120 modes). Above 1–2 kHz the
   body's modes overlap and its response is effectively random (KB §5); how
   fast it changes with frequency is set by the modes' bandwidth. At Q 40
@@ -864,12 +903,13 @@ the total bridge force (KB §12.3a):
 - Each is a peak-normalised band-pass. The microphones share the modes and
   mix them with their own residues: the residue toward the mic's direction
   (KB §12.3a: shared poles, direction-specific residues).
-- **Low band (below 600 Hz):** a monopole, the same residue in every
-  direction (KB §5.5, §12.1).
+- **Low band (below 600 Hz; the cello 300 Hz):** a monopole, the same
+  residue in every direction (KB §5.5, §12.1).
 - **High band (above 1.2 kHz, blended over 600–1200 Hz; Phase 7a):** each
   mode has a random radiation pattern: real orthonormal spherical harmonics
-  up to order ⌈ka⌉ + 1 (a = 0.2 m: order 6 at 1.2 kHz, 17 at 4.3 kHz, 39 at
-  10 kHz) with random Gaussian coefficients. It is smooth at 1 kHz and
+  up to order ⌈ka⌉ + 1 (violin a = 0.2 m: order 6 at 1.2 kHz, 17 at 4.3
+  kHz, 39 at 10 kHz; cello a = 0.4 m, capped at 39 from ~5 kHz) with random
+  Gaussian coefficients. It is smooth at 1 kHz and
   changes every few degrees at 8 kHz. On top, the measured overall shape
   (KB §12.1, Pätynen & Lokki) [T]: above 1 kHz (full from 4 kHz) the treble
   beams toward the front, 35° up, at 4.5 dB × (cos angle − 1), and at 2–6.3
@@ -1104,16 +1144,17 @@ python3 tools/calibrate_force.py                                     # Helmholtz
 ./build/radiation_lab [sampleRate]                                   # radiation vs target, L/R difference per band
 python3 tools/force_tilt.py                                          # bridge force vs 1/n, per 1/3 octave
 python3 tools/radiation_target.py <VSCO Arco Vib dir> [render] [csv|-] [mode]   # real vs synth per band
-python3 tools/combine_target.py <library csv> <measured csv> <out csv>          # the radiation target
+python3 tools/combine_target.py <library csv> <measured csv|-> <out csv> [--from=HZ]  # the radiation target ("-": the library curve alone)
 ./build/instrument_lab release <note> <1 lift|2 stop|3 finger off> [relVel]   # decay and the pitch left ringing
   env: LAB_HF=1 (measure above 1 kHz), LAB_DYN, LAB_PRESSURE, LAB_COUPLING, LAB_MUTE, LAB_STRING, LAB_CHANGE, LAB_FLOOR,
        LAB_WIDTH, LAB_SUSTAIN, LAB_MINACC, LAB_AVOIDOPEN=1 (the open-string habit; off in the labs), LAB_TRACE=from,to
-python3 tools/analyze.py render.wav [out.png]                        # spectrogram, level, pitch per note
+python3 tools/analyze.py render.wav [out.png] [--fmin 58]            # spectrogram, level, pitch per note (--fmin: the cello)
+SM_INSTRUMENT=cello ./build/<any lab> ...                            # the labs on the cello (default: violin)
 ./build/string_lab guettler <string> <note> <beta> [classic|enhanced]  # attacks from rest (Guettler plane)
   env: LAB_WIDTH=<samples> LAB_SHARE, LAB_HFLOOR LAB_HSPEED LAB_TDROPE (enhanced friction)
 ./build/radiation_lab character [a0 nasal brilliance softness voice%] # body controls per band
 ./build/radiation_lab directivity                                  # one omni around the violin: per octave, per semitone
-python3 tools/room_power.py                                         # each Space's wet/direct power (the distance trim)
+python3 tools/room_power.py [--instrument cello]                    # each Space's wet/direct power (the distance trim)
 ./build/bowing_lab <metric> [bpm num den] < events                   # bow direction per note, mid-note rebows
   instrument_lab env also: LAB_FRICTION=0|1|2, LAB_BOWWIDTH=<m>, LAB_AVARY
 python3 tools/open_strings.py | harmonics_tuning.py | intonation_check.py | vibrato_extent.py
