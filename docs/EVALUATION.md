@@ -5,7 +5,7 @@ How each part of String Model is measured, the numbers it measured at last
 from the repo root after `cmake --build build` (Release). Python tools take
 `RENDER=path/to/stringmodel_render` to measure another build.
 
-## Reference numbers (as of the bow-brightness PR, #22)
+## Reference numbers (as of the attack-rise PR, #23)
 
 | What | Command | Last result |
 |---|---|---|
@@ -26,7 +26,7 @@ from the repo root after `cmake --build build` (Release). Python tools take
 | Directivity | `./build/radiation_lab directivity` | 250/500 Hz omni ±1 dB; 4 kHz front +2, back −3.2, below −3.5; 8 kHz front-up +6.7, back −7.2 dB; semitone-to-semitone directivity index varies 4.9 dB (KB 2.2–8.1) |
 | Distance trim | render a phrase at 1.5–10 m, Room 20/60% | total level within 0.3 dB (0.5 m: +2.4) |
 | Room feed | wet (Room 100% − 0%) band levels re 200–1000 Hz | 3.6/7.3/7.0/8 dB darker at 1–2/2–4/4–8/8–16 kHz than the 7a feed |
-| Perceptual distance | `python3 tools/perceptual.py --data <phil wav>` (2.5 min) | score 40.2 (attack 45.0, early 34.4, sustain 31.1); note by note nearer than the loss-shelves build on 304 of 448 (median −0.47); before the attack swell 53.4 / 72.4 / 40.0 / 32.1; rise 110 ms (recordings 84); shimmer 1.7 dB (recordings 2.9); ring 8.8 dB (recordings ~7; before the centre drift 11.7); yardsticks: another take 20.5, another violin 35.4 |
+| Perceptual distance | `python3 tools/perceptual.py --data <phil wav>` (2.5 min) | score 37.8 (attack 40.1, early 34.3, sustain 31.1; #22: 40.2 / 45.0 / 34.4 / 31.1; before the attack swell 53.4 / 72.4 / 40.0 / 32.1); rise 96 ms (recordings 84; per dynamic pp–ff 166/166/174/78/52/34 vs 153/176/201/75/50/34); shimmer 1.7 dB (recordings 2.9); ring 8.8 dB (recordings ~7); yardsticks: another take 20.5, another violin 35.4 |
 | Shimmer split | held p/mf/f notes, 1–1.5 s, after 0.35 s, 0.5–8 kHz | band against band ~1.6 dB (recordings 2.55; before the shimmer PR 0.85); level wobble 1.54 (2.29), overtone balance 1.36 (2.39) |
 | Default mic vs VSCO | `tools/radiation_target.py <Arco Vib> build/stringmodel_render - 3`, half-octave means | within ±4.1 dB, RMS 2.5 dB (pre-7a 2.3; the largest is now 2.2–3.2 kHz, +4.1) |
 | Low end vs VSCO | fundamental (h1) re harmonics 3–8, synth − real, mean of p and f | G3 +2.7, A3 +1.7, C4 −10.7, E4 −1.9 dB (was +17.1, +7.9) |

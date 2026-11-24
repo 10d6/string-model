@@ -425,9 +425,23 @@ A bowed note grows into its level. Measured on the Philharmonia violin (arco,
 note's peak at pp–mp, ~7 dB at mf, 3–5 dB at f–ff, and the level is within
 3 dB after ~200 / ~100 / ~68 ms (median), whatever the note's length. The
 synth was at full level in 32–42 ms at every dynamic. Now each stroke from
-rest starts D0·(1 − t/T)² dB under its level, D0 = 15 dB at d ≤ 0.45 falling
-45 dB per unit of d to 4 dB, T = 0.36 s falling to 0.26 s, times the control
-[T: fitted]. 40% of the deficit is a slower bow (the bow accelerates through
+rest starts D0·(1 − t/T)² dB under its level, times the control, with D0 and
+T per dynamic (interpolated; d = 0.24 … 0.79 are velocities 20 … 120 at the
+default Velocity → Dynamics) [T: fitted to the per-dynamic rise and attack
+distance, the attack-rise PR]:
+
+| | pp (0.24) | p (0.35) | mp (0.46) | mf (0.571) | f (0.681) | ff (0.792) |
+|---|---|---|---|---|---|---|
+| D0, dB | 18.5 | 20 | 23 | 12 | 6.6 | 5.9 |
+| T, s | 0.36 | 0.36 | 0.356 | 0.2 | 0.268 | 0.26 |
+| rise, synth / recordings, ms | 166 / 153 | 166 / 176 | 174 / 201 | 78 / 75 | 52 / 50 | 34 / 34 |
+
+mf starts deep and recovers fast: the recordings are ~7 dB down at 60 ms yet
+within 3 dB by 75 ms. Until this PR D0 was 15 dB at d ≤ 0.45, falling 45 dB per
+unit of d to a 4 dB floor, and T 0.36 → 0.26 s: f had no swell left (30 ms vs
+50), mf was slow (104 vs 75), the soft notes not deep enough. The recordings'
+soft notes also swell faster when short (pp: 114 ms on 0.5 s notes, 184 on
+1 s); a keyboard doesn't know a note's length, so the table sits between. 40% of the deficit is a slower bow (the bow accelerates through
 each stroke, KB §11.5) and 60% a contact point further from the bridge, on the
 level law (L = 7.7 ln(vb/β)); the force follows the players' line for both, and
 the soft-playing force lift (the margin) uses the momentary dynamic. A new bow
@@ -440,7 +454,9 @@ arco. Measured at 1 (0.75): soft notes within 3 dB after 176 (160) ms, first
 (1.2–1.4 at 1); after 100 ms every window of 12 notes G3–E6 is within
 0.9–1.1 slips per period at 0.75 (at 1, G3 and A#3 stay at ~1.3 until
 ~200 ms). Perceptual distance: 53.4 → 41.6 (attack 72.4 → 47.3), 390 of 448
-notes nearer.
+notes nearer. With the per-dynamic table (attack-rise PR) soft attacks
+(G3–G6, velocity 20) keep everything below the note 13–60 dB down from the
+first 20 ms, as on main.
 
 **Bow changes.** The bow position along the hair is tracked (62 cm). A long
 note changes bow at the tip or the frog when `Auto Bow Change` is on; off
