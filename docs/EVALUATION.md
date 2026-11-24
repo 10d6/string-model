@@ -5,7 +5,7 @@ How each part of String Model is measured, the numbers it measured at last
 from the repo root after `cmake --build build` (Release). Python tools take
 `RENDER=path/to/stringmodel_render` to measure another build.
 
-## Reference numbers (as of the left-hand PR, #24)
+## Reference numbers (as of the wrap-up PR, #26: the violin before Phase 8)
 
 | What | Command | Last result |
 |---|---|---|
@@ -35,6 +35,10 @@ from the repo root after `cmake --build build` (Release). Python tools take
 | Brightness vs dynamics | f − p band levels re 0.5–2 kHz, median G3–E5, vel 45/110 (VSCO Arco Vib) | 2–4 / 4–8 / 8–16 kHz: synth +3.3 / +5.9 / +9.0, VSCO +2.5 / +6.4 / +8.0. With the tilt off +1.3 / +2.9 / +3.4: about half from the string itself (before the bow-brightness PR +0.5 / +0.6 / −0.2) |
 | Partial decay (Q) | `python3 tools/partial_q.py --data <phil wav>` (plucks, initial 25 dB per partial) | median Q real / synth, stopped: 177/182, 260/266, 304/322, 355/412, 651/699 at 0.15–0.5, 0.5–1, 1–2, 2–4, 4–8 kHz; open 444/450, 444/468, 398/407, 273/478, 1420/1038 (before the loss shelves stopped 148, 128, 120, then too fast to measure) |
 | Doubled input | the same fast sautillé passage with every event repeated 2 ms later | renders bit-identical to the single passage (main before the fix: difference 3.3 dB above the signal) |
+| Brightness spread | `python3 tools/brightness_spread.py --vsco <Arco Vib> [render …]` | f − p at 2–4 / 4–8 / 8–16 kHz re 0.5–2 kHz, G3–E5: synth +3.4 / +5.9 / +8.4, VSCO +2.5 / +6.4 / +8.0 (same as the Brightness vs dynamics row; this is its tool) |
+| String brightness vs force | `python3 tools/force_brightness.py [enhanced classic thermal]` | ×4 force at fixed v_b, β (Helmholtz throughout): G3 +3.0 / +8.8 / +7.7 dB, A4 +0.9 / +2.9 / +9.2 (enhanced, no bow width) |
+| Fundamental strength | `python3 tools/fundamental_strength.py --data <phil wav>` | 1st partial re 2–4, synth − real: G3 −2.7, D4 −3.2, A4 −29 (mf/f takes; −15 with mp), E5 −1.3 dB (PLAN Ideas) |
+| Key handling | `./build/performer_fuzz [n] [doubled]` | 0 of 140 passages bad, single and doubled input (every articulation) |
 | Slurs | `./build/stringmodel_render tests/slurs.json` + a 1 ms-hop pitch track (12 ms windows) | finger changes 2–4 ms (was 10–14), shifts 5–11 ms in a fast scale; onsets 1–2 dB above `main`'s, no clicks |
 | Bowing to the meter | `./build/bowing_lab 0.5 92 3 4 < events` (see the file's header) | pickups up-bow from mid-bow, downbeats down-bow, alternation, no mid-note rebows in phrases |
 | Browser speed | `node synthkit/web/test/bench-web.cjs build-web/web/stringmodel.html tests/chord.json` (Release build!) | ~7× realtime with the room, ~12× without |
@@ -118,6 +122,15 @@ p-p (5–95 %), from the onset; the synth 17 (VSCO's calmer player), after
     -DCMAKE_BUILD_TYPE=Release && cmake --build build --target stringmodel_render
   ```
   `cmp` of the two WAVs proves a "default unchanged" claim (body controls).
+  Move the base to the current `main` before each comparison (`git -C
+  /tmp/base checkout -f <sha> && git -C /tmp/base submodule update`, then
+  rebuild): a stale base once mixed an older PR's change into an A/B.
+  `perceptual.py --compare base.json new.json` then shows where a change
+  lands, per dynamic (`--by-note` per note name).
+- **Long runs:** `calibrate_force.py` takes ~25 min and an environment
+  restart kills foreground and background jobs alike. Run it with `nohup …
+  > file &` on a frozen copy of the lab (`cp build/instrument_lab /tmp/…`,
+  so rebuilding doesn't change it mid-run) and poll the file.
 - **Separate the mechanism from the amount.** When a change has a side
   effect, apply the new mechanism with the old numbers. Example: in-tune open
   strings came out 1–2 dB quieter. With the new mechanism and the old amounts
@@ -130,7 +143,10 @@ p-p (5–95 %), from the onset; the synth 17 (VSCO's calmer player), after
 - **Pitch measurement.** Median of zero-padded FFT peaks near harmonics 1–3
   (`tools/evalkit.py`). Avoid windows with an automatic bow change: it shows
   as a 20 ms, +35 cent blip (turn `bow.auto` off for pitch tests). Open
-  strings get no vibrato: test vibrato on stopped notes.
+  strings get no vibrato: test vibrato on stopped notes. Since the left-hand
+  PR, slow D4/A4/E5 are stopped on the string below by default: tests of
+  open strings set `finger.avoidOpen` 0 (`open_strings.py` does; the labs
+  turn it off unless `LAB_AVOIDOPEN=1`).
 - **Level per region:** long-term spectra (Welch) per band, against a
   reference render.
 - **Recordings as ground truth, with care.** The VSCO pizzicato tails decay
@@ -226,3 +242,42 @@ p-p (5–95 %), from the onset; the synth 17 (VSCO's calmer player), after
   performer's state).
 - **CodeQL** flags `float * float` converted to `double` in the labs: cast
   one operand first (`static_cast<double>(a) * b`).
+- **Losses per pass are losses per note.** A filter at a termination takes
+  the same fraction on every pass, and a high note makes more passes a
+  second: the stopped notes' treble died in milliseconds instead of ringing
+  ~0.5 s. Specify damping as decay rates per second by frequency and design
+  each note's filters from them (`LossShelf`); `partial_q.py` shows the
+  difference at once. A "small" top low-pass brought the problem straight
+  back.
+- **Less damping raises the minimum bow force** (Schelleng): after the loss
+  shelves, ff on the G string double-slipped at the old 3 N cap. Re-run
+  `calibrate_force.py` after any loss change and expect to move the caps and
+  lifts.
+- **Before adding an effect, check whether the physics already does it and
+  something cancels it.** The string brightened with force after the loss
+  shelves, but the assistant's long-note rule (slow the bow, creep to the
+  bridge) evened p and f out; `force_brightness.py` (string alone) against
+  `brightness_spread.py` (whole synth) found it. Fixing the rule, from
+  Demoucron's data, let the output tilt shrink from 8 to 5 dB.
+- **When the physics is too fragile, fake it outside the loop and say so.**
+  Harmonics need a very light bow; the finger pad's real damping, modelled
+  in the string, stopped them speaking. A low-pass on the output while a
+  string is touched matches the recordings (harmonic_timbre.py 7.0 → 1.8 dB)
+  without touching the bowing. Same reasoning as the brightness tilt.
+- **Compare differences when the references differ.** Philharmonia's mics
+  are much darker than VSCO's, which the radiation follows, so "synth vs
+  Philharmonia" made every note look too bright. "Harmonic minus ordinary
+  note", real against synth, cancels mics and body.
+- **Check that a control does something.** Portamento measured 0–12 ms
+  glides at every setting (string choice never allowed a shift); harmonics
+  were at the right pitch with an ordinary note's timbre. A sweep of the
+  control through its range, measuring what it should change
+  (`portamento_glide.py`), is cheap and should exist for every habit.
+- **The perceptual score has a floor that isn't zero.** At ~38 the synth is
+  as far from the Philharmonia notes as another violin and studio (35.4).
+  Below that, lowering it fits that player, instrument and room; pick work
+  the owner can hear instead (docs/PLAN.md).
+- **Robust to MIDI quirks.** A keyboard the browser saw as two inputs sent
+  every key twice; the synth restarted sautillé strokes on the repeat. A
+  real key can't go down twice, so the performer ignores a held key's
+  repeat within 30 ms; `performer_fuzz doubled` keeps it so.

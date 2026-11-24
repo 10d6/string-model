@@ -42,6 +42,8 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
       - name: Checks (scenarios, presets, sample rates, block sizes, random patches)
         run: ./build/${SYNTH}_render --check . --out renders
+      - name: Key handling (random fast playing, then one key -> one note; single and doubled MIDI input)
+        run: ./build/performer_fuzz 5 && ./build/performer_fuzz 5 doubled
       - name: Upload renders
         if: always()
         uses: actions/upload-artifact@v4

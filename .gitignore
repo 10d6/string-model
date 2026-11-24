@@ -5,3 +5,4 @@
 *.wav
 .DS_Store
 !/data/**/*.wav
+__pycache__/

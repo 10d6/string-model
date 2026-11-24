@@ -39,7 +39,7 @@ VEL below.
     python3 tools/perceptual.py --data ~/data/phil/wav [--notes G3,A4] [--dyn piano,forte]
             [--dur 05,1] [--param out.mode=2] [--json out.json]
     python3 tools/perceptual.py --data … --yardstick
-    python3 tools/perceptual.py --compare a.json b.json
+    python3 tools/perceptual.py --compare a.json b.json [--by-note]   (also per dynamic)
 """
 import argparse
 import json
@@ -324,6 +324,7 @@ def main():
     ap.add_argument("--json", default="")
     ap.add_argument("--yardstick", action="store_true")
     ap.add_argument("--compare", nargs=2)
+    ap.add_argument("--by-note", action="store_true", help="with --compare: also per note name")
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
     a = ap.parse_args()
 
@@ -334,6 +335,25 @@ def main():
         summarise({k: B[k] for k in common}, "B: ")
         d = [B[k]["score"] - A[k]["score"] for k in common if A[k]["score"] is not None and B[k]["score"] is not None]
         print(f"B - A per note: median {np.median(d):+.2f}, B nearer on {sum(x < 0 for x in d)} of {len(d)}")
+        # Where the change lands: per dynamic, then per note (a fix often
+        # helps one group and hurts another; the overall median hides it).
+        def group(key):
+            g = {}
+            for k in common:
+                if A[k]["score"] is not None and B[k]["score"] is not None:
+                    g.setdefault(key(k), []).append(k)
+            return g
+        med = lambda v: np.median(v) if v else float("nan")
+        print("   by dynamic         rise rec / A / B ms   attack B-A   score B-A   B nearer")
+        for dy, ks in sorted(group(lambda k: k.split("_", 2)[2]).items(), key=lambda kv: DYNS.index(kv[0]) if kv[0] in DYNS else 99):
+            r = lambda J, f: med([J[k][f] for k in ks if f in J[k]])
+            print(f"   {dy:16s} {r(A, 'rise_rec'):6.0f} / {r(A, 'rise_syn'):4.0f} / {r(B, 'rise_syn'):4.0f}"
+                  f"   {med([B[k]['attack'] - A[k]['attack'] for k in ks]):+8.2f}   {med([B[k]['score'] - A[k]['score'] for k in ks]):+8.2f}"
+                  f"   {sum(B[k]['score'] < A[k]['score'] for k in ks):4d}/{len(ks)}")
+        if "--by-note" in sys.argv:
+            print("   by note            score B-A   B nearer")
+            for nm, ks in sorted(group(lambda k: k.split("_")[0]).items()):
+                print(f"   {nm:16s} {med([B[k]['score'] - A[k]['score'] for k in ks]):+8.2f}   {sum(B[k]['score'] < A[k]['score'] for k in ks):4d}/{len(ks)}")
         return
 
     notes = set(a.notes.split(",")) if a.notes else None

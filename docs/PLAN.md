@@ -58,24 +58,71 @@ details: [MODEL.md](MODEL.md).
 | — | String losses: decay rates by frequency, not by note (loss shelves fitted to the Philharmonia pizzicato's per-partial Q, `tools/partial_q.py`); stopped notes' treble rings as long as the recordings'; everything that rests on the string recalibrated | done (#21) |
 | — | Bow brightness: long notes keep their contact point (Demoucron), so the string's own brightening with force survives; the output tilt does only the rest (8 → 5 dB per octave of force) | done (#22) |
 | — | Attack rise: the swell's depth and length per dynamic, fitted to the recordings' rise per dynamic | done (#23) |
-| — | Left hand: open-string notes stopped on the string below so they take vibrato (Avoid Open Strings); Portamento keeps the string so slides happen; harmonics' bow position and timbre (**this PR**) | |
-| 7c | Next: close mics: the near field (equivalent sources) and the bow-noise source, mic types with proximity effect, presets. (Swapped with the old 7b: at 1.5 m a cardioid's proximity boost starts ~20 Hz, so mic types only matter close.) | |
+| — | Left hand: open-string notes stopped on the string below so they take vibrato (Avoid Open Strings); Portamento keeps the string so slides happen; harmonics' bow position and timbre | done (#24) |
+| — | A key arriving twice (a doubled MIDI input) is ignored: it restarted sautillé strokes | done (#25) |
+| — | Wrap-up before the cello: docs, reference numbers, the measurement scripts as tools (brightness spread, string brightness vs force, fundamental strength, perceptual breakdown, performer fuzz), the Phase 8 checklist (**this PR**) | |
+| 7c | On hold (the owner's choice, after 7b): close mics: the near field (equivalent sources) and the bow-noise source, mic types with proximity effect, presets. (Swapped with the old 7b: at 1.5 m a cardioid's proximity boost starts ~20 Hz, so mic types only matter close.) | |
 | 7 | Mic placement and room: close / studio / overhead / room positions (KB §12.3–12.4), near-field sources and bow noise for close mics, the room fed by the body's power response (darker, smoother), the room's level per output | |
 | 8 | Cello: Kaplan string data, body with a strong ~175 Hz mode (the wolf note should appear by itself, plus a "wolf eliminator"), heavier bow. Then viola/bass | |
 
 ## Next
 
-1. **Phase 7: mic placement and room** (the owner asked for it after Phase 3).
-   Plan agreed with the owner: 7a directional body and placement; 7b distance
-   and the room (power-response feed, player shadowing); 7c close mics (near
-   field, bow-noise source, mic types and proximity, presets). The floor
-   reflection moved to Phase 8 (cello). Placement controls stay simple (a few knobs, no placement view);
-   the default place is the pre-7a sound.
-2. **Phase 8: cello** (then viola/bass). Expect: a new `InstrumentDef`
-   (Kaplan string data, body, bow), the radiation measured against VSCO
-   cello recordings with the same pipeline, `calibrate_force.py` and the
-   Schelleng map redone for it, the player habits checked (cellists start
-   strokes nearer the string, vibrate differently: player doc §2.1, §3.1).
+1. **Phase 8: cello** (a new conversation; then viola/bass). The owner
+   chose to start it after the wrap-up PR. Phase 7c (close mics) is on hold.
+   See "Starting the cello" below for what carries over and what doesn't.
+2. Phase 7c (close mics: near field, bow-noise source, mic types and
+   proximity, presets) when the owner asks for it.
+
+### Starting the cello
+
+What carries over unchanged: the waveguide, friction, bridge solve, loss
+shelves, radiation machinery, room, performer, every tool. What has to be
+made or measured again, roughly in this order (each step's command is in
+CLAUDE.md, its reference numbers in EVALUATION.md):
+
+1. **`InstrumentDef`** (`model/defs/Cello.h`, like `Violin.h`): strings
+   (Kaplan data, KB §2.1: Z₀, ZR, `hf`), scale length (~0.69 m), `LossDef`,
+   bridge modes and dense band (a strong ~175 Hz mode: the wolf should
+   appear by itself), radiation data, low cut, `forceRef`/`vbRef`/`betaRef`,
+   `forceMax`, `forceTrim`, `ffLift`, `ppLift`, `openTuneCents`, winding,
+   pizzicato polarisation. Then an `Instrument` selector (the `instrument`
+   parameter exists).
+2. **Data.** Cello recordings to calibrate against: VSCO-2-CE has solo
+   cello (extend instrument-research's `fetch_vsco.sh`, which fetches
+   violin folders only); the Philharmonia set has cello (ask the owner for
+   the zip, decode outside the repo, never commit; the tools take `--data`
+   and default to violin file names, so `perceptual.py`,
+   `partial_q.py`, `harmonic_timbre.py`, `fundamental_strength.py` need a
+   prefix option).
+3. **String losses:** `partial_q.py` on cello pizzicato → `LossDef`.
+4. **Schelleng map and force:** `string_lab sweep`, then
+   `calibrate_force.py` (its notes are violin strings: give it the cello's)
+   → `forceRef`, caps, trims, lifts. Bow speeds and forces are higher on
+   the cello (heavier bow, KB §7).
+5. **Radiation target:** the pipeline in MODEL.md "Output"
+   (`radiation_target.py` on VSCO cello → `combine_target.py` →
+   `gen_radiation.py`), residual within ±3 dB; then `room_power.py`.
+6. **Open strings and harmonics:** `open_strings.py`,
+   `harmonics_tuning.py` (both list violin notes), `harmonic_timbre.py`.
+7. **Check by ear and by score:** `brightness_spread.py`,
+   `perceptual.py` against the cello recordings (its yardsticks again).
+
+**Violin-specific constants still hard-coded** (move them into
+`InstrumentDef` when the cello needs a different value, as `ffLift` was):
+
+| Where | What | Violin fit |
+|---|---|---|
+| `Performer::computeTargets` | the dynamics law: v_b/β = 0.6 e^{3d}, v_b = 0.1 e^{1.4d}; the soft-playing margin 0.1 + 0.8 (1 − d)² | Demoucron, violin |
+| `Performer` | `kLongVb` 0.22 m/s (long-note bow), sustain law | Demoucron's half notes |
+| `Performer::swellDepth/Length` | the attack swell table per dynamic | Philharmonia violin rise times |
+| `Performer::inReach`, `handFor` | the hand spans ~5 semitones; positions | violin; a cellist's hand spans ~3 in low positions |
+| `Performer::tryChord` | chords span a fifth across adjacent strings | violin |
+| `Performer::chooseString` | slurs stay within a fifth; Avoid Open Strings stops the note 7 semitones up the string below; Portamento keeps the string up to an octave | violin fingering (cellists reach a fourth/fifth with shifts or extensions) |
+| `Performer` | spiccato/sautillé β 0.18 − 0.1 d; harmonics force ×0.3/0.15, `kTouchR`; vibrato depth 26 cents, register law (note − 69) | Demoucron / violin players |
+| `Performer` | open-string allowance falls to 70% at ff; Intonation Style tables | violin |
+| `Instrument` | `kTiltDb` 5 (brightness tilt, its drive 5.23 (d − 0.557) + 1.5 p + 2.09 c), `kHarmLP` 3 | VSCO violin p/f; Philharmonia harmonics |
+| `src/Synth.cpp` | `kRoomPower` (per Space), keyswitch range | measured on the violin |
+| `model/Radiation.h` | body radius a = 0.2 m for the radiation patterns (order ⌈ka⌉+1), the front-up beam, player shadowing | violin |
 
 ## Ideas not done yet (with why)
 
@@ -91,8 +138,9 @@ details: [MODEL.md](MODEL.md).
      Notes that would be open strings are now stopped on the string below
      (left-hand PR).
   6. Fundamentals around 400–450 Hz (G4–A4 on the D string) are weak: A4's
-     is ~15 dB under the recordings' re partials 2–4. Body radiation below
-     B1−, and the open A loading the bridge at 440 Hz.
+     is 15–29 dB under the recordings' re partials 2–4
+     (`tools/fundamental_strength.py`; mp included / mf–f only). Body
+     radiation below B1−, and the open A loading the bridge at 440 Hz.
   4. The calibration target: VSCO's mics are ~7 dB brighter above 500 Hz than
      Philharmonia's; the synth follows VSCO. Choose (or average) deliberately.
   5. ~~Attack rise~~: per dynamic now within ~15 ms of the recordings except
