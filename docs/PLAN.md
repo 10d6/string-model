@@ -66,7 +66,8 @@ details: [MODEL.md](MODEL.md).
 | 8 | Cello: Kaplan string data, body with a strong ~175 Hz mode (the wolf note should appear by itself, plus a "wolf eliminator"), heavier bow. Then viola/bass. Seven PRs, below ("Phase 8: the cello") | in progress |
 | 8.1 | Plumbing: `InstrumentDef` with the instrument's body shape and hand; both instruments prepared, a real-time-safe Instrument switch (fade, ring-out); per-instrument library-mic IR (the cello section's, CC0), radiation shape, body-control centres, room power; a first cello from the KB; labs/tools take the instrument; the violin bit-identical | done (#27) |
 | 8.2 | Strings and the bowing window: losses fitted to the Iowa pizzicato; the stick test (KB §7.3) in `instrument_lab` and `calibrate_force.py`; checks against the published cello data (Galluzzo's D window, flattening, ALFs); the measured cello rosin tried and not kept; force ∝ Z₀, per-string contact limits from the coupled windows, a slower pp bow; the wolf on F3 and a **Wolf Eliminator**; open strings; `iowa.py`, `wolf_check.py`, `window_map.py`, `schelleng_check.py`; the violin bit-identical | done (#28) |
-| 8.3 | Body and wolf: the measured cello modes (A0 100, T1 140, the wolf mode 185, 209, 281, 433 Hz; hill 1.35 kHz); **per-string mode strengths** (a 4×4 bridge solve; the violin keeps the scalar one); `wolf_check.py` with the six acceptance tests (five pass); a gentler body-force term so the G string's wolf shows; losses, playability, open strings rechecked; the violin bit-identical (**this PR**) | |
+| 8.3 | Body and wolf: the measured cello modes (A0 100, T1 140, the wolf mode 185, 209, 281, 433 Hz; hill 1.35 kHz); **per-string mode strengths** (a 4×4 bridge solve; the violin keeps the scalar one); `wolf_check.py` with the six acceptance tests (five pass); a gentler body-force term so the G string's wolf shows; losses, playability, open strings rechecked; the violin bit-identical | done (#29) |
+| 8.4 | Pizzicato: `pizz_decay.py --iowa` measures the cello against the Iowa pizzicato; the violin's second-polarisation values kept (the best compromise with the per-partial losses); no change to the sound; a Windows VST3 milestone build from this branch (**this PR**) | |
 
 ## Next
 
@@ -141,9 +142,17 @@ numbers instead, and nothing is fitted to those datasets.
      sensitivity the G wolfs at mf and the C at every dynamic, and the
      calibration improved (mean margin 0.62, every cell clean).
    - Not done: tailpiece modes (optional, cello doc §3.3).
-4. **Pizzicato.** `pizz_decay.py` on the Iowa pizzicato → the second
-   polarisation (still the violin's); the Philharmonia's two cello
-   pizzicato notes as a listening check.
+4. **Pizzicato** (8.4, done). `pizz_decay.py --iowa`: with the violin's
+   second-polarisation values the cello scores 0.69 against the Iowa
+   pizzicato (mf/ff, 122 notes; the violin vs VSCO 0.98): the first stage
+   slower than the recordings' (-42 vs -68 dB/s), the second faster (-22 vs
+   -15). A weaker, longer second polarisation fits the two stages better
+   (0.64) but pulls the per-partial decays off the recordings (1-2 kHz Q 181
+   vs 293): the 8.2 loss fit leans on the second polarisation. Kept the
+   violin's values; a joint refit (losses, second polarisation, the pluck's
+   shape) goes with 8.6. The Iowa pp notes barely decay (the recordings'
+   noise floor): fitted to mf/ff only. The Philharmonia's cello pizzicato is
+   two C2 phrases: listening only.
 5. **Radiation and output** (cello doc §9 step 1): a solo, anechoic
    library-mic response fitted from the Iowa arco (instrument-research
    `tools/analysis/body_response.py`, 60-1500 Hz; the multi-note files

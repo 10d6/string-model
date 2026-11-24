@@ -74,6 +74,7 @@ python3 tools/wolf_check.py                         # the cello's wolf: the six 
 python3 tools/wolf_check.py --simple --string 1     # the wolf as played: beat, rate, regime per note and dynamic
 python3 tools/partial_q.py --instrument cello --iowa ~/data/iowa/cello/wav/pizz --dyn pp,mf,ff   # cello losses vs Iowa
 python3 tools/open_strings.py --instrument cello    # cello open strings under the bow
+python3 tools/pizz_decay.py --iowa ~/data/iowa/cello/wav/pizz   # cello pizzicato's two-stage decay vs Iowa
 printf '2.5 69 1 .6\n2.95 69 0 .5\n3 74 1 .6\n4 74 0 .5\n' | ./build/bowing_lab 0.5 92 3 4   # bow direction, rebows
 
 # evaluation scripts (docs/EVALUATION.md has the reference numbers)

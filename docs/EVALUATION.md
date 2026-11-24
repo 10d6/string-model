@@ -23,6 +23,7 @@ from the repo root after `cmake --build build` (Release). Python tools take
 | Intonation Style | `python3 tools/intonation_check.py` | style 1 vs 0: C# +8, F# +6, B +4, G −4; double stops pure (third −14, sixths +14) |
 | Vibrato Shaping | `python3 tools/vibrato_extent.py` | shape 0 / 0.7: B4 26 / 20 cents, B6 27 / 32; B4 after a fast run 15 / 14, then 31 / 28 (vibrato default 26 cents) |
 | Pizzicato decay | `python3 tools/pizz_decay.py "<VSCO>/Strings/Solo Violin/Pizz"` | score 0.98 (before the loss shelves 0.92–0.93; 1 polarisation: 1.71) |
+| Cello pizzicato decay | `python3 tools/pizz_decay.py --iowa ~/data/iowa/cello/wav/pizz` | score 0.69 over 122 notes (mf/ff); median early −42/−68 dB/s, late −22/−15 dB/s, level at 1 s −28.3/−29.7 dB (synth/real) |
 | Articulation pitch | `python3 tools/note_pitch.py tests/spiccato.json` (any scenario) | spiccato/sautillé within ~10–15 cents; the first note from rest can read flat in an 80 ms window |
 | Bow-change gap | `LAB_HF=1 tools/bow_change_gap.sh 69` | A4 mf: ~15 ms more than 6 dB down |
 | Directivity | `./build/radiation_lab directivity` | 250/500 Hz omni ±1.5 dB; 4 kHz front +2.2, front-up +4.4, back −2.1, below −2.1; 8 kHz front-up +5.9, back −1.3 dB; semitone-to-semitone directivity index varies 7.1 dB (KB 2.2–8.1). (Since 8.1 the lab uses the synth's own random seed; before, it measured another draw: front-up +6.7, back −7.2, 4.9 dB.) |

@@ -169,6 +169,10 @@ measured body, per-string mode strengths, the wolf's acceptance tests):
   mic for every dynamic) C 13, G 13, D 10, A 9 dB; the violin ~20 dB on
   every string. The C's pp sits at its contact ceiling, the price of a
   playable pp on its narrow windows: the model's main limit on the cello.
+- Pizzicato: the violin's second polarisation (2.5× T60, gain 1). Against
+  the Iowa pizzicato (`pizz_decay.py --iowa`) it scores 0.69; a weaker,
+  longer one fits the two stages better but breaks the per-partial loss fit
+  (PLAN.md 8.4).
 - Open strings: the allowance 13 / 16 / 12 / 11 cents (C..A), within ~6
   cents p..ff except the open A at pp and ff (+6.5, −6.5)
   (`open_strings.py --instrument cello`).
