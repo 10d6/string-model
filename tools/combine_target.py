@@ -13,16 +13,33 @@
 measured.csv "-": the library curve alone over the whole range (a first
 target for a new instrument, before radiation_target.py can measure one).
 --from: the grid's first frequency (default 150 Hz; the cello's starts lower).
+--residual=CSV: radiation_target.py's measure of the Modelled output (mode 3)
+against the recordings, from a build with this target: its level below
+800 Hz, smoothed over an octave, is added to the library curve there (the
+cello's bridge force is not 1/n at its low partials, so the 1/n library
+curve leaves the low band ~3 dB strong); the body's detail stays the
+library's.
 """
 import sys
 import numpy as np
-args = [a for a in sys.argv[1:] if not a.startswith("--from")]
+args = [a for a in sys.argv[1:] if not a.startswith("--")]
 f0 = 150.0
+residual = None
 for a in sys.argv[1:]:
     if a.startswith("--from="): f0 = float(a.split("=", 1)[1])
+    if a.startswith("--residual="): residual = a.split("=", 1)[1]
 lib = np.genfromtxt(args[0], delimiter=',', names=True)
 f = f0 * 2 ** (np.arange(0, int(round(np.log2(150 * 2 ** 6.5 / f0) * 24)) + 1) / 24)  # f0 .. ~13.6 kHz, 1/24 oct
 H = np.interp(np.log(f), np.log(lib['freq_hz']), lib['H_mono_smooth_1_6oct_db'])
+if residual:
+    r = np.genfromtxt(residual, delimiter=',', names=True)
+    def octave(fq):
+        fq = max(fq, r['freq_hz'].min())   # below the lowest measured band: its level
+        w = np.maximum(0, 1 - np.abs(np.log2(r['freq_hz'] / fq)) / 1.0)
+        return np.sum(w * r['target_db']) / np.sum(w)
+    R = np.array([octave(x) for x in f])
+    fade = np.clip((np.log2(1000) - np.log2(f)) / (np.log2(1000) - np.log2(800)), 0, 1)
+    H = H + R * fade
 if args[1] == "-":
     T = H - H.max()
     with open(args[2], "w") as fp:

@@ -1,0 +1,13 @@
+{
+  "synthkit": 1,
+  "synth": "string-model",
+  "patchVersion": 1,
+  "name": "Cello, Old & Open",
+  "params": {
+    "instrument": 1,
+    "body.voice": 5,
+    "body.a0": 3,
+    "body.brilliance": 2,
+    "body.softness": -1
+  }
+}

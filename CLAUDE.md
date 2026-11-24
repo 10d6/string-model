@@ -118,7 +118,10 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
   fetch with 10d6/instrument-research `tools/fetch_vsco.sh`, never commit
   them). After changing the string's spectrum, rerun
   `tools/radiation_target.py <Arco Vib dir> build/stringmodel_render - 3`:
-  every half-octave band should stay within about ±3 dB.
+  every half-octave band should stay within about ±3 dB. The cello's was
+  measured against the Iowa arco: `radiation_target.py --iowa
+  ~/data/iowa/cello/wav/arco build/stringmodel_render - 3` (MODEL.md "The
+  cello" has how its target and Library Mic IRs were made).
 - After changing the string or friction, rerun `string_lab sweep` and check
   the Schelleng map still holds Demoucron's pp/mf/ff points, and update
   MODEL.md. After changing the string, bridge or assistant, rerun
@@ -171,7 +174,9 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
   restrictions, so it may be fitted for shipped parameters) decoded to
   `~/data/iowa/cello/wav/{arco,pizz}`, and the owner's Philharmonia cello
   zip decoded to `~/data/phil-cello/wav`. VSCO-2-CE has only a cello section
-  (its library-mic curve is in `data/cello/`). A fresh session: ask the
+  (its library-mic curve, replaced in 8.5, is kept in `data/cello/` for
+  reference). `pip install librosa` for instrument-research's
+  `body_response.py`. A fresh session: ask the
   owner for the zips again (the workspace can't download them).
 
 ## Working with the owner

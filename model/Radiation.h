@@ -32,6 +32,12 @@
 // (two sign sets: a decorrelated stereo feed). It is smoother and darker
 // than any one direction in front, by the directivity index.
 //
+// A player who sits behind the instrument (the cello: RadiationShape::backDb)
+// shades the whole sound toward them from the mid band up: a high shelf on
+// each mic's output, set by the mic's direction (the low modes' skirts carry
+// much of the 0.5-1 kHz sound, so shading the modes alone barely darkened
+// the rear). The room feed is not shaded: it is the power response.
+//
 // The residues are calibrated in prepare(), at the default mic place, so the
 // smoothed power response there matches a target curve (for the violin, the CC0 library-mic response with
 // the synth's own bridge-force spectrum taken out: data/violin/,
@@ -54,9 +60,31 @@ struct RadiationShape {
   float monopoleHz = 600.f;  // below: one monopole residue; patterns blend in over the octave above (KB §12.3a)
   float radius = 0.2f;       // m, effective radius for the patterns' order (KB §12.3a: violin 0.2, cello 0.4)
   float beamEl = 0.61f;      // rad, the treble beam's elevation (violin: front-up, KB §12.1)
+  float beamFromHz = 1000.f; // the beam fades in over the two octaves above (the cello's from ~500 Hz, KB §12.1)
   float calibFromHz = 160.f; // the calibration grid's lowest frequency
   float a0Hz = 280.f;        // Air Resonance's centre (the A0 air mode, KB §5.2/§5.4)
   float nasalHz = 1100.f;    // Nasality's centre (KB §5.8)
+  // The player's shade on the treble (KB §12.3d): unit directions from the
+  // instrument in the player's frame (x front, y the player's left, z up),
+  // and the cones' half-angle cosines. Violin: the head and chin above and to
+  // the player's right, the torso behind and below.
+  float head[3] = {-0.25f, -0.68f, 0.69f};
+  float headCos = 0.77f;
+  float torso[3] = {-0.62f, -0.35f, -0.70f};
+  float torsoCos = 0.64f;
+  float torsoDb = 8.f;         // dB, the treble shade toward the torso [T]
+  // A shade toward the player from the mid band up, over the whole sound
+  // toward that direction (0 dB: none): a high shelf on each mic's output,
+  // so the low modes' skirts are shaded too. The cellist sits behind the
+  // cello: front-to-back over 10 dB near 400-500 Hz (KB §12.1, Meyer).
+  float backDb = 0.f;          // dB at the centre of the cone, above the shelf
+  float backHz = 350.f;        // the shelf's centre (half the shade in dB)
+  float back[3] = {-1.f, 0.f, 0.f};
+  float backCos = 0.f;         // the cone's edge (0: the whole rear half)
+  // Share of each pattern's power that is the smooth envelope alone rather
+  // than random lobes (0: all random). A body whose fine pattern varies less
+  // from note to note (the cello's class, KB §12.1) has some.
+  float smoothShare = 0.f;
 };
 
 struct RadiationSettings {
@@ -108,6 +136,7 @@ class Radiation {
     settings_ = RadiationSettings{};
     settings_.hillHz = baseHillHz;
     micGeometry(settings_);  // the calibration is at the default place
+    snapShelves();
     calibrate();
     applySettings(settings_, true);
     // The audio loop reads plain arrays (structure of arrays, padded to 4
@@ -129,6 +158,7 @@ class Radiation {
     std::fill(s1_.begin(), s1_.end(), 0.f);
     std::fill(s2_.begin(), s2_.end(), 0.f);
     for (auto& h : hp_) h.s1 = h.s2 = 0.f;
+    shelfL_.s1 = shelfL_.s2 = shelfR_.s1 = shelfR_.s2 = 0.f;
   }
 
   // Control rate: new settings (cheap; recomputes target residues on change)
@@ -154,6 +184,14 @@ class Radiation {
       m.rb += (m.tb - m.rb) * kGlide;
     }
     directNow_ += (direct_ / directRef_ - directNow_) * kGlide;
+    if (shape_.backDb != 0.f && (shelfNowL_ != shelfWantL_ || shelfNowR_ != shelfWantR_)) {
+      shelfNowL_ += (shelfWantL_ - shelfNowL_) * kGlide;
+      shelfNowR_ += (shelfWantR_ - shelfNowR_) * kGlide;
+      if (std::fabs(shelfWantL_ - shelfNowL_) < 0.01f) shelfNowL_ = shelfWantL_;
+      if (std::fabs(shelfWantR_ - shelfNowR_) < 0.01f) shelfNowR_ = shelfWantR_;
+      setShelf(shelfL_, shelfNowL_);
+      setShelf(shelfR_, shelfNowR_);
+    }
     syncResidues();
     // Voice moves the modes themselves: glide, recomputing their filters.
     if (voiceNow_ != settings_.voice) {
@@ -199,6 +237,10 @@ class Radiation {
     const float g = gain_ * directNow_;
     l = ((L[0] + L[1]) + (L[2] + L[3])) * g;
     r = ((R[0] + R[1]) + (R[2] + R[3])) * g;
+    if (shape_.backDb != 0.f) {
+      l = shelfL_.process(l);
+      r = shelfR_.process(r);
+    }
     roomA = ((A[0] + A[1]) + (A[2] + A[3])) * gain_;
     roomB = ((B[0] + B[1]) + (B[2] + B[3])) * gain_;
   }
@@ -218,6 +260,7 @@ class Radiation {
     applySettings(s, true);
     micPending_ = false;
     directNow_ = direct_ / directRef_;
+    snapShelves();
     syncResidues();
   }
   // Labs: the residue of mode k toward a unit direction (pattern only, no level).
@@ -241,6 +284,7 @@ class Radiation {
       sum += static_cast<double>(res) * modeResponse(m, hz);
     }
     for (const auto& h : hp_) sum *= h.response(hz, fs_);
+    if (shape_.backDb != 0.f && ch < 2) sum *= (ch == 0 ? shelfL_ : shelfR_).response(hz, fs_);
     return static_cast<float>(20.0 * std::log10(std::abs(sum) * gain_ + 1e-12));
   }
   // The calibration target (dB, peak 0) at hz.
@@ -435,6 +479,17 @@ class Radiation {
       }
       m.envNorm = static_cast<float>(1.0 / std::sqrt(p / 256.0));
     }
+    // The shade's rms over the sphere (its treble level), taken out.
+    backLift_ = 0.f;
+    if (shape_.backDb != 0.f) {
+      double q = 0;
+      for (int i = 0; i < 256; ++i) {
+        float d[3];
+        fibonacci(i, 256, d);
+        q += std::pow(10.0, backShadeDb(d) / 10.0);
+      }
+      backLift_ = static_cast<float>(-10.0 * std::log10(q / 256.0));
+    }
   }
 
   // Point i of n on a Fibonacci sphere (unit vector).
@@ -453,25 +508,51 @@ class Radiation {
   // (linear) toward unit direction d in the player's frame (x front, y the
   // player's left, z up) [T: kBeamDb, kFloorDb, the axis].
   float envelope(float hz, const float d[3]) const {
-    const float w = std::clamp(std::log2(hz / 1000.f) / 2.f, 0.f, 1.f);  // 0 at 1 kHz .. 1 at 4 kHz+
+    const float w = std::clamp(std::log2(hz / shape_.beamFromHz) / 2.f, 0.f, 1.f);  // violin: 0 at 1 kHz .. 1 at 4 kHz+
     const float ce = std::cos(shape_.beamEl), se = std::sin(shape_.beamEl);
     const float cosg = d[0] * ce + d[2] * se;
     float db = w * kBeamDb * (cosg - 1.f);
     const float wf = std::clamp(std::log2(hz / 1500.f) / 0.5f, 0.f, 1.f) * std::clamp(std::log2(9000.f / hz) / 0.5f, 0.f, 1.f);
     db -= wf * kFloorDb * std::max(0.f, -d[2]);
-    // The player (KB §12.3d): the head and chin above the violin and toward
-    // the player's right, the torso behind and below, shade the treble in
-    // those directions: up to kHeadDb / kTorsoDb above ~1.5 kHz, fading in
-    // from 700 Hz, over cones of ~40 / ~50 degrees [T].
+    // The player (KB §12.3d; directions per instrument, RadiationShape): the
+    // violinist's head and chin above the violin and toward the player's
+    // right, the torso behind and below, shade the treble in those
+    // directions: up to kHeadDb / torsoDb above ~1.5 kHz, fading in from
+    // 700 Hz, over cones of ~40 / ~50 degrees [T].
     const float ws = std::clamp(std::log2(hz / 700.f) / 1.1f, 0.f, 1.f);
     auto cone = [&](const float* a, float halfCos) {
       const float c = d[0] * a[0] + d[1] * a[1] + d[2] * a[2];
       return std::clamp((c - halfCos) / (1.f - halfCos), 0.f, 1.f);
     };
-    static constexpr float head[3] = {-0.25f, -0.68f, 0.69f};   // unit: back a little, the player's right, up
-    static constexpr float torso[3] = {-0.62f, -0.35f, -0.70f}; // unit: behind, a little right, down
-    db -= ws * (kHeadDb * cone(head, 0.77f) + kTorsoDb * cone(torso, 0.64f));
+    db -= ws * (kHeadDb * cone(shape_.head, shape_.headCos) + shape_.torsoDb * cone(shape_.torso, shape_.torsoCos));
     return std::pow(10.f, db / 20.f);
+  }
+
+  // The shade toward the player above the shelf (RadiationShape::back*), dB.
+  float backShadeDb(const float d[3]) const {
+    const float c = d[0] * shape_.back[0] + d[1] * shape_.back[1] + d[2] * shape_.back[2];
+    return -shape_.backDb * std::clamp((c - shape_.backCos) / (1.f - shape_.backCos), 0.f, 1.f);
+  }
+  // The shelf's level toward d (dB): the shade, re its rms over the sphere,
+  // so the treble's mean power over the sphere stays as calibrated.
+  float shelfDb(const float d[3]) const { return backShadeDb(d) + backLift_; }
+  // RBJ high shelf (S = 1) at the shape's backHz with gain db.
+  Biquad shelf(float db) const {
+    const double A = std::pow(10.0, db / 40.0), w0 = 2 * 3.141592653589793 * shape_.backHz / fs_;
+    const double cw = std::cos(w0), al = std::sin(w0) / 2 * std::sqrt(2.0), sa = 2 * std::sqrt(A) * al;
+    const double a0 = (A + 1) - (A - 1) * cw + sa;
+    Biquad q;
+    q.b0 = static_cast<float>(A * ((A + 1) + (A - 1) * cw + sa) / a0);
+    q.b1 = static_cast<float>(-2 * A * ((A - 1) + (A + 1) * cw) / a0);
+    q.b2 = static_cast<float>(A * ((A + 1) + (A - 1) * cw - sa) / a0);
+    q.a1 = static_cast<float>(2 * ((A - 1) - (A + 1) * cw) / a0);
+    q.a2 = static_cast<float>(((A + 1) - (A - 1) * cw - sa) / a0);
+    return q;
+  }
+  // Set a channel's shelf to db, keeping its state.
+  void setShelf(Biquad& q, float db) const {
+    const Biquad n = shelf(db);
+    q.b0 = n.b0, q.b1 = n.b1, q.b2 = n.b2, q.a1 = n.a1, q.a2 = n.a2;
   }
 
   // Real, orthonormal spherical harmonics up to order n at unit direction d:
@@ -516,7 +597,12 @@ class Radiation {
     float s = 0.f;
     const float* c = coef_.data() + m.coef;
     for (int i = 0; i < n; ++i) s += c[i] * y[i];
-    return (1.f - m.blend) + m.blend * s * envelope(m.hz, d) * m.envNorm;
+    if (shape_.smoothShare == 0.f) return (1.f - m.blend) + m.blend * s * envelope(m.hz, d) * m.envNorm;
+    // Smooth share: the envelope alone carries part of the power (the
+    // random part has unit mean power and averages to zero, so the shares'
+    // powers add).
+    const float a = std::sqrt(shape_.smoothShare), b = std::sqrt(1.f - shape_.smoothShare);
+    return (1.f - m.blend) + m.blend * (a + b * s) * envelope(m.hz, d) * m.envNorm;
   }
 
   // The pair's directions from the violin, and every mode's residue toward
@@ -550,6 +636,18 @@ class Radiation {
       m.gl = pattern(m, dl, yL_);
       m.gr = pattern(m, dr, yR_);
     }
+    if (shape_.backDb != 0.f) {
+      shelfWantL_ = shelfDb(dl);
+      shelfWantR_ = shelfDb(dr);
+    }
+  }
+  // Move the shelves to their targets now (prepare, labs).
+  void snapShelves() {
+    if (shape_.backDb == 0.f) return;
+    shelfNowL_ = shelfWantL_;
+    shelfNowR_ = shelfWantR_;
+    setShelf(shelfL_, shelfNowL_);
+    setShelf(shelfR_, shelfNowR_);
   }
 
   // Fit the modes' common levels so the channels' mean power, smoothed,
@@ -563,11 +661,15 @@ class Radiation {
     for (float f = shape_.calibFromHz; f < std::min(12000.f, 0.45f * fs_); f *= std::pow(2.f, 1.f / 32.f)) grid.push_back(f);
     const std::size_t K = modes_.size(), G = grid.size();
     std::vector<std::complex<float>> H(K * G);
-    std::vector<float> hpPow(G), wDetail(K * G), wSmooth(K * G);
+    std::vector<float> hpPow(G), wDetail(K * G), wSmooth(K * G), shL(G, 1.f), shR(G, 1.f);
     for (std::size_t g = 0; g < G; ++g) {
       double hp = 1;
       for (const auto& h : hp_) hp *= std::norm(h.response(grid[g], fs_));
       hpPow[g] = static_cast<float>(hp);
+      if (shape_.backDb != 0.f) {
+        shL[g] = static_cast<float>(std::norm(shelfL_.response(grid[g], fs_)));
+        shR[g] = static_cast<float>(std::norm(shelfR_.response(grid[g], fs_)));
+      }
     }
     std::vector<float> wantDetail(K), wantSmooth(K);
     for (std::size_t k = 0; k < K; ++k) {
@@ -611,7 +713,8 @@ class Radiation {
             L += (a * m.gl) * h;
             R += (a * m.gr) * h;
           }
-          pw[g] = 0.5f * (std::norm(L) + std::norm(R)) * hpPow[g];
+          pw[g] = shape_.backDb != 0.f ? 0.5f * (std::norm(L) * shL[g] + std::norm(R) * shR[g]) * hpPow[g]
+                                       : 0.5f * (std::norm(L) + std::norm(R)) * hpPow[g];
         }
         for (std::size_t k = 0; k < K; ++k) {
           float have = 0.f;
@@ -628,7 +731,7 @@ class Radiation {
     for (std::size_t g = 0; g < G; ++g) {
       std::complex<float> L = 0;
       for (std::size_t k = 0; k < K; ++k) L += (modes_[k].amp * modes_[k].gl) * H[k * G + g];
-      peak = std::max(peak, std::abs(L));
+      peak = std::max(peak, std::abs(L) * std::sqrt(shL[g]));
     }
     norm_ = 1.f / std::max(peak, 1e-9f);
   }
@@ -692,9 +795,8 @@ class Radiation {
   static constexpr float kRefDistance = 1.5f;  // m: the calibration's distance (the default)
   static constexpr float kMinDistance = 0.4f;  // m: closer needs the near field (Phase 7c)
   static constexpr float kHeadDb = 6.f;        // dB, treble shade toward the player's head [T]
-  static constexpr float kTorsoDb = 8.f;       // dB, toward the torso [T]
   static constexpr float kSpacing = 0.6f;      // m between the omnis at width 1
-  static constexpr float kBeamDb = 4.5f;       // dB per unit of (cos angle - 1) from the beam, at 4 kHz+
+  static constexpr float kBeamDb = 4.5f;       // dB per unit of (cos angle - 1) from the beam, fully in
   static constexpr float kFloorDb = 3.f;       // dB toward straight down, 2-6.3 kHz
   static constexpr int kMicEvery = 16;         // control ticks between pattern re-evaluations
   std::vector<float> coef_;
@@ -707,6 +809,10 @@ class Radiation {
   static constexpr int kLowCutSections = 3;    // order 6
   static constexpr double kLowCutRipple = 0.5;  // dB
   Biquad hp_[kLowCutSections];
+  // The shade toward the player (RadiationShape::backDb): each mic's shelf,
+  // its target and gliding level (dB), and the shade's lift (dB).
+  Biquad shelfL_, shelfR_;
+  float shelfWantL_ = 0.f, shelfWantR_ = 0.f, shelfNowL_ = 0.f, shelfNowR_ = 0.f, backLift_ = 0.f;
   std::vector<float> tHz_, tDb_;
   RadiationSettings settings_;
   RadiationShape shape_;

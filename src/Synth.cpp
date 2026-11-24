@@ -441,7 +441,7 @@ struct StringModel : Synth {
   // reference distance; tools/room_power.py).
   static constexpr float kRoomPower[sm::kInstrumentCount][5] = {
       {0.326f, 0.160f, 0.200f, 0.192f, 0.200f},  // violin
-      {0.349f, 0.276f, 0.402f, 0.368f, 0.398f},  // cello (tools/room_power.py --instrument cello)
+      {0.191f, 0.200f, 0.226f, 0.171f, 0.160f},  // cello (tools/room_power.py --instrument cello)
   };
   double sr_ = 48000;
   Body body_[sm::kInstrumentCount];
