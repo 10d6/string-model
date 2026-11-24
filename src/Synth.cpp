@@ -353,7 +353,7 @@ struct StringModel : Synth {
   static constexpr float kWet = 0.12f;
   // Each space's wet/direct power ratio at Room 100% (Modelled output, the
   // reference distance; tools/room_power.py).
-  static constexpr float kRoomPower[5] = {0.315f, 0.153f, 0.189f, 0.181f, 0.218f};
+  static constexpr float kRoomPower[5] = {0.326f, 0.160f, 0.200f, 0.192f, 0.200f};
   double sr_ = 48000;
   sm::Instrument inst_;
   sm::PerformerControls pc_;
