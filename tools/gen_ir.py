@@ -2,6 +2,9 @@
 """Turn the CC0 library-mic impulse responses in data/ into a C++ header.
 
     python3 tools/gen_ir.py data/violin violin src/ir/ViolinIR.h
+    python3 tools/gen_ir.py data/cello cello src/ir/CelloIR.h cello_section
+
+(The optional 4th argument is the files' prefix; default <name>_solo.)
 
 The IRs come from 10d6/instrument-research (data/library_mic_responses),
 derived from VSCO-2-CE (Versilian Studios, CC0).
@@ -11,9 +14,10 @@ import numpy as np
 from scipy.io import wavfile
 
 src, name, out = sys.argv[1:4]
+prefix = sys.argv[4] if len(sys.argv) > 4 else name + "_solo"
 parts = []
 for kind in ("left", "right", "mono_smooth"):
-    path = os.path.join(src, f"{name}_solo_ir_{kind}_48000.wav")
+    path = os.path.join(src, f"{prefix}_ir_{kind}_48000.wav")
     sr, x = wavfile.read(path)
     assert sr == 48000
     x = np.asarray(x, dtype=np.float32)

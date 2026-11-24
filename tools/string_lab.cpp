@@ -12,6 +12,7 @@
 #include <cstring>
 #include <vector>
 
+#include "LabInstrument.h"
 #include "../model/BowedString.h"
 #include "../model/defs/Violin.h"
 
@@ -38,7 +39,7 @@ float midiHz(float n) { return 440.f * std::pow(2.f, (n - 69.f) / 12.f); }
 Stats run(int s, float note, float vb, float fb, float beta, FrictionModel model, std::vector<float>* out, float seconds = 1.5f) {
   BowedString str;
   str.prepare(kFs, 60.f);
-  const InstrumentDef& inst = violin();
+  const InstrumentDef& inst = labInstrument();
   str.setDef(inst.strings[s], inst.loss);
   tuneFriction(str);
   if (std::getenv("LAB_HEAT")) str.thermal.heatScale = static_cast<float>(std::atof(std::getenv("LAB_HEAT")));
@@ -146,7 +147,7 @@ int main(int argc, char** argv) {
       for (float fb : forces) {
         BowedString str;
         str.prepare(kFs, 60.f);
-        const InstrumentDef& inst = violin();
+        const InstrumentDef& inst = labInstrument();
         str.setDef(inst.strings[s], inst.loss);
         tuneFriction(str);
         const bool stopped = static_cast<int>(note) != inst.strings[s].openNote;

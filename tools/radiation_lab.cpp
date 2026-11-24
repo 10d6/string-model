@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <vector>
+#include "LabInstrument.h"
 #include "../model/Radiation.h"
 #include "../model/data/ViolinRadiation.h"
 #include "../model/defs/Violin.h"
@@ -33,9 +34,9 @@ static void settle(Radiation& rad, const RadiationSettings& s) {
 int character(int argc, char** argv) {
   const float fs = 48000.f;
   Radiation rad;
-  rad.prepare(fs, data::kViolinRadiationHz, data::kViolinRadiationDb, data::kViolinRadiationCount, 0x5717a1u, 2600.f, sm::violin().radiationLowCut);
+  prepareLabRadiation(rad, fs);
   std::vector<float> bands;
-  for (int b = -9; b <= 10; ++b) bands.push_back(1000.f * std::pow(2.f, b / 3.f));
+  for (int b = labInstrument().shape.lowestHz < 100.f ? -13 : -9; b <= 10; ++b) bands.push_back(1000.f * std::pow(2.f, b / 3.f));
   std::vector<double> base;
   for (float c : bands) base.push_back(bandDb(rad, c));
   std::vector<std::pair<const char*, RadiationSettings>> cases;
@@ -81,7 +82,7 @@ int character(int argc, char** argv) {
 int directivity() {
   const float fs = 48000.f;
   Radiation rad;
-  rad.prepare(fs, data::kViolinRadiationHz, data::kViolinRadiationDb, data::kViolinRadiationCount, 0x5717a1u, 2600.f, sm::violin().radiationLowCut);
+  prepareLabRadiation(rad, fs);
   const int G = 200;
   std::vector<std::pair<float, float>> dirs;  // az, el (deg)
   for (int i = 0; i < G; ++i) {
@@ -144,9 +145,9 @@ int main(int argc, char** argv) {
   if (argc > 1 && !std::strcmp(argv[1], "directivity")) return directivity();
   const float fs = argc > 1 ? static_cast<float>(std::atof(argv[1])) : 48000.f;
   Radiation rad;
-  rad.prepare(fs, data::kViolinRadiationHz, data::kViolinRadiationDb, data::kViolinRadiationCount, 0x5717a1u, 2600.f, sm::violin().radiationLowCut);
+  prepareLabRadiation(rad, fs);
   std::printf("%d modes at %.0f Hz\n  band   target   model   L-R rms   fine-structure sd (L)\n", rad.modeCount(), fs);
-  for (int b = -9; b <= 10; ++b) {
+  for (int b = labInstrument().shape.lowestHz < 100.f ? -13 : -9; b <= 10; ++b) {
     const float c = 1000.f * std::pow(2.f, b / 3.f);
     if (c > 0.45f * fs) break;
     double pw = 0, tw = 0, lr = 0, s1 = 0, s2 = 0;

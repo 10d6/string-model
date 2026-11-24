@@ -28,12 +28,19 @@ def yin(x, sr, fmin=150, fmax=3000, hop=256, win=2048, thresh=0.12):
         out.append(sr / tt)
     return np.array(out), hop
 
+# --fmin HZ: the pitch tracker's lowest pitch (default 150 Hz, below the
+# violin's G; the cello needs ~60).
+fmin = 150.0
+if "--fmin" in sys.argv:
+    i = sys.argv.index("--fmin")
+    fmin = float(sys.argv[i + 1])
+    del sys.argv[i:i + 2]
 sr, x = wavfile.read(sys.argv[1])
 scale = {np.dtype("int16"): 32768.0, np.dtype("int32"): 2147483648.0}.get(x.dtype, 1.0)
 x = x.astype(np.float64) / scale
 if x.ndim > 1: x = x.mean(axis=1)
 out = sys.argv[2] if len(sys.argv) > 2 else sys.argv[1].replace(".wav", ".png")
-f0, hop = yin(signal.resample_poly(x, 1, 2), sr / 2, hop=128)
+f0, hop = yin(signal.resample_poly(x, 1, 2), sr / 2, fmin=fmin, hop=128, win=max(2048, int(2.2 * sr / 2 / fmin)))
 tf = np.arange(len(f0)) * hop / (sr / 2)
 fig, ax = plt.subplots(3, 1, figsize=(12, 9), sharex=True)
 f, t, S = signal.spectrogram(x, sr, nperseg=2048, noverlap=1536)

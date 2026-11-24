@@ -1,5 +1,5 @@
-// String Model: a physically modelled bowed string instrument (violin first;
-// cello, viola and bass planned behind the Instrument switch).
+// String Model: a physically modelled bowed string instrument: violin and
+// cello behind the Instrument switch (viola and bass planned).
 //
 // The whole instrument (strings, bow, gesture layer) is one object in the
 // synth, run in processGlobal: the strings will share a bridge (sympathetic
@@ -15,6 +15,7 @@
 #include "../model/Instrument.h"
 #include "../model/Meter.h"
 #include "../model/Radiation.h"
+#include "ir/CelloIR.h"
 #include "ir/ViolinIR.h"
 
 using namespace sk;
@@ -71,7 +72,7 @@ struct StringModel : Synth {
   Param bendRange, a4;
 
   void defineParams(ParamBuilder& b) override {
-    instrument = b.add("instrument").name("Instrument").choices({"Violin"}).group("Instrument");
+    instrument = b.add("instrument").name("Instrument").choices({"Violin", "Cello"}).group("Instrument");
     artic = b.add("artic").name("Articulation").choices({"Arco", "Martelé", "Spiccato", "Tremolo", "Pizzicato", "Harmonics", "Sautillé"}).def(0).group("Instrument");
     tremRate = b.add("artic.tremRate").name("Tremolo Rate").range(6, 18).def(12.2).unit("/s").smoothing(0).group("Bow");
     dynamics = b.add("bow.dynamics").name("Dynamics").range(0, 1).def(0.55).smoothing(0).group("Bow").cc(1).cc(11);
@@ -93,7 +94,8 @@ struct StringModel : Synth {
     vibRate = b.add("vib.rate").name("Vibrato Rate").range(3, 9).def(5.5).unit("Hz").smoothing(0).group("Left Hand");
     vibDelay = b.add("vib.delay").name("Vibrato Delay").range(0, 1).def(0.1).unit("s").smoothing(0).group("Left Hand");
     shiftTime = b.add("finger.shift").name("Shift Time").range(0, 0.3).def(0.04).unit("s").smoothing(0).group("Left Hand");
-    stringSel = b.add("string.select").name("String").choices({"Auto", "G", "D", "A", "E"}).def(0).group("Left Hand");
+    // Strings lowest to highest: violin G D A E, cello C G D A.
+    stringSel = b.add("string.select").name("String").choices({"Auto", "G / C", "D / G", "A / D", "E / A"}).def(0).group("Left Hand");
     keyswitches = b.add("string.keys").name("Keyswitches").toggle().def(1).group("Left Hand");
     slideNoise = b.add("finger.noise").name("Slide Noise").range(0, 1).def(0.4).smoothing(0).group("Left Hand");
     intonation = b.add("finger.intonation").name("Intonation").range(0, 1).def(0.8).smoothing(0).group("Left Hand");
@@ -135,30 +137,40 @@ struct StringModel : Synth {
     sr_ = info.sampleRate;
     bendRange = info.param("bendRange");
     a4 = info.param("sk.a4");
-    inst_.prepare(sr_);
-    {
-      const sm::InstrumentDef& d = inst_.def();
-      rad_.prepare(static_cast<float>(sr_), d.radiationHz, d.radiationDb, d.radiationCount, d.bodySeed ^ 0x9e3779b9u, d.hill.hz,
-                   d.radiationLowCut);
+    // Every instrument is prepared here, so the Instrument switch needs no
+    // allocation: it fades one out and the other in (processGlobal).
+    for (int k = 0; k < sm::kInstrumentCount; ++k) {
+      Body& b = body_[k];
+      const sm::InstrumentDef& d = sm::instrumentDef(k);
+      b.inst.prepare(sr_, d);
+      b.rad.prepare(static_cast<float>(sr_), d.radiationHz, d.radiationDb, d.radiationCount, d.bodySeed ^ 0x9e3779b9u, d.hill.hz,
+                    d.radiationLowCut, d.shape);
+      // The CC0 library-mic responses (bridge force -> recording): the solo
+      // violin, the cello section (KB §12.7).
+      const LibraryIr& ir = kLibraryIr[k];
+      auto l = resampleIr(ir.left, ir.leftLen, ir.rate, sr_);
+      auto r = resampleIr(ir.right, ir.rightLen, ir.rate, sr_);
+      auto m = resampleIr(ir.smooth, ir.smoothLen, ir.rate, sr_);
+      // The IRs are peak-normalised; scale so their sum keeps a level that is
+      // independent of the sample rate.
+      const float rateGain = static_cast<float>(48000.0 / sr_);
+      for (auto* v : {&l, &r, &m})
+        for (float& x : *v) x *= rateGain;
+      const std::size_t n = std::max(l.size(), r.size());
+      l.resize(n, 0.f);
+      r.resize(n, 0.f);
+      const float* st[2] = {l.data(), r.data()};
+      b.stereoIr.setImpulse(st, 2, static_cast<int>(n), sr_, false);
+      const float* mo[1] = {m.data()};
+      b.smoothIr.setImpulse(mo, 1, static_cast<int>(m.size()), sr_, false);
     }
+    cur_ = 0;
+    old_ = -1;
+    fade_ = 0;
+    fadeLen_ = std::max(1, static_cast<int>(kSwitchFade * sr_));
+    tailLen_ = static_cast<int>(kSwitchTail * sr_);
     muteSmooth_ = 0.f;
     radTick_ = 0;
-    // Body: the CC0 library-mic responses (bridge force -> recording).
-    auto l = resampleIr(sm::ir::kViolinLeft, sm::ir::kViolinLeftLen, sm::ir::kViolinRate, sr_);
-    auto r = resampleIr(sm::ir::kViolinRight, sm::ir::kViolinRightLen, sm::ir::kViolinRate, sr_);
-    auto m = resampleIr(sm::ir::kViolinMonoSmooth, sm::ir::kViolinMonoSmoothLen, sm::ir::kViolinRate, sr_);
-    // The IRs are peak-normalised; scale so their sum keeps a level that is
-    // independent of the sample rate.
-    const float rateGain = static_cast<float>(48000.0 / sr_);
-    for (auto* v : {&l, &r, &m})
-      for (float& x : *v) x *= rateGain;
-    const std::size_t n = std::max(l.size(), r.size());
-    l.resize(n, 0.f);
-    r.resize(n, 0.f);
-    const float* st[2] = {l.data(), r.data()};
-    stereoIr_.setImpulse(st, 2, static_cast<int>(n), sr_, false);
-    const float* mo[1] = {m.data()};
-    smoothIr_.setImpulse(mo, 1, static_cast<int>(m.size()), sr_, false);
     reverb_.prepare(sr_, 1200);
     queued_ = 0;
     blockPos_ = 0;
@@ -200,7 +212,7 @@ struct StringModel : Synth {
   }
 
   void handle(const MidiEvent& e) {
-    auto& p = inst_.performer();
+    auto& p = body_[cur_].inst.performer();
     if (e.isNoteOn()) {
       // The meter only while a transport plays (the kit's clock always runs).
       const auto& t = transport_;
@@ -222,6 +234,18 @@ struct StringModel : Synth {
     // at the controller's own sample, the same for any host block size, and
     // the performer smooths them on its own fixed clock. Bowing is chaotic
     // enough that block-dependent smoothing would change the notes.
+    // The Instrument switch: held notes stop; the old instrument's sound fades
+    // over kSwitchFade and its body (library mic or radiation) rings out
+    // over kSwitchTail, then it is reset, ready for next time. A switch
+    // during a fade waits for it.
+    const int want = std::clamp(ctx.choice(instrument), 0, sm::kInstrumentCount - 1);
+    if (want != cur_ && old_ < 0) {
+      old_ = cur_;
+      body_[old_].inst.performer().allNotesOff();
+      cur_ = want;
+      fade_ = 0;
+      trim_ = 0.f;
+    }
     pc_.dynamics = ctx.get(dynamics);
     pc_.velSens = ctx.get(velSens);
     pc_.pressure = std::clamp(ctx.get(pressure) + ctx.get(atPressure) * pressureAt_, -1.f, 1.f);
@@ -255,12 +279,15 @@ struct StringModel : Synth {
     ic_.intonation = ctx.get(intonation);
     ic_.coupling = ctx.get(coupling);
     ic_.slideNoise = ctx.get(slideNoise);
-    ic_.hillHz = ctx.get(hill);
+    // Bridge Hill is the violin's hill frequency; other instruments scale
+    // it to their own (the cello's ~1.6 kHz at the default).
+    const float hillScale = body_[cur_].inst.def().hill.hz / 2600.f;
+    ic_.hillHz = ctx.get(hill) * hillScale;
     // The mute goes on over ~80 ms (it's put on by hand), on the samples'
     // own clock below.
     const float muteTarget = ctx.on(mute) ? 1.f : 0.f;
     sm::RadiationSettings rs;
-    rs.hillHz = ctx.get(hill);
+    rs.hillHz = ctx.get(hill) * hillScale;
     rs.resonance = ctx.get(resonance);
     rs.width = ctx.get(width);
     rs.micAz = ctx.get(micAngle);
@@ -273,7 +300,9 @@ struct StringModel : Synth {
     rs.voice = 0.01f * ctx.get(voice);
     const int mode = ctx.choice(output);
     const float bendSt = ctx.get(bendRange);
-    const float gain = inst_.def().outputGain;
+    Body& cb = body_[cur_];
+    const float gain = cb.inst.def().outputGain;
+    Body* ob = old_ >= 0 ? &body_[old_] : nullptr;
 
     int qi = 0;
     for (int i = 0; i < io.frames; ++i) {
@@ -286,19 +315,33 @@ struct StringModel : Synth {
         if (std::fabs(muteTarget - muteSmooth_) < 1e-3f) muteSmooth_ = muteTarget;
         ic_.mute = muteSmooth_;
         rs.mute = muteSmooth_;
-        rad_.control(rs);
+        cb.rad.control(rs);
+        if (ob) ob->rad.control(rs);
       }
       radTick_ = (radTick_ + 1) & 15;
-      const float force = inst_.process(pc_, ic_) * gain;
+      const float force = cb.inst.process(pc_, ic_) * gain;
       float l = 0.f, r = 0.f;
-      if (mode == 3) {
-        rad_.process(force * inst_.def().radiationGain, l, r, feedL_[i & 31], feedR_[i & 31]);
-      } else if (mode == 0) {
-        stereoIr_.processMono(force, l, r);
-      } else if (mode == 1) {
-        smoothIr_.processMono(force, l, r);
-      } else {
-        l = r = 0.5f * force;
+      play(cb, mode, force, l, r, feedL_[i & 31], feedR_[i & 31]);
+      if (ob) {
+        // The old instrument: its force fades (a raised cosine), then its
+        // body rings out with no input.
+        float of = 0.f;
+        if (fade_ < fadeLen_) {
+          const float g = 0.5f + 0.5f * std::cos(3.14159265f * static_cast<float>(fade_) / static_cast<float>(fadeLen_));
+          of = ob->inst.process(pc_, ic_) * ob->inst.def().outputGain * g;
+        }
+        float ol = 0.f, orr = 0.f, fa = 0.f, fb = 0.f;
+        play(*ob, mode, of, ol, orr, fa, fb);
+        l += ol;
+        r += orr;
+        feedL_[i & 31] += fa;
+        feedR_[i & 31] += fb;
+        if (++fade_ >= fadeLen_ + tailLen_) {
+          ob->inst.reset();
+          ob->rad.reset();
+          old_ = -1;
+          ob = nullptr;
+        }
       }
       io.left[i] += l;
       io.right[i] += r;
@@ -336,9 +379,10 @@ struct StringModel : Synth {
     // / (d^2 + W m^2), d = the direct gain re the reference distance, m the
     // mix, W the space's wet/direct power at 100% (measured, kRoomPower).
     if (mode == 3) {
-      const float d = rad_.directGain();
-      const float wm0 = kRoomPower[std::clamp(space, 0, 4)] * 0.0001f * mix.at(0) * mix.at(0);
-      const float wm1 = kRoomPower[std::clamp(space, 0, 4)] * 0.0001f * mix.at(n - 1) * mix.at(n - 1);
+      const float d = cb.rad.directGain();
+      const float w = kRoomPower[cur_][std::clamp(space, 0, 4)];
+      const float wm0 = w * 0.0001f * mix.at(0) * mix.at(0);
+      const float wm1 = w * 0.0001f * mix.at(n - 1) * mix.at(n - 1);
       const float t0 = std::sqrt((1.f + wm0) / (d * d + wm0)), t1 = std::sqrt((1.f + wm1) / (d * d + wm1));
       const float t = trim_ > 0.f ? trim_ : t0;
       for (int i = 0; i < n; ++i) {
@@ -353,18 +397,54 @@ struct StringModel : Synth {
   }
 
  private:
+  // One instrument with its own body outputs.
+  struct Body {
+    sm::Instrument inst;
+    sm::Radiation rad;
+    wa::Convolver stereoIr, smoothIr;
+  };
+  struct LibraryIr {
+    const float *left, *right, *smooth;
+    int leftLen, rightLen, smoothLen;
+    double rate;
+  };
+  static constexpr LibraryIr kLibraryIr[sm::kInstrumentCount] = {
+      {sm::ir::kViolinLeft, sm::ir::kViolinRight, sm::ir::kViolinMonoSmooth, sm::ir::kViolinLeftLen, sm::ir::kViolinRightLen,
+       sm::ir::kViolinMonoSmoothLen, sm::ir::kViolinRate},
+      {sm::ir::kCelloLeft, sm::ir::kCelloRight, sm::ir::kCelloMonoSmooth, sm::ir::kCelloLeftLen, sm::ir::kCelloRightLen,
+       sm::ir::kCelloMonoSmoothLen, sm::ir::kCelloRate},
+  };
+
+  // One sample of bridge force through the chosen output.
+  static void play(Body& b, int mode, float force, float& l, float& r, float& roomA, float& roomB) {
+    if (mode == 3) {
+      b.rad.process(force * b.inst.def().radiationGain, l, r, roomA, roomB);
+    } else if (mode == 0) {
+      b.stereoIr.processMono(force, l, r);
+    } else if (mode == 1) {
+      b.smoothIr.processMono(force, l, r);
+    } else {
+      l = r = 0.5f * force;
+    }
+  }
+
   static constexpr int kQueue = 512;
+  static constexpr float kSwitchFade = 0.03f;  // s: the old instrument fades out
+  static constexpr float kSwitchTail = 0.25f;  // s: then its body rings out (the longest library IR is ~0.17 s)
   static constexpr int kKeyswitchLow = 24;  // C1
   static constexpr float kWet = 0.12f;
   // Each space's wet/direct power ratio at Room 100% (Modelled output, the
   // reference distance; tools/room_power.py).
-  static constexpr float kRoomPower[5] = {0.326f, 0.160f, 0.200f, 0.192f, 0.200f};
+  static constexpr float kRoomPower[sm::kInstrumentCount][5] = {
+      {0.326f, 0.160f, 0.200f, 0.192f, 0.200f},  // violin
+      {0.349f, 0.276f, 0.402f, 0.368f, 0.398f},  // cello (tools/room_power.py --instrument cello)
+  };
   double sr_ = 48000;
-  sm::Instrument inst_;
+  Body body_[sm::kInstrumentCount];
+  int cur_ = 0, old_ = -1;            // the instrument playing; the one fading out (-1: none)
+  int fade_ = 0, fadeLen_ = 1440, tailLen_ = 12000;  // samples into the switch; its fade and tail
   sm::PerformerControls pc_;
   sm::InstrumentControls ic_;
-  wa::Convolver stereoIr_, smoothIr_;
-  sm::Radiation rad_;
   float muteSmooth_ = 0.f;
   int radTick_ = 0;
   dsp::Reverb reverb_;

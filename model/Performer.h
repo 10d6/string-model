@@ -31,7 +31,7 @@
 #include <cstdint>
 
 #include "Bridge.h"
-#include "defs/Violin.h"
+#include "InstrumentDef.h"
 
 namespace sm {
 
@@ -609,7 +609,7 @@ class Performer {
           lo = std::min(lo, pos);
           hi = std::max(hi, pos);
         }
-        if (!ok || hi - lo > 7) continue;  // the hand spans about a fifth
+        if (!ok || hi - lo > def_->hand.chordSpan) continue;  // the hand spans about a fifth on the violin
         const int cost = hi;               // lowest positions win
         if (cost < bestCost) bestCost = cost, best = s0;
       }
@@ -977,7 +977,7 @@ class Performer {
   // passages (the time since the last key: under ~0.12 s, ~30%), opening up
   // over half a second if the note is held [T].
   void shapeVibrato(int note, float gap, const PerformerControls& c) {
-    vibReg_ = std::clamp(1.f + 0.25f * static_cast<float>(note - 69) / 12.f, 0.8f, 1.35f);
+    vibReg_ = std::clamp(1.f + 0.25f * static_cast<float>(note - def_->hand.vibRefNote) / 12.f, 0.8f, 1.35f);
     vibFast_ = std::clamp((0.28f - gap) / 0.16f, 0.f, 1.f);
     keyAge_ = 0.f;
     // Faster on metrically weak notes (Timmers & Desain, KB ref 65): ±4%.
@@ -1007,19 +1007,23 @@ class Performer {
     tapPending_[s] = 0.f;
   }
 
-  // The hand's reach (KB §11.2; player doc §3.3): from a low first finger
-  // (one below the hand's place) to an extended fourth (five above). k:
-  // semitones above the open string. Positions are the same on every string.
+  // The hand's reach (KB §11.2; player doc §3.3; HandDef): violin, from a
+  // low first finger (one below the hand's place) to an extended fourth
+  // (five above). k: semitones above the open string. Positions are the
+  // same on every string.
   bool inReach(float k) const {
     const float r = std::round(k);
-    return r <= 0.f || (r >= hand_ - 1.f && r <= hand_ + 5.f);
+    return r <= 0.f || (r >= hand_ - def_->hand.reachBelow && r <= hand_ + def_->hand.reachAbove);
   }
   // Where the hand goes for a note out of reach [T]: going up, the note
   // lands on the third finger, so the old (lower) finger slides and a higher
   // one drops (Flesch's L-type; from the third or fourth finger it is a
   // same-finger slide); going down, on the second, so the old finger slides
-  // and lifts off onto the note.
-  static float handFor(float k, bool up) { return std::max(2.f, std::round(up ? k - 3.f : k - 2.f)); }
+  // and lifts off onto the note. (HandDef: how far above the hand's place
+  // those fingers stop.)
+  float handFor(float k, bool up) const {
+    return std::max(2.f, std::round(up ? k - def_->hand.upFinger : k - def_->hand.downFinger));
+  }
 
   // A finger lands (hammer-on) or lifts sideways (lift-off, a small pluck) on
   // a bowed string: a velocity pulse at the finger (KB §11.2) [T level]. The
