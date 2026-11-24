@@ -65,6 +65,25 @@ struct InstrumentDef {
   float vertGain = 1.f;          // its bridge force into the output, x the horizontal's
   float vertDetuneCents = 1.5f;  // slightly different stiffness/termination: slow beating
   float pluckAngleMin = 0.25f, pluckAngleMax = 0.8f;  // rad from the bowing plane
+  // The force law across strings: x (Z0 / zRef)^forceZExp. Schelleng's
+  // window has F_max ~ Z0 and F_min ~ Z0^2; on the violin's narrow range of
+  // impedances 1.39 fits, on the cello's heavy strings the window's centre
+  // grows about as Z0 (string_lab sweep).
+  float forceZExp = 1.39f;
+  // Notes whose fundamental sits on a body resonance need more force (the
+  // body absorbs, F_min rises, KB §5.4): log2 F += 1.5 min(1, bodyForceK Z0 |Y(f0)|).
+  float bodyForceK = 25.f;
+  // The dynamics law's bow speed at the attack: vbPP e^(vbGrowth d), m/s
+  // (the violin's: Demoucron, 0.10 at pp to 0.35 at ff).
+  float vbPP = 0.10f, vbGrowth = 1.4f;
+  float vbPPScale[4]{1.f, 1.f, 1.f, 1.f};  // per string, x^(1 - d): the soft end's speed
+  // Limits on the dynamics law's contact point (Performer::computeTargets),
+  // per string: beta >= betaFloorA + betaFloorB v_b (v_b in m/s), and <=
+  // betaCeil unless the floor is higher. Off (limitBeta false) for the violin.
+  bool limitBeta = false;
+  float betaFloorA[4]{}, betaFloorB[4]{}, betaCeil[4]{0.3f, 0.3f, 0.3f, 0.3f};
+  // The body mode a wolf eliminator acts on (index into modes; -1: none).
+  int wolfMode = -1;
   // The body's size and radiation patterns, and where the body controls act.
   RadiationShape shape{};
   HandDef hand{};

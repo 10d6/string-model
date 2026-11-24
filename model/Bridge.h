@@ -76,6 +76,23 @@ class Bridge {
     updateCoefficients();
   }
 
+  // A wolf eliminator on signature mode `index` (KB §5.4): a mass damper
+  // tuned near the mode adds damping and loads it a little lower. amount
+  // 0..1: Q / (1 + 3 amount), frequency x (1 - 0.03 amount), the mode's mass
+  // kept (so its peak admittance falls with its Q) [T]. Control rate, on
+  // change.
+  void setDamper(int index, float amount) {
+    if (index < 0 || index >= static_cast<int>(modes_.size()) || modes_[static_cast<std::size_t>(index)].dense > 0.f) return;
+    if (amount == damper_) return;
+    damper_ = amount;
+    Mode& m = modes_[static_cast<std::size_t>(index)];
+    const float mass = m.q0 / (6.2831853f * m.hz0 * m.peak0);
+    m.q = m.q0 / (1.f + 3.f * amount);
+    m.hz = m.hz0 * (1.f - 0.03f * amount);
+    m.peak = m.q / (6.2831853f * m.hz * mass);
+    updateCoefficients();
+  }
+
   // Scale every mode's admittance (0 = a rigid bridge).
   void setCoupling(float c) {
     if (c == coupling_) return;
@@ -126,6 +143,7 @@ class Bridge {
  private:
   struct Mode {
     float hz, q, peak;
+    float hz0 = 0, q0 = 0, peak0 = 0;  // as defined (a wolf eliminator moves hz, q, peak)
     float b0 = 0, b2 = 0, a1 = 0, a2 = 0, s1 = 0, s2 = 0;
     float dense = 0;  // dense-band mode: its random level factor (0 = signature mode)
   };
@@ -143,6 +161,9 @@ class Bridge {
     m.hz = b.hz;
     m.q = b.q;
     m.peak = b.peak;
+    m.hz0 = b.hz;
+    m.q0 = b.q;
+    m.peak0 = b.peak;
     modes_.push_back(m);
   }
 
@@ -164,6 +185,7 @@ class Bridge {
   }
 
   std::vector<Mode> modes_;
+  float damper_ = 0.f;
   float fs_ = 96000.f, y0_ = 0.f, coupling_ = 1.f, hist_ = 0.f, hillHz_ = 0.f, hillLevel_ = 1.f;
   BridgeMode hill_{2600.f, 3.f, 0.15f};
 };

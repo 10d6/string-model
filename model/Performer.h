@@ -404,6 +404,10 @@ class Performer {
   // Per sample: a landing or lifting finger's pulse on string s (m/s, added
   // at the finger end).
   float fingerTap(int s) const { return tapNow_[s]; }
+  float fingerNote(int s) const { return fingerTo_[s]; }
+  // The labs only: pin the bow's contact point (beta), speed (m/s) and force on
+  // the string (N) after the dynamics law; 0 = the law's.
+  float labBeta = 0.f, labVb = 0.f, labForce = 0.f;  // the note (MIDI) string s is fingered for
 
   // At control rate: pitch, vibrato and force targets per string.
   void strings(StringTarget out[4], const PerformerControls& c) const {
@@ -883,10 +887,10 @@ class Performer {
       float body = 1.f;
       if (bridge_) {
         const float hz = mtof(fingerTo_[s], 440.f);
-        const float load = std::min(1.f, 25.f * z * bridge_->magnitude(hz));
+        const float load = std::min(1.f, def_->bodyForceK * z * bridge_->magnitude(hz));
         body = std::pow(2.f, 1.5f * load);
       }
-      fFactor_[s] = std::pow(z / def_->zRef, 1.39f) * pos * body * def_->forceTrim[s] * (count >= 2 ? 1.0f : 1.f);
+      fFactor_[s] = std::pow(z / def_->zRef, def_->forceZExp) * pos * body * def_->forceTrim[s] * (count >= 2 ? 1.0f : 1.f);
       fMax_[s] = def_->forceMax * pos;
       // Harmonics: a much lighter bow; quarter touches lighter still. Through
       // the synth: octaves within ~5 cents, thirds/quarters within ~15 [T].
@@ -1202,8 +1206,17 @@ class Performer {
     const float d = dyn_;
     // Level law: L ≈ 7.7 ln(vb/beta) dB; pp..ff spans ~23 dB here.
     const float ratio = 0.6f * std::exp(3.0f * d);
-    const float vbAttack = std::max(0.10f * std::exp(1.4f * d), ratio * 0.02f);  // beta can't go below 0.02
+    const float vbAttack = std::max(def_->vbPP * std::pow(def_->vbPPScale[str_], 1.f - d) * std::exp(def_->vbGrowth * d), ratio * 0.02f);  // beta can't go below 0.02
     float beta = vbAttack / ratio;
+    // Heavy strings (InstrumentDef::betaFloor/betaCeil): a fast bow near the
+    // bridge can't hold Helmholtz motion at any force (F_min ~ Z0^2 v_b /
+    // beta^2), so the contact point stays above a floor that rises with the
+    // bow's speed, and below a ceiling where the windows break up
+    // (tools/window_map.py). The violin's law is Demoucron's, unlimited.
+    if (def_->limitBeta) {
+      const float lo = def_->betaFloorA[str_] + def_->betaFloorB[str_] * vbAttack;
+      beta = std::clamp(beta, lo, std::max(lo, def_->betaCeil[str_]));  // a fast bow's floor wins over the ceiling
+    }
     // Long notes save bow (KB §7.3 step 2; Demoucron: 12 cm/s on whole notes,
     // 22 on halves, 54 on quarters): after the attack the bow slows to
     // sustainSpeed x the attack speed, and to no more than kLongVb, keeping
@@ -1236,6 +1249,8 @@ class Performer {
     if (art_ == kHarmonics && touchQ_[str_] > 0.f) beta /= std::sqrt(std::round(1.f / touchQ_[str_]));
     beta *= std::pow(2.f, -1.5f * contactIn_);
     beta = std::clamp(beta, 0.015f, 0.3f);
+    if (labBeta > 0.f) beta = labBeta;
+    if (labVb > 0.f) vb = labVb;
     // Base force on the players' line at the reference impedance; per-string
     // factors (impedance, position, double stops) are in fFactor_.
     float f = def_->forceRef * (vb / def_->vbRef) * std::pow(beta / def_->betaRef, -1.39f);
@@ -1247,6 +1262,7 @@ class Performer {
     const float dNow = std::max(0.f, d - swellNow / 23.1f);
     const float margin = 0.1f + (0.8f + def_->ppLift[str_]) * (1.f - dNow) * (1.f - dNow) + def_->ffLift[str_] * dNow * dNow;
     f *= std::pow(2.f, 1.5f * (pressureIn_ + margin));
+    if (labForce > 0.f) f = labForce / fFactor_[str_];
     vbT_ = vb;
     betaT_ = beta;
     fT_ = f;

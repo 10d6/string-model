@@ -58,7 +58,7 @@ python3 synthkit/tools/stress.py build/stringmodel_render 300 --tail 5   # rando
 ./build/instrument_lab hold 69 12 0.7              # held note: bow changes, dips, attack time
 ./build/instrument_lab chord 62 69                 # double stop: force and slip rate per string
 ./build/instrument_lab sympathy 67                 # each string's level: sympathetic ringing
-python3 tools/calibrate_force.py                   # Helmholtz window vs the playability assistant
+python3 tools/calibrate_force.py [--instrument cello]   # Helmholtz window (stick test) vs the playability assistant
 ./build/radiation_lab                              # radiation vs its target, stereo difference per band
 python3 tools/analyze.py build/renders/legato-scale.wav   # spectrogram, level, pitch per note
 python3 tools/partial_q.py --data ~/data/phil/wav         # each partial's decay (Q) after a pluck vs the Philharmonia: the string's losses
@@ -68,6 +68,11 @@ python3 tools/partial_q.py --data ~/data/phil/wav         # each partial's decay
 python3 tools/room_power.py [--instrument cello]    # each Space's wet/direct power (after changing the room or radiation level)
 SM_INSTRUMENT=cello ./build/instrument_lab hold 50 4 0.7   # any lab on the cello (default: the violin)
 python3 tools/analyze.py x.wav --fmin 58           # the cello's low notes need the lower pitch floor
+python3 tools/window_map.py                          # the cello's coupled windows: contact point x force, speed pinned
+python3 tools/schelleng_check.py                     # the cello D string's window vs Galluzzo's measurement
+python3 tools/wolf_check.py --string 1              # the cello's wolf: beating and Helmholtz % per note and dynamic
+python3 tools/partial_q.py --instrument cello --iowa ~/data/iowa/cello/wav/pizz --dyn pp,mf,ff   # cello losses vs Iowa
+python3 tools/open_strings.py --instrument cello    # cello open strings under the bow
 printf '2.5 69 1 .6\n2.95 69 0 .5\n3 74 1 .6\n4 74 0 .5\n' | ./build/bowing_lab 0.5 92 3 4   # bow direction, rebows
 
 # evaluation scripts (docs/EVALUATION.md has the reference numbers)
@@ -147,13 +152,18 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
   Pizz and Trem for the solo violin), the KB (clone 10d6/instrument-research
   next to this repo). A fresh session has none of it: fetch VSCO, ask the
   owner for the Philharmonia zip.
-- **Phase 8 (cello)** follows docs/PLAN.md "Phase 8: the cello": six PRs,
+- **Phase 8 (cello)** follows docs/PLAN.md "Phase 8: the cello": seven PRs,
   the recordings, the decisions, and the violin-specific constants still
   hard-coded. Each instrument is an `InstrumentDef` (`model/defs/`); the
   synth prepares them all and switches without allocating. A change meant
   for one instrument must leave the other's renders unchanged: compare
   `--check` renders' hashes with a base build (8.1 kept the violin
-  bit-identical).
+  bit-identical). On the cello, check the bowing window with
+  `tools/calibrate_force.py --instrument cello` (the stick test; a
+  periodicity test of the output passes irregular slipping, KB §7.3), and
+  the wolf with `tools/wolf_check.py`. The cello's companion research is
+  instrument-research `docs/cello_modelling_data.md`; the mdw Vienna
+  (Zenodo) datasets are on hold at the owner's request (licence).
 - **Cello data (outside the repo, never commit):** the Iowa MIS cello
   (anechoic; arco and pizzicato pp/mf/ff, a run of notes per file; free of
   restrictions, so it may be fitted for shipped parameters) decoded to

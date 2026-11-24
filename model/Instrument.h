@@ -94,6 +94,7 @@ struct InstrumentControls {
   float mute = 0.f;          // 0..1: the mute's mass on the bridge
   float slideNoise = 0.4f;   // 0..1: winding noise under a sliding finger
   float bowWidth = 0.006f;   // m: hair in contact (two contact points this far apart; 0 = one point) [T]
+  float wolf = 0.f;          // 0..1: the wolf eliminator (instruments with a wolfMode)
 };
 
 class Instrument {
@@ -277,6 +278,7 @@ class Instrument {
 
   void controlTick(const PerformerControls& pc, const InstrumentControls& ic) {
     bridge_.setCoupling(ic.coupling);
+    if (def_->wolfMode >= 0) bridge_.setDamper(def_->wolfMode, ic.wolf);
     // A mute moves the hill to ~65% and weakens it (KB §11.2) [T level].
     bridge_.setHill(ic.hillHz * (1.f - 0.35f * ic.mute), 1.f - 0.4f * ic.mute);
     perf_.controlTick(pc, kControl / host_);

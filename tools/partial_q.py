@@ -11,9 +11,16 @@ line fitted to its dB level from 30 ms after its peak over its first 25 dB of de
 12 dB above the noise floor; at least 40 ms), the slope -> tau -> Q.
 
     python3 tools/partial_q.py --data ~/data/phil/wav [--vsco <VSCO Pizz dir>] [--render R]
+    python3 tools/partial_q.py --instrument cello --iowa ~/data/iowa/cello/wav/pizz [--dyn mf]
+
+--iowa: the University of Iowa MIS pizzicato files (one string's run per file, tools/iowa.py),
+each note rendered on the same string. --instrument cello: the cello's notes and open strings,
+and a band below 150 Hz.
 """
 import argparse, json, os, re, subprocess, sys, tempfile
 import numpy as np
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import iowa
 from scipy.io import wavfile
 from scipy.signal import stft
 
@@ -71,10 +78,10 @@ def partial_qs(x, sr, f0, nmax=16):
     return out
 
 
-def render(R, note, sr):
+def render(R, note, sr, extra=None):
     with tempfile.TemporaryDirectory() as tmp:
         sp, wp = os.path.join(tmp, "s.json"), os.path.join(tmp, "s.wav")
-        json.dump({"patch": "init", "length": 3.5, "params": {"artic": 4, "room.mix": 0, "out.width": 0},
+        json.dump({"patch": "init", "length": 3.5, "params": {"artic": 4, "room.mix": 0, "out.width": 0, **(extra or {})},
                    "events": [{"t": 0.1, "on": note, "vel": 90}, {"t": 3.0, "off": note}]}, open(sp, "w"))
         subprocess.run([R, sp, "--out", wp, "--sr", str(sr)], check=True, capture_output=True)
         return load(wp)
@@ -95,7 +102,17 @@ def main():
     ap.add_argument("--vsco", default="")
     ap.add_argument("--render", default="build/stringmodel_render")
     ap.add_argument("--json", default="")
+    ap.add_argument("--iowa", default="")
+    ap.add_argument("--dyn", default="mf", help="Iowa dynamics to use, e.g. mf or pp,mf,ff")
+    ap.add_argument("--instrument", default="violin")
+    ap.add_argument("--param", action="append", default=[], help="id=value for the synth's renders")
     a = ap.parse_args()
+    over = {k: float(v) for k, v in (p.split("=") for p in a.param)}
+    cello = a.instrument == "cello"
+    opens = (36, 43, 50, 57) if cello else (55, 62, 69, 76)
+    nlo, nhi = (36, 84) if cello else (55, 96)
+    if cello:
+        BANDS.insert(0, (60, 150))
     recs = []
     if a.data:
         for f in sorted(os.listdir(a.data)):
@@ -107,17 +124,35 @@ def main():
             m = re.match(r".*_([A-G]s?\d)(?:_[a-z0-9]+)*\.wav$", f.replace("#", "s"))
             if m:
                 recs.append(("vsco", m.group(1), os.path.join(a.vsco, f)))
+    if a.iowa:
+        for f in sorted(os.listdir(a.iowa)):
+            info = iowa.parse(f)
+            if not info or info[2] not in a.dyn.split(","):
+                continue
+            for n, st, dyn, t0, t1 in iowa.iowa_notes(os.path.join(a.iowa, f)):
+                recs.append(("iowa", (n, st, max(0.0, t0 - 0.05), t1), os.path.join(a.iowa, f)))
     real, synth = {"open": [], "stopped": []}, {"open": [], "stopped": []}
     per = {}
+    cache = {}
     for src, name, path in recs:
-        n = midi(name)
-        if n < 55 or n > 96:
+        extra = {"instrument": 1, **over} if cello else dict(over)
+        if src == "iowa":
+            n, st, t0, t1 = name
+            if path not in cache:
+                cache = {path: load(path)}
+            sr, x = cache[path]
+            x = x[int(t0 * sr):int(t1 * sr)]
+            extra["string.select"] = st + 1
+            name = f"{n}_s{st}_{t0:.0f}"
+        else:
+            n = midi(name)
+            sr, x = load(path)
+        if n < nlo or n > nhi:
             continue
-        kind = "open" if n in (55, 62, 69, 76) else "stopped"
+        kind = "open" if n in opens else "stopped"
         f0 = 440 * 2 ** ((n - 69) / 12)
-        sr, x = load(path)
         r = partial_qs(x, sr, f0)
-        sr2, y = render(a.render, n, sr)
+        sr2, y = render(a.render, n, min(sr, 48000), extra)
         s = partial_qs(y, sr2, f0)
         real[kind] += r
         synth[kind] += s

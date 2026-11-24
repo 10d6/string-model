@@ -63,8 +63,9 @@ details: [MODEL.md](MODEL.md).
 | — | Wrap-up before the cello: docs, reference numbers, the measurement scripts as tools (brightness spread, string brightness vs force, fundamental strength, perceptual breakdown, performer fuzz), the Phase 8 checklist | done (#26) |
 | 7c | On hold (the owner's choice, after 7b): close mics: the near field (equivalent sources) and the bow-noise source, mic types with proximity effect, presets. (Swapped with the old 7b: at 1.5 m a cardioid's proximity boost starts ~20 Hz, so mic types only matter close.) | |
 | 7 | Mic placement and room: close / studio / overhead / room positions (KB §12.3–12.4), near-field sources and bow noise for close mics, the room fed by the body's power response (darker, smoother), the room's level per output | |
-| 8 | Cello: Kaplan string data, body with a strong ~175 Hz mode (the wolf note should appear by itself, plus a "wolf eliminator"), heavier bow. Then viola/bass. Six PRs, below ("Phase 8: the cello") | in progress |
-| 8.1 | Plumbing: `InstrumentDef` with the instrument's body shape and hand; both instruments prepared, a real-time-safe Instrument switch (fade, ring-out); per-instrument library-mic IR (the cello section's, CC0), radiation shape, body-control centres, room power; a first cello from the KB; labs/tools take the instrument; the violin bit-identical (**this PR**) | |
+| 8 | Cello: Kaplan string data, body with a strong ~175 Hz mode (the wolf note should appear by itself, plus a "wolf eliminator"), heavier bow. Then viola/bass. Seven PRs, below ("Phase 8: the cello") | in progress |
+| 8.1 | Plumbing: `InstrumentDef` with the instrument's body shape and hand; both instruments prepared, a real-time-safe Instrument switch (fade, ring-out); per-instrument library-mic IR (the cello section's, CC0), radiation shape, body-control centres, room power; a first cello from the KB; labs/tools take the instrument; the violin bit-identical | done (#27) |
+| 8.2 | Strings and the bowing window: losses fitted to the Iowa pizzicato; the stick test (KB §7.3) in `instrument_lab` and `calibrate_force.py`; checks against the published cello data (Galluzzo's D window, flattening, ALFs); the measured cello rosin tried and not kept; force ∝ Z₀, per-string contact limits from the coupled windows, a slower pp bow; the wolf on F3 and a **Wolf Eliminator**; open strings; `iowa.py`, `wolf_check.py`, `window_map.py`, `schelleng_check.py`; the violin bit-identical (**PR #28**) | |
 
 ## Next
 
@@ -84,51 +85,86 @@ sources are (all outside the repo, never committed):
 | Set | What | Licence | Use |
 |---|---|---|---|
 | University of Iowa MIS, cello (2012 edit), mono | anechoic, close mic; arco pp/mf/ff and pizzicato pp/mf/ff, every string, chromatic runs in one file per string/range | "without any restrictions" | fitting (losses, pizzicato, radiation's upper band) |
-| Philharmonia cello (the owner's zip) | 890 MP3s: arco-normal pp/mp/p/f/ff with lengths, harmonics, col legno, trills, spiccato, staccato, tremolo; only 2 pizzicato | free to use, not to share as samples | the perceptual distance, attacks, vibrato; validation |
+| Philharmonia cello (the owner's zip) | 890 MP3s: arco-normal pp/mp/p/f/ff with lengths, harmonics, col legno, trills, spiccato, staccato, tremolo; only 2 pizzicato | free to use, not to share as samples; KB tier C ("unclear for fitted artefacts") | listening and measuring only (the perceptual distance, attacks, vibrato), never fitted |
 | VSCO-2-CE cello section | susvib, pizzT, spic, trem | CC0 | the library-mic IR and the first radiation target (KB §12.7); tremolo rates |
 
 Decoded to WAV in `~/data/iowa/cello/wav/{arco,pizz}` and
-`~/data/phil-cello/wav` (the Iowa files hold a run of notes each: segment
-them before per-note tools).
+`~/data/phil-cello/wav` (the Iowa files hold a run of notes each:
+`tools/iowa.py` finds them).
+
+The cello's research is instrument-research's
+`docs/cello_modelling_data.md` (Nov 2026): measured body modes, rosin,
+Galluzzo's D-string window, flattening and ALFs, wolf acceptance tests,
+cellists' bowing. **The mdw Vienna datasets (CC BY, Zenodo) are on hold** at
+the owner's request (licence questions): the checks below use the published
+numbers instead, and nothing is fitted to those datasets.
 
 ### The PRs
 
 1. **Plumbing** (8.1, done): the violin renders bit-identical to before.
-2. **Strings, bridge and the wolf.** Kaplan strings (KB §2.1) are in;
-   `string_lab sweep` and `calibrate_force.py` on the cello strings →
-   `forceRef`, caps, trims, lifts (bow forces up to several N); the bridge
-   solve's stability on C/G near the strong modes (KB §6.4); the wolf on
-   E–F3 of the G and C strings (165–185 Hz, beating at a few Hz; a small
-   envelope-modulation check); a **Wolf Eliminator** control (a tuned damper:
-   more damping on that mode, or detuned), at the end of the parameter list;
-   open strings in tune (`open_strings.py`, `openTuneCents`). The first cello
-   already has a wolf, far too strong: in `tests/cello.json` E3 and F3 (on
-   the 175 Hz mode) double their period for most of a 1.4 s note (the pitch
-   tracker hears them an octave down); F#3 and A4 start 65–70 cents flat and
-   the ear correction pulls them in over ~0.8 s; the open C sits 10–25 cents
-   flat.
-3. **Losses and pizzicato.** `partial_q.py` on the Iowa (and the two
-   Philharmonia) pizzicato → `LossDef` (now a guess between the Kaplan Q
-   model and the violin's fit); check against the Kaplan Q model;
-   `pizz_decay.py` → the second polarisation.
-4. **Radiation and output.** Today's target is the cello-section library
-   curve alone (`combine_target.py <csv> -`). Replace its upper band with a
-   measurement against the Iowa anechoic arco (`radiation_target.py`,
-   ±3 dB), keep the low band from KB §5.4 and the section curve. Directivity
-   (KB §12.1, cello): omni below ~300 Hz, forward at 500 Hz with front/back
-   > 10 dB (the random patterns give none of that yet), and the
-   semitone-to-semitone variation (4.8 dB now; the KB's cello class
-   1.2–3.2 dB). Then `room_power.py --instrument cello`, cello body presets.
-5. **The cellist's hands.** The rest of the violin-only constants below:
-   thumb position above the neck positions, extensions; the dynamics law, long-note bow
-   speed and attack swell refitted to cello recordings; vibrato (KB §11.2:
-   ~6.5 Hz in concerto recordings, deeper toward the bridge); bounce strokes
-   (gravity barely helps on the cello, KB §11.1); the open-string allowance;
-   Intonation Style tables.
-6. **Evaluation and wrap-up.** `open_strings`, `harmonics_tuning`,
+2. **Strings and the bowing window** (8.2, PR #28; MODEL.md "The cello",
+   EVALUATION.md). Revised after the cello research:
+   - Losses fitted to the Iowa pizzicato (1,400 partials).
+   - The stick test (stick fraction, slips per period, jitter; KB §7.3) is
+     the regime test in `instrument_lab` and `calibrate_force.py`. A
+     periodicity test of the synth's output (`playability.py`, removed)
+     passed notes that slipped an extra time every few periods.
+   - Checked against the published cello data: Galluzzo's D window (the
+     model's centre within 6%, 2.4x too narrow), flattening and ALFs (as
+     measured). The measured cello rosin (mu_s 0.65) put the window far too
+     high in this friction model, so the cello keeps the violin's rosin.
+   - Force ∝ Z₀ (supported: Beigi & Conneely's F_min ~ Z^1). The contact
+     point stays between per-string limits from the coupled windows (a
+     floor rising with bow speed, a ceiling where windows break up); a 5
+     cm/s pp bow on the D and A. My first law (compressed toward the
+     bridge) sent the C's ff the wrong way.
+   - Dynamic range vs the Iowa arco: D/A/G within ~3 dB; the C 4 dB vs 13,
+     the model's main cello limit (its narrow windows).
+   - The wolf (175 Hz, 0.13 s/kg), the Wolf Eliminator, open strings.
+3. **Body and wolf** (cello doc §3, §5, §8): the measured modes (A0 100 Hz
+   Q 40, T1 140 Hz weak, the wolf mode 185 Hz Q 50 m_eff 0.30 kg, 209 and 281
+   Hz, the dense band from ~400 Hz, the bridge hill at 1.35 kHz Q 3);
+   **per-string mode strengths** for the 185 and 209 Hz modes (the wolf
+   strongest on the C, 209 on the A; the strings no longer share one
+   admittance: a change to the bridge solve); the six wolf acceptance tests
+   in `wolf_check.py` (beating 4-14 Hz, faster with bow speed and slower
+   with force, the worst note rising as the bow nears the bridge, odd
+   harmonics splitting, the eliminator, lower Z₀ shrinking the range);
+   recheck playability after. Optional: tailpiece modes near 65 Hz and A0.
+4. **Pizzicato.** `pizz_decay.py` on the Iowa pizzicato → the second
+   polarisation (still the violin's); the Philharmonia's two cello
+   pizzicato notes as a listening check.
+5. **Radiation and output** (cello doc §9 step 1): a solo, anechoic
+   library-mic response fitted from the Iowa arco (instrument-research
+   `tools/analysis/body_response.py`, 60-1500 Hz; the multi-note files
+   segmented) replaces the cello-section response for the Library Mic
+   outputs and the radiation target's low band; the upper band measured
+   against the Iowa arco (`radiation_target.py`, ±3 dB). Directivity (KB
+   §12.1, Pätynen & Lokki): omni below ~300 Hz, forward at 500 Hz with
+   front/back > 10 dB, the semitone-to-semitone variation (4.8 dB now;
+   cello class 1.2-3.2). BYU's cello directivity is tier C: not used.
+   `room_power.py --instrument cello`, cello body presets. Optional, off by
+   default: a stage-floor path through the endpin (§3.4).
+6. **The cellist's hands and attacks.** Attacks: a starting force ~4x the
+   sustain minimum, then down to the sustain window (Galluzzo); slow-start
+   stiction (friction up to 2x for slow bow acceleration); a little
+   per-note randomness in attack thresholds; judged in periods, not ms
+   (`string_lab guettler`: C 6 / G 7 / D 11 / A 15 of 42 within 50 ms now).
+   The bow: ~80 g. Hands: thumb position, extensions; the dynamics law's
+   long-note speed (`kLongVb`) and attack swell from the Philharmonia
+   cello (measuring only); vibrato (KB §11.2: ~6.5 Hz); bounce strokes
+   (gravity barely helps on the cello, KB §11.1); Intonation Style tables.
+7. **Evaluation and wrap-up.** `open_strings`, `harmonics_tuning`,
    `brightness_spread`, `fundamental_strength`, `perceptual.py` against the
-   Philharmonia cello (yardstick: Iowa vs Philharmonia); cello reference
-   numbers in EVALUATION.md; presets and info text; a milestone plugin build.
+   Philharmonia cello (measuring only; yardstick Iowa vs Philharmonia);
+   cello reference numbers; presets and info text; a milestone plugin
+   build.
+
+Later, beyond Phase 8: the C string's narrow windows and dynamic range
+(friction-model work: the mdw data would be the test if its use is
+cleared); string-type presets (four measured G strings, a steel G; cello
+doc §2.1-2.2); a rosin control; a "new strings" preset; Mansour's
+body-aware minimum force in the assistant (cello doc §4.2).
 
 ### Decisions
 
@@ -140,6 +176,10 @@ them before per-note tools).
   the defaults, so a preset without `instrument` is a violin preset: the four
   body presets stay violin presets, and the cello gets its own (PR 4). The
   body controls themselves are offsets that work on either instrument.
+- **The wolf is on by default** (Wolf Eliminator 0), as the body makes it:
+  F3 on the G string won't speak at pp, and beats at mf-ff (worse on the C).
+  The owner may prefer an eliminator fitted by default, as most cellists
+  have; ~0.5 cures the G string, 1 the C.
 - **Bridge Hill** stays the violin's frequency (its range and default are
   released); other instruments scale it to their own hill (cello ×0.62).
 - **String** and its keyswitches name strings lowest to highest
