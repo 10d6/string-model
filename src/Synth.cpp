@@ -82,7 +82,7 @@ struct StringModel : Synth {
     legato = b.add("bow.legato").name("Legato Slurs").toggle().def(1).group("Bow");
     bowChange = b.add("bow.change").name("Bow Change").range(0.008, 0.2).def(0.02).unit("s").smoothing(0).group("Bow");
     autoChange = b.add("bow.auto").name("Auto Bow Change").toggle().def(0).group("Bow");
-    sustainSpeed = b.add("bow.sustain").name("Long-Note Bow Speed").range(0.25, 1).def(0.6).smoothing(0).group("Bow");
+    sustainSpeed = b.add("bow.sustain").name("Long-Note Bow Speed").range(0.25, 1).def(1).smoothing(0).group("Bow");
     releaseMode = b.add("bow.release").name("Release").choices({"Auto (Key-Up Speed)", "Lift", "Stop on String", "Finger Off"}).def(0).group("Bow");
     noise = b.add("bow.noise").name("Rosin Noise").range(0, 0.5).def(0.12).smoothing(0).group("Bow");
     friction = b.add("bow.friction").name("Friction Model").choices({"Thermal", "Classic", "Enhanced Thermal"}).def(2).group("Bow");
@@ -353,7 +353,7 @@ struct StringModel : Synth {
   static constexpr float kWet = 0.12f;
   // Each space's wet/direct power ratio at Room 100% (Modelled output, the
   // reference distance; tools/room_power.py).
-  static constexpr float kRoomPower[5] = {0.315f, 0.153f, 0.189f, 0.181f, 0.218f};
+  static constexpr float kRoomPower[5] = {0.326f, 0.160f, 0.200f, 0.192f, 0.200f};
   double sr_ = 48000;
   sm::Instrument inst_;
   sm::PerformerControls pc_;

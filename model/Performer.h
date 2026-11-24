@@ -54,9 +54,8 @@ struct PerformerControls {
   float changeFloor = 0.2f;   // force at zero bow speed during a reversal, x target [T]
   float autoChangeVary = 1.f;  // 0..1: automatic bow changes vary (turn point, time, force) [T]
   float changeWidth = 1.f;    // force is back to full at this fraction of the target speed [T]
-  float sustainSpeed = 0.6f;  // long notes: bow speed after the attack, x attack speed
+  float sustainSpeed = 1.f;   // long notes: bow speed after the attack, x attack speed
   bool autoChange = false;    // change bow at the tip/frog; off = an endless bow
-  float sustainBetaMin = 0.06f;  // long notes move toward the bridge no closer than this [T]
   float minAccel = 2.5f;      // m/s^2, floor on attack acceleration: below ~2 soft notes take 0.25 s to speak [T]
   float chordWindow = 0.035f; // s: keys pressed within this are one chord
   float rollTime = 0.06f;     // s per string pair when rolling a 3-4 note chord
@@ -413,7 +412,10 @@ class Performer {
       // they ring in sympathy with stopped notes.
       // Harmonics are bowed much lighter (updateForceFactors), so they flatten
       // less: about half the allowance (natural harmonics within ±3 cents) [T].
-      const float allow = touchQ_[s] > 0.f ? 0.55f : 1.f;
+      // Above mf the faster bow, its force capped (forceMax), flattens the
+      // string less: the allowance falls to 70% at ff (tools/open_strings.py) [T].
+      const float dt = std::clamp((dyn_ - 0.5f) / 0.35f, 0.f, 1.f);
+      const float allow = (touchQ_[s] > 0.f ? 0.55f : 1.f) * (1.f - 0.3f * dt * dt * (3.f - 2.f * dt));
       float tune = stopped ? 0.f : def_->openTuneCents[s] * 0.01f * openAllow_[s] * allow;
       // Open strings in pure fifths around A (G -3.9, D -2.0, E +2.0 cents).
       if (!stopped) tune += 0.01f * c.intonStyle * openPureCents(s);
@@ -1153,22 +1155,19 @@ class Performer {
     const float d = dyn_;
     // Level law: L ≈ 7.7 ln(vb/beta) dB; pp..ff spans ~23 dB here.
     const float ratio = 0.6f * std::exp(3.0f * d);
+    const float vbAttack = std::max(0.10f * std::exp(1.4f * d), ratio * 0.02f);  // beta can't go below 0.02
+    float beta = vbAttack / ratio;
     // Long notes save bow (KB §7.3 step 2; Demoucron: 12 cm/s on whole notes,
-    // 54 on quarters): after the attack the bow slows to sustainSpeed and
-    // moves toward the bridge, keeping v_b/beta (the loudness) the same.
+    // 22 on halves, 54 on quarters): after the attack the bow slows to
+    // sustainSpeed x the attack speed, and to no more than kLongVb, keeping
+    // its contact point (Demoucron: 25-40 mm), so loud long notes settle a
+    // little softer. (Moving toward the bridge to keep the level brightened
+    // soft notes most and erased the p -> f brightening; a fast ff bow held
+    // on overheats the rosin and turns raucous.)
     const float age = std::clamp((noteAge_ - 0.25f) / 0.6f, 0.f, 1.f);
     const float ease = age * age * (3.f - 2.f * age);
-    float vb = 0.10f * std::exp(1.4f * d) * (1.f + (c.sustainSpeed - 1.f) * ease);
-    vb = std::max(vb, ratio * 0.02f);  // beta can't go below 0.02: keep the loudness
-    float beta = vb / ratio;
-    // ...but a long note stays at a playable distance (Demoucron: 25-40 mm on
-    // long strokes; re-attacks at bow changes get very hard near beta 1/25,
-    // KB §7.2): below sustainBetaMin it gets a little softer instead.
-    if (ease > 0.f) {
-      const float attackBeta = 0.10f * std::exp(1.4f * d) / ratio;
-      const float floorBeta = std::min(attackBeta, c.sustainBetaMin);
-      beta = std::max(beta, floorBeta);
-    }
+    const float vbLong = std::min(vbAttack * c.sustainSpeed, kLongVb);
+    float vb = vbAttack + (std::min(vbLong, vbAttack) - vbAttack) * ease;
     if (art_ == kSpiccato || art_ == kSautille) beta = 0.18f - 0.1f * d;   // Demoucron: 58 / 40 / 29 mm at p / mf / f
     if (art_ == kPizzicato) beta = pluckBeta_;        // the pluck point
     // Attack swell (startStroke): the level deficit, 40% from a slower bow
@@ -1197,7 +1196,7 @@ class Performer {
     // During an attack swell, by the dynamic the note is at now (the level
     // law: ~23 dB per unit of d), so the quiet start is lifted like pp.
     const float dNow = std::max(0.f, d - swellNow / 23.1f);
-    const float margin = 0.1f + 0.8f * (1.f - dNow) * (1.f - dNow) + def_->ffLift[str_] * dNow * dNow;
+    const float margin = 0.1f + (0.8f + def_->ppLift[str_]) * (1.f - dNow) * (1.f - dNow) + def_->ffLift[str_] * dNow * dNow;
     f *= std::pow(2.f, 1.5f * (pressureIn_ + margin));
     vbT_ = vb;
     betaT_ = beta;
@@ -1237,6 +1236,7 @@ class Performer {
   float vbT_ = 0.2f, betaT_ = 0.08f, fT_ = 0.4f, dyn_ = 0.5f;
   float accel_ = 5.f, accelChange_ = 5.f, attackK_ = 10.f, accent_ = 0.f;
   float swellDb_ = 0.f, swellT_ = 0.3f;  // the attack swell's depth (dB) and length (s)
+  static constexpr float kLongVb = 0.22f;  // m/s: the fastest long-note bow (Demoucron: half notes) [T]
   float kSwellSpeed = 0.4f;             // share of the swell taken by bow speed (the rest by distance)
   float landRate_ = 0.01f, liftRate_ = 0.01f, accentDecay_ = 0.999f;
   float force_[4]{}, fFactor_[4]{1, 1, 1, 1}, offTime_[4]{}, fingerOffAt_[4]{};

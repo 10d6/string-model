@@ -27,6 +27,7 @@ struct InstrumentDef {
   uint32_t bodySeed;
   float forceTrim[4];  // per-string force calibration (tools/calibrate_force.py) [T]
   float ffLift[4];     // extra Pressure (x d^2) per string: ff close to the bridge needs more on the low strings [T]
+  float ppLift[4];     // extra Pressure (x (1-d)^2) per string: the open G at pp double-slips now and then with the full lift [T]
   // The bow flattens an open string, and no finger can correct it: the
   // performer raises a bowed open string by this much, only while the bow is
   // on it (unbowed open strings stay at true pitch to ring in sympathy) [T].
@@ -99,9 +100,12 @@ inline const InstrumentDef& violin() {
       // bottom of the window on G, D and A, most on the G (the E is already
       // near the top).
       {0.6f, 0.3f, 0.3f, 0.f},
+      // ...and pp on the G a little lighter (tools/calibrate_force.py).
+      {-0.5f, 0.f, 0.f, 0.f},
       // Full compensation of the flattening under the bow (enhanced friction,
-      // two-point bow), averaged over dynamics 0.15-0.85 (tools/open_strings.py).
-      {16.5f, 6.5f, 6.5f, 6.5f},
+      // two-point bow) at p-mf; the performer scales it down above mf
+      // (tools/open_strings.py).
+      {15.5f, 10.3f, 11.f, 9.2f},
       data::kViolinRadiationHz, data::kViolinRadiationDb, data::kViolinRadiationCount,
       245.f,  // below A0 (~280 Hz) the violin radiates little; weak at the open G (KB §12.7)
       1.19f,  // same loudness (300 Hz-5 kHz) as the Library Mic (Smooth) output

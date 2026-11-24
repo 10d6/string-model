@@ -5,7 +5,7 @@ How each part of String Model is measured, the numbers it measured at last
 from the repo root after `cmake --build build` (Release). Python tools take
 `RENDER=path/to/stringmodel_render` to measure another build.
 
-## Reference numbers (as of the loss shelves, PR #21)
+## Reference numbers (as of the bow-brightness PR, #22)
 
 | What | Command | Last result |
 |---|---|---|
@@ -13,10 +13,10 @@ from the repo root after `cmake --build build` (Release). Python tools take
 | Stress | `python3 synthkit/tools/stress.py build/stringmodel_render 300 --tail 5` | 0 of 300 ring on. With the default 3 s tail, passages that hit the pizzicato keyswitch can fail on open strings still decaying at −78 dBFS: natural, not stuck |
 | Schelleng map | `./build/string_lab sweep 1 62 0.13 enhanced` (add `LAB_WIDTH=3` for the bow width) | wedge holds Demoucron's pp/mf/ff points, all inside (ff was at the flattened edge); low-force edge higher, less flattening (map in MODEL.md) |
 | Attacks (Guettler plane) | `./build/string_lab guettler 1 62 0.1 enhanced` and the grids `1 62 0.06`, `0 55 0.1`, `2 69 0.08`, `3 76 0.1` | over the five grids (210 attacks): 31 perfect, 103 within 50 ms (before the loss shelves 29 / 112; thermal 2003: 0 / 50; classic: 23 / 71) |
-| Force window | `python3 tools/calibrate_force.py` (~25 min) | every row straddles 0 (margin ≥ 0.2; B3 ff −0.3..+1.0) |
+| Force window | `python3 tools/calibrate_force.py` (~25 min) | every row straddles 0 (margin ≥ 0.2; B3 ff −0.4..+1.0; the open G at d0 measured with the G pp trim) |
 | Radiation residual | `python3 tools/radiation_target.py "<VSCO>/Strings/Solo Violin/Arco Vib" build/stringmodel_render - 3` | target re-measured for the loss shelves; half-octave bands within ±3 dB (MODEL.md). The bands at 1.26, 2, 3.2 and 4 kHz were already off since Phase 3/5 (few notes per band) |
 | Body controls | `./build/radiation_lab character` | Air +9 → +6 dB at 250 Hz; Nasality +9 → +7–8 dB at 0.8–1.3 kHz; Brilliance +9 → +6–9 dB at 2–3.2 kHz; Softness 12 → −10 dB above 6 kHz; Voice ±10% moves 400–800 Hz bands 5–7 dB |
-| Open strings in tune | `python3 tools/open_strings.py` | within ±1 cent at mf, ±1.7 from pp to ff |
+| Open strings in tune | `python3 tools/open_strings.py` | D, A, E within ±1.7 cents at every dynamic; G +3.1 / −0.7 / −2.3 at p / mf / ff |
 | Harmonics | `python3 tools/harmonics_tuning.py` | within ±4 cents except G5 +6 and B6 −12 (B6 reads −10 to −30 by dynamic in the base build too, and broke at mf/f there), fundamental 30–67 dB down |
 | Intonation Style | `python3 tools/intonation_check.py` | style 1 vs 0: C# +8, F# +6, B +4, G −4; double stops pure (third −14, sixths +14) |
 | Vibrato Shaping | `python3 tools/vibrato_extent.py` | shape 0 / 0.7: B4 26 / 20 cents, B6 27 / 32; B4 after a fast run 15 / 14, then 31 / 28 (vibrato default 26 cents) |
@@ -26,11 +26,11 @@ from the repo root after `cmake --build build` (Release). Python tools take
 | Directivity | `./build/radiation_lab directivity` | 250/500 Hz omni ±1 dB; 4 kHz front +2, back −3.2, below −3.5; 8 kHz front-up +6.7, back −7.2 dB; semitone-to-semitone directivity index varies 4.9 dB (KB 2.2–8.1) |
 | Distance trim | render a phrase at 1.5–10 m, Room 20/60% | total level within 0.3 dB (0.5 m: +2.4) |
 | Room feed | wet (Room 100% − 0%) band levels re 200–1000 Hz | 3.6/7.3/7.0/8 dB darker at 1–2/2–4/4–8/8–16 kHz than the 7a feed |
-| Perceptual distance | `python3 tools/perceptual.py --data <phil wav>` (2.5 min) | score 40.2 (attack 45.8, early 35.2, sustain 32.1; note by note a wash against 41.9 before the loss shelves: median −0.04, nearer on 228 of 448; high band in the sustain +1.7 dB, was +3.9; before the attack swell 53.4 / 72.4 / 40.0 / 32.1); rise 106 ms (recordings 84; 94 before the loss shelves, ~5% slower at every dynamic); shimmer 1.9 dB (recordings 2.9); ring 8.8 dB (recordings ~7; before the centre drift 11.7); yardsticks: another take 20.5, another violin 35.4 |
+| Perceptual distance | `python3 tools/perceptual.py --data <phil wav>` (2.5 min) | score 40.2 (attack 45.0, early 34.4, sustain 31.1); note by note nearer than the loss-shelves build on 304 of 448 (median −0.47); before the attack swell 53.4 / 72.4 / 40.0 / 32.1; rise 110 ms (recordings 84); shimmer 1.7 dB (recordings 2.9); ring 8.8 dB (recordings ~7; before the centre drift 11.7); yardsticks: another take 20.5, another violin 35.4 |
 | Shimmer split | held p/mf/f notes, 1–1.5 s, after 0.35 s, 0.5–8 kHz | band against band ~1.6 dB (recordings 2.55; before the shimmer PR 0.85); level wobble 1.54 (2.29), overtone balance 1.36 (2.39) |
 | Default mic vs VSCO | `tools/radiation_target.py <Arco Vib> build/stringmodel_render - 3`, half-octave means | within ±4.1 dB, RMS 2.5 dB (pre-7a 2.3; the largest is now 2.2–3.2 kHz, +4.1) |
 | Low end vs VSCO | fundamental (h1) re harmonics 3–8, synth − real, mean of p and f | G3 +2.7, A3 +1.7, C4 −10.7, E4 −1.9 dB (was +17.1, +7.9) |
-| Brightness vs dynamics | f − p band levels above 4 kHz, synth − real, median G3–E5 | 4–8 kHz −0.3, 8–16 kHz −0.5 dB (was −7.3, −8.0 before the tilt). With the tilt off the string alone gives +0.6 / −0.2 dB f − p (VSCO +6.4 / +8.0): the loss shelves don't make it brighten with force |
+| Brightness vs dynamics | f − p band levels re 0.5–2 kHz, median G3–E5, vel 45/110 (VSCO Arco Vib) | 2–4 / 4–8 / 8–16 kHz: synth +3.3 / +5.9 / +9.0, VSCO +2.5 / +6.4 / +8.0. With the tilt off +1.3 / +2.9 / +3.4: about half from the string itself (before the bow-brightness PR +0.5 / +0.6 / −0.2) |
 | Partial decay (Q) | `python3 tools/partial_q.py --data <phil wav>` (plucks, initial 25 dB per partial) | median Q real / synth, stopped: 177/182, 260/266, 304/322, 355/412, 651/699 at 0.15–0.5, 0.5–1, 1–2, 2–4, 4–8 kHz; open 444/450, 444/468, 398/407, 273/478, 1420/1038 (before the loss shelves stopped 148, 128, 120, then too fast to measure) |
 | Slurs | `./build/stringmodel_render tests/slurs.json` + a 1 ms-hop pitch track (12 ms windows) | finger changes 2–4 ms (was 10–14), shifts 5–11 ms in a fast scale; onsets 1–2 dB above `main`'s, no clicks |
 | Bowing to the meter | `./build/bowing_lab 0.5 92 3 4 < events` (see the file's header) | pickups up-bow from mid-bow, downbeats down-bow, alternation, no mid-note rebows in phrases |

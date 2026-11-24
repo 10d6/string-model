@@ -92,13 +92,16 @@ lumped into the terminations as first-order loss shelves (below).
   - Making the ends lossless only at DC made a ~5 Hz resonance.
 - **Open strings carry a bow allowance while bowed [T].** Bowing flattens a
   string, and no finger can correct an open one. Violinists tune while
-  bowing, so the performer raises an open string the bow is on by G +16.5,
-  D, A, E +6.5 cents (`openTuneCents`; before the loss shelves G +15.5,
-  D +11.5, A +14, E +16: the less damped string flattens less), easing in and out over
+  bowing, so the performer raises an open string the bow is on by G +15.5,
+  D +10.3, A +11, E +9.2 cents at p–mf (`openTuneCents`), falling smoothly
+  to 70% by ff, where the faster bow with its force at the cap flattens the
+  string less. Earlier values: G +16.5, D/A/E +6.5 at every dynamic (the
+  loss shelves, when long notes still slowed); G +15.5, D +11.5, A +14,
+  E +16 (low-pass losses). It eases in and out over
   ~30 ms as the bow lands and leaves. Harmonics, bowed much lighter, get
   0.55× of it. Unbowed open strings sit at true pitch, so they ring in
-  sympathy with stopped notes. `tools/open_strings.py`: within ±1 cent at
-  mf, ±2 from pp to ff.
+  sympathy with stopped notes. `tools/open_strings.py`: D, A, E within
+  ±1.7 cents; G +3.1 at p, −0.7 at mf, −2.3 at ff.
   - Until the open-strings PR the allowance (+7/+4/+9/+12) applied to every
     open string. It was held to 60% so unbowed strings could still ring,
     which left bowed open strings 4–10 cents flat.
@@ -370,7 +373,9 @@ What this shows:
   - **A margin**, most at pp: log₂ F += 1.5 (0.1 + 0.8 (1 − d)² + k d²).
     Soft notes sat at the bottom of the window; with the loss shelves, so
     did ff close to the bridge on the lower strings: k = G 0.6, D 0.3,
-    A 0.3, E 0 (`ffLift`; the E is near the top of its window at ff).
+    A 0.3, E 0 (`ffLift`; the E is near the top of its window at ff). Since
+    the long-note change the open G at pp double-slipped now and then with
+    the full pp lift, so the G's is 0.3 instead of 0.8 (`ppLift`).
   - **The E string × 1.22.**
   - **High positions:** × (max(1, f/(1.5 f_open)))^0.7. Short, high strings
     are loaded by the body. A6 went from −19 cents and unstable to −3 cents.
@@ -391,13 +396,28 @@ they settle within ~50 ms. Loud notes also get an accent, a force boost
 decaying over 70 ms.
 
 **Long notes save bow** (KB §7.3 step 2; Demoucron measured 12 cm/s on whole
-notes against 54 cm/s on quarters). From 0.25 s into a stroke, over 0.6 s,
-the bow slows to `Long-Note Bow Speed` (default 0.6) × the attack speed. β
-moves towards the bridge to keep v_b/β, the loudness, the same, but no
-closer than β 0.06. Below that the note gets slightly softer instead:
-Demoucron's players stayed 25–40 mm from the bridge on long strokes, and
-re-attacks at bow changes get very hard near β 1/25 (KB §7.2). Allowed down
-to β 0.025, a bow change stayed > 6 dB down for ~90 ms.
+notes, 22 on halves, 54 on quarters, with the bow 25–40 mm from the bridge
+throughout). From 0.25 s into a stroke, over 0.6 s, the bow slows to
+`Long-Note Bow Speed` (default 1) × the attack speed, and to no more than
+0.22 m/s (Demoucron's half notes). β stays where the attack put it, as Demoucron's players kept
+theirs, so the slowed note settles softer (7.7 ln of the slowdown, dB).
+With the default, p–mf notes (0.12–0.2 m/s) keep their attack speed and
+f–ff long notes slow to 0.22 m/s (ff ~−4.5 dB).
+- **Why (the bow-brightness PR):** until then the default was 0.6 and β
+  moved toward the bridge to keep v_b/β, the loudness, the same, no closer
+  than β 0.06. At p that moved the bow a lot (β 0.17 → 0.10) and
+  brightened it; at f it was already at the floor, so it only slowed and
+  dulled. The string's own p→f brightening (it has some since the loss
+  shelves) was erased: +0.5 / +0.6 / −0.2 dB at 2–4 / 4–8 / 8–16 kHz with
+  the output tilt off, against +1.3 / +2.9 / +3.4 without it (VSCO +2.5 /
+  +6.4 / +8.0). Slowing at the same β instead (default 0.6) sagged every
+  long note ~4 dB, and the perceptual distance got worse (nearer on 157 of
+  448 notes); no slowing was nearer on 269.
+- **The 0.22 m/s cap:** an ff bow held at its attack speed (0.4 m/s,
+  β 0.034) heats the rosin until no force holds Helmholtz motion (A4: clean
+  only near 2 N, raucous from 2.8 N, between 1 and 1.5 s). Players can't hold
+  it either: it spends the bow in ~1.5 s. At 0.25 m/s B3 at ff still needed
+  more than the 5 N cap.
 
 **Attack swell (`Attack Swell`, default 0.75; the perceptual-distance work).**
 A bowed note grows into its level. Measured on the Philharmonia violin (arco,
@@ -870,24 +890,28 @@ with bow force: more force sharpens the Helmholtz corner (KB §2 "corner
 rounding"; §11.5: log centroid rises linearly with log force). The string
 here barely does: at fixed v_b and β, 0.4 → 1.6 N on G3 (all Helmholtz)
 raises 4–8 and 8–16 kHz by under 3 dB and doesn't move the centroid
-(`string_lab tone`). Frequency-dependent losses (above) didn't change that:
-with the tilt off, the p→f spread at 2–4 / 4–8 / 8–16 kHz is +0.5 / +0.6 /
-−0.2 dB (low-passes: +0.4 / +0.5 / −0.2; VSCO +2.5 / +6.4 / +8.0). Losses set
-how fast partials die, not how sharp the bow makes the corner. The
+(`string_lab tone`) with the low-pass losses. With the loss shelves it does:
+×4 force at fixed v_b and β gives +3 / +8 / +8 dB at 2–4 / 4–8 / 8–16 kHz on
+G3, +1 / +3 / +9 on A4 (the bow width barely matters). In the instrument,
+with the tilt off and since the long-note change (Gesture layer), the p→f
+spread is about half the recordings' (+1.3 / +2.9 / +3.4 dB; VSCO +2.5 /
++6.4 / +8.0), so the tilt does the rest at 5 dB per octave of force (it was
+8). The
 VSCO notes brighten by +3..+15 dB above 4 kHz from p to f; the synth's p was
 up to 12 dB too fizzy at 8–16 kHz on low notes (what read as "bow noise",
 though its inter-harmonic noise is below the recordings') and its f a little
 dull. So the output (after the bridge, outside the loop: bowing is
-untouched) is tilted by 8 dB per octave of bow force re mf [T], half on a
+untouched) is tilted by 5 dB per octave of bow force re mf [T], half on a
 first-order shelf at 2.5 kHz and half at 7 kHz, clamped to ±9 dB. The force
 is the players' line from `computeTargets`: f ∝ e^(3.62·dynamic) ×
 2^(1.5·pressure) × 2^(2.09·contact), so aftertouch and bowing nearer the
 bridge brighten too, as the player doc says they should (§1). It is zero at
 dynamics 0.557 (mf, the middle of the p/f pair the radiation was fitted
 on), so the radiation target still holds (`radiation_target.py` unchanged
-within ~1 dB per band), and neutral when not bowing. Measured over G3–E5:
-the p→f spread above 4 kHz is within 2 dB of the recordings (median; it
-was 7–8 dB short), and p and f each within 2.6 dB of them per band. G3 and
+within ~1 dB per band), and neutral when not bowing. Measured over G3–E5
+(median f − p, 2–4 / 4–8 / 8–16 kHz): +4.0 / +6.4 / +7.4 dB, VSCO +2.5 /
++6.4 / +8.0 (with no tilt and the old long-note rule the synth was 7–8 dB
+short above 4 kHz). G3 and
 C4 at p remain ~8 dB bright at 8–16 kHz (at about −47 dB re the total).
 
 **Calibration.** At `prepare`, at the default mic place, the residues are
