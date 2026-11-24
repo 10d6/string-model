@@ -2,7 +2,9 @@
 // Kaplan Solutions); their losses are fitted to the Iowa MIS pizzicato (8.2);
 // the body is from the published modes (KB §5.4) with its main mode set for a
 // wolf; the playability assistant is calibrated on these strings
-// (tools/playability.py, 8.2). The radiation and the player's habits are
+// (tools/calibrate_force.py, stick test, 8.2). Friction is the violin's
+// rosin: the measured cello rosin (mu_s 0.65) put this model's window far
+// above Galluzzo's (MODEL.md). The radiation and the player's habits are
 // still the first version (docs/PLAN.md "Phase 8"). [T] marks tuning guesses.
 #pragma once
 
@@ -70,12 +72,12 @@ inline const InstrumentDef& cello() {
         {1600.f, 3.f, 0.06f},
         800.f, 5000.f, 100.f,  // dense band: the bigger plates' modes are closer together [T]
         0xce110u,
-        {1.f, 1.f, 1.f, 1.f},
-        {0.6f, 0.6f, 0.6f, 1.0f},  // ff lift: E4 on the A string needed the most (tools/playability.py)
-        {0.f, 0.f, 0.f, 0.f},
+        {0.85f, 1.f, 1.f, 1.f},  // force trim: the C sat a little high in its window (calibrate_force.py)
+        {0.4f, 0.6f, 0.6f, 1.0f},  // ff lift (calibrate_force.py): E4 on the A string needs the most, the open C the least
+        {0.f, 0.1f, 0.f, 0.f},  // pp lift: a little more on the G (calibrate_force.py)
         // The bow's flattening of the open strings, corrected at p-mf
         // (tools/open_strings.py --instrument cello: within ~4 cents p..ff).
-        {17.f, 19.f, 13.f, 10.5f},
+        {13.f, 16.f, 12.f, 12.f},
         data::kCelloRadiationHz, data::kCelloRadiationDb, data::kCelloRadiationCount,
         80.f,   // below A0 (~100 Hz) the cello radiates little: the open C's fundamental is weak [T]
         1.12f,  // Modelled vs Library Mic (Smooth), 300 Hz-5 kHz: the same +1.5 dB as the violin's [T]
@@ -106,21 +108,45 @@ inline const InstrumentDef& cello() {
     c.hand.downFinger = 1.f;
     c.hand.chordSpan = 5;
     c.hand.vibRefNote = 57;
-    // The playability assistant on these strings (tools/playability.py: clean
-    // at Pressure 0 with a mean margin of 0.56, the violin 0.62):
+    // The playability assistant on these strings (tools/calibrate_force.py
+    // --instrument cello, Helmholtz by the stick test: clean at Pressure 0
+    // with a mean margin of 0.57, the violin 0.62; the C string the least):
     // - force across strings grows as Z0 (string_lab sweep: the window's
-    //   centre does), not Z0^1.39 (2x too much on the C);
+    //   centre does; Beigi & Conneely's F_min is ~Z^1 too, KB §7.1), not
+    //   Z0^1.39 (2x too much on the C);
     // - the body-force term only near real resonances (25 counted almost
     //   every cello note, Z0 |Y| ~0.04 is common on these strings);
-    // - the contact point's range compressed toward the middle (pp nearer
-    //   the bridge, ff farther than the violin's law), and farther from the
-    //   bridge on the heavier strings: Schelleng's window narrows as Z0 / beta
-    //   [T: no measured cellists' contact points in the KB].
+    // - the contact point between per-string limits from the coupled
+    //   instrument's windows (tools/window_map.py): a floor that rises with
+    //   bow speed (a fast bow near the bridge can't hold Helmholtz motion on
+    //   a heavy string at any force, F_min ~ Z0^2 v_b / beta^2), and a
+    //   ceiling where the windows break up (beta >~ 0.15; the C's from
+    //   0.09). The D and A floors also keep ff off the bridge, so pp -> ff
+    //   spans about what the Iowa recordings do (~10 dB on those strings).
+    //   Cellists in repertoire average beta 0.15-0.22 (cello doc §6, Chudy);
+    //   this model's windows break up there, so the law stays nearer the
+    //   bridge.
     c.forceZExp = 1.0f;
     c.bodyForceK = 8.f;
-    c.betaPow = 0.6f;
-    c.betaZExp = 0.7f;
-    c.betaZRef = 0.67f;
+    // The bow's speed: 5 cm/s at pp (Galluzzo's measuring speed), ~0.33 m/s
+    // at ff (cellists average 13-35 cm/s in repertoire, cello doc §6).
+    c.vbPP = 0.05f;
+    c.vbGrowth = 2.1f;
+    // ...except on the C and G, whose windows at 5 cm/s are one Pressure step
+    // wide (tools/window_map.py --vb 0.05): pp there at the violin's 0.10 m/s.
+    // The C's pp then sits at its contact ceiling, which costs its dynamic
+    // range: pp -> ff 4 dB, against 13 in the Iowa recordings (the G 10 vs
+    // 13, the D 11 vs 10, the A 11 vs 9). Its narrow windows are the
+    // model's limit (MODEL.md "The cello").
+    c.vbPPScale[0] = c.vbPPScale[1] = 2.f;
+    c.limitBeta = true;
+    const float floorA[4] = {0.04f, 0.05f, 0.05f, 0.065f}, floorB[4] = {0.2f, 0.1f, 0.12f, 0.1f};
+    const float ceil[4] = {0.09f, 0.13f, 0.15f, 0.15f};
+    for (int s = 0; s < 4; ++s) {
+      c.betaFloorA[s] = floorA[s];
+      c.betaFloorB[s] = floorB[s];
+      c.betaCeil[s] = ceil[s];
+    }
     c.wolfMode = 1;  // the Wolf Eliminator acts on the 175 Hz mode
     return c;
   }();

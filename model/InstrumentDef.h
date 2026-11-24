@@ -73,11 +73,15 @@ struct InstrumentDef {
   // Notes whose fundamental sits on a body resonance need more force (the
   // body absorbs, F_min rises, KB §5.4): log2 F += 1.5 min(1, bodyForceK Z0 |Y(f0)|).
   float bodyForceK = 25.f;
-  // The dynamics law's contact point (Performer::computeTargets), from
-  // Demoucron's violin: beta = betaMid (beta_violin / betaMid)^betaPow, then
-  // x (Z0 / betaZRef)^betaZExp per string. 1 and 0: the violin's law.
-  float betaPow = 1.f, betaMid = 0.07f;
-  float betaZExp = 0.f, betaZRef = 1.f;
+  // The dynamics law's bow speed at the attack: vbPP e^(vbGrowth d), m/s
+  // (the violin's: Demoucron, 0.10 at pp to 0.35 at ff).
+  float vbPP = 0.10f, vbGrowth = 1.4f;
+  float vbPPScale[4]{1.f, 1.f, 1.f, 1.f};  // per string, x^(1 - d): the soft end's speed
+  // Limits on the dynamics law's contact point (Performer::computeTargets),
+  // per string: beta >= betaFloorA + betaFloorB v_b (v_b in m/s), and <=
+  // betaCeil unless the floor is higher. Off (limitBeta false) for the violin.
+  bool limitBeta = false;
+  float betaFloorA[4]{}, betaFloorB[4]{}, betaCeil[4]{0.3f, 0.3f, 0.3f, 0.3f};
   // The body mode a wolf eliminator acts on (index into modes; -1: none).
   int wolfMode = -1;
   // The body's size and radiation patterns, and where the body controls act.
