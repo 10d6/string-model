@@ -67,6 +67,7 @@ struct StringModel : Synth {
   Param slurRange;
   Param micAngle, micElevation, micDistance;
   Param attackSwell;
+  Param avoidOpen;
   Param bendRange, a4;
 
   void defineParams(ParamBuilder& b) override {
@@ -123,6 +124,9 @@ struct StringModel : Synth {
     micDistance = b.add("mic.distance").name("Mic Distance").range(0.05, 10).log().def(1.5).unit("m").group("Output");
     // A player habit (the Philharmonia recordings): bowed notes grow into their level.
     attackSwell = b.add("bow.swell").name("Attack Swell").range(0, 1).def(0.75).smoothing(0).group("Bow");
+    // A player habit: notes that would be open strings are stopped on the
+    // string below, so they can take vibrato.
+    avoidOpen = b.add("finger.avoidOpen").name("Avoid Open Strings").choices({"Off", "On"}).def(1).group("Left Hand");
   }
 
   std::unique_ptr<Voice> makeVoice() override { return std::make_unique<SilentVoice>(); }
@@ -224,6 +228,7 @@ struct StringModel : Synth {
     pc_.contact = ctx.get(contact);
     pc_.bite = ctx.get(bite);
     pc_.swell = ctx.get(attackSwell);
+    pc_.avoidOpen = ctx.choice(avoidOpen) != 0;
     pc_.legato = ctx.on(legato);
     pc_.slurRange = ctx.get(slurRange);
     pc_.bowChange = ctx.get(bowChange);

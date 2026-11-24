@@ -21,7 +21,7 @@ int main(int argc,char**argv){
   std::vector<Ev> ev; double b; int n, on; float v;
   while (std::scanf("%lf %d %d %f",&b,&n,&on,&v)==4) ev.push_back({b,n,on!=0,v});
   std::sort(ev.begin(),ev.end(),[](const Ev&a,const Ev&c){return a.beat<c.beat;});
-  Instrument inst; inst.prepare(sr); PerformerControls pc; InstrumentControls ic; pc.metric=metric; pc.portamento=0; pc.autoChange=true;  // worst case: long notes may run out of bow
+  Instrument inst; inst.prepare(sr); PerformerControls pc; InstrumentControls ic; pc.metric=metric; pc.portamento=0; pc.avoidOpen=false; pc.autoChange=true;  // worst case: long notes may run out of bow
   double pendT=-1; float pendP=0; size_t k=0; float lastPos=inst.performer().bowPosition(); int lastSign=0; int held=0; double lastOnT=-1;
   const double endBeat = ev.empty() ? 0 : ev.back().beat + 2; for(long i=0;i<long(endBeat*spb*sr);++i){
     double t=i/sr, beat=t/spb;

@@ -71,6 +71,8 @@ printf '2.5 69 1 .6\n2.95 69 0 .5\n3 74 1 .6\n4 74 0 .5\n' | ./build/bowing_lab 
 # evaluation scripts (docs/EVALUATION.md has the reference numbers)
 python3 tools/open_strings.py                      # open strings in tune under the bow
 python3 tools/harmonics_tuning.py                  # natural/artificial harmonics
+python3 tools/harmonic_timbre.py --data ~/data/phil/wav   # harmonics' timbre vs the Philharmonia (harmonic vs arco, partials 2-6)
+python3 tools/portamento_glide.py                  # Portamento: glide times on slow slurred leaps
 python3 tools/intonation_check.py                  # Intonation Style: scale, double stops
 python3 tools/vibrato_extent.py                    # Vibrato Shaping
 python3 tools/pizz_decay.py "<VSCO>/Strings/Solo Violin/Pizz"   # two-stage decay vs recordings

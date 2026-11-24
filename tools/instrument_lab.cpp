@@ -39,6 +39,7 @@ int main(int argc, char** argv) {
   if (std::getenv("LAB_COUPLING")) ic.coupling = static_cast<float>(std::atof(std::getenv("LAB_COUPLING")));
   // The labs measure automatic bow changes (the synth's default is off).
   pc.autoChange = !std::getenv("LAB_AUTO") || std::atoi(std::getenv("LAB_AUTO")) != 0;
+  pc.avoidOpen = std::getenv("LAB_AVOIDOPEN") && std::atoi(std::getenv("LAB_AVOIDOPEN")) != 0;  // the labs play the string asked for
   if (std::getenv("LAB_STRING")) pc.forcedString = std::atoi(std::getenv("LAB_STRING"));
   if (std::getenv("LAB_MUTE")) ic.mute = static_cast<float>(std::atof(std::getenv("LAB_MUTE")));
   if (std::getenv("LAB_AVARY")) pc.autoChangeVary = static_cast<float>(std::atof(std::getenv("LAB_AVARY")));

@@ -335,6 +335,20 @@ What this shows:
 - The string is chosen per note: the highest string whose open note is at or
   below it. Through a slur, the current string is kept if the note is within
   a fifth above its open note.
+  - **Open strings can't take vibrato** (`Avoid Open Strings`, default on;
+    the left-hand PR). With vibrato on, arco or martelé, and the keys at
+    least 0.25 s apart, a note that would be an open string (D4, A4, E5) is
+    stopped with the fourth finger on the string below; fast passages keep
+    the open string, as players do. The Philharmonia's D4, A4 and E5 swing
+    15–70 cents like the stopped notes around them, so its players stopped
+    them too. The open string then rings in sympathy at the note's pitch
+    and loads the bridge there: the stopped A4's fundamental is ~7 dB
+    weaker than the open A's (−10.9 vs −3.4 dB re partials 2–4; −4.3 with
+    the bridge decoupled), level with G4 and G#4 on the same string (−8,
+    −10). The labs and `open_strings.py` turn the habit off.
+  - **A slide keeps the string:** with `Portamento` above 0, a slow (≥ 0.3 s)
+    slurred leap of a third or more from a stopped note stays on the string,
+    up to an octave above its open note, and shifts (below).
 - Leaving a string lifts the bow from it and lets it ring. After 0.25 s
   [T] the finger lifts too, so the string rings open, and in sympathy.
 - **Double stops and chords.** Keys pressed within `Chord Window` (35 ms) of
@@ -725,6 +739,13 @@ and stroke ×0.7 at 9 notes/s, up to ×1.5 at 3/s [T].
 **`Portamento`** (default 0.3; player doc §3.3) [T]:
 - Applies to slurred shifts of a third or more, after a slow key gap
   (0.3–0.8 s); notes within the hand's reach never slide.
+- Until the left-hand PR it almost never sounded: string choice moved most
+  such leaps to another string (it kept a slur on the string only within a
+  fifth of the open note), so no shift happened. Now a player who slides
+  keeps the string (Gesture layer, string choice). `tools/portamento_glide.py`
+  (10 slow slurred leaps; those that cross strings or leave an open string
+  don't slide): at 0 every glide 0–12 ms; at 0.3, 78–116 ms on the five that
+  shift; at 1, 178–292 ms.
 - The slide is up to ×7 longer at 1: none in fast passages.
 - A slurred B4→G5 on the A string (a shift), keys 1 s apart: 40 ms at 0,
   106 ms at 0.3, 264 ms at 1. Keys 0.25 s apart: 39 ms at any setting.
@@ -792,13 +813,30 @@ directly (it is already smooth) and turn off the automatic bow change.
   stopped note two octaves, a twelfth or an octave below, touched at 1/4,
   1/3 or 1/2 of the stopped length, lowest position first.
   - **Bowing a harmonic.** The string vibrates in k segments, like a string
-    1/k as long, so β is divided by k, and the force is ×0.3 (octaves and
+    1/k as long. β is divided by √k (until the left-hand PR by k, which put
+    the bow as far along the segment as a stopped note's and gave the
+    harmonic a stopped note's spectrum), and the force is ×0.3 (octaves and
     twelfths) or ×0.15 (two octaves). With the arco force the motion falls
     back toward the fundamental (D6 on the D string came out a series at
     2.6 × f0); at force ×0.45–0.6 the harmonics were still 10–30 cents flat.
   - **Intonation** aims for k slips per fundamental period.
   - Measured through the synth (open and stopped, A5–B6): within ±5 cents,
-    the fundamental 33–65 dB down; B6 still ~15 cents flat.
+    the fundamental 33–65 dB down; B6 still ~15 cents flat. Since the
+    left-hand PR (`harmonics_tuning.py`): within ±3 cents, B6 −1.
+  - **Timbre (the left-hand PR).** A harmonic sounds purer than a stopped
+    note at the same pitch. In the Philharmonia recordings (harmonic vs
+    arco-normal at the same pitch, so mics and body cancel) partials 3–6 are
+    5–12 dB weaker; the synth's harmonic had the stopped note's spectrum
+    (`tools/harmonic_timbre.py`: +0.7 / +5.6 / +9.9 / +6.7 / +12.2 dB at
+    partials 2–6). The physical reason is the finger pad (~1 cm, not the
+    KB's point): the sounding partial's multiples have their nodes under it
+    but not quite at its edges, so higher ones are damped more. Modelled
+    that way (an extra loss shelf on the touched string) it stopped the
+    light bow a harmonic needs: the notes broke, even with more force. So,
+    like the brightness tilt, the output is low-passed instead, outside the
+    loop: 2-pole, Q 0.707, at 3 × the sounding pitch, crossfaded in over
+    ~20 ms while a bowed string is touched [T]. Now −0.5 / +1.9 / +2.6 /
+    −2.1 / −2.0 dB (mean 1.8; 7.0 before).
 
 ## Output (KB §12)
 
