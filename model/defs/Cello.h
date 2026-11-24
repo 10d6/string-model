@@ -155,6 +155,16 @@ inline const InstrumentDef& cello() {
       c.betaFloorB[s] = floorB[s];
       c.betaCeil[s] = ceil[s];
     }
+    // Pizzicato's second (vertical) polarisation: the violin's (InstrumentDef
+    // defaults, 2.5x the string's T60 at the horizontal's level). Against the
+    // Iowa pizzicato (tools/pizz_decay.py --iowa, mf/ff, 122 notes) they score
+    // 0.69 (the violin vs VSCO 0.98): the first stage slower than the
+    // recordings' (-42 vs -68 dB/s median), the second faster (-22 vs -15),
+    // the level at 1 s within 1.5 dB. A weaker, longer second polarisation
+    // (0.3 at 4x) matches the two stages better (0.64) but pulls every
+    // partial's decay off the recordings (partial_q.py, 1-2 kHz Q 181 vs 293):
+    // the loss fit leans on it. A joint refit would lower the string's losses
+    // and redo the bowing calibration (later, with the pluck: PLAN.md 8.6).
     c.wolfMode = 2;  // the Wolf Eliminator acts on the 185 Hz mode
     return c;
   }();

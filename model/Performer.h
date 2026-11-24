@@ -404,11 +404,11 @@ class Performer {
   // Per sample: a landing or lifting finger's pulse on string s (m/s, added
   // at the finger end).
   float fingerTap(int s) const { return tapNow_[s]; }
-  float fingerNote(int s) const { return fingerTo_[s]; }
+  float fingerNote(int s) const { return fingerTo_[s]; }  // the note (MIDI) string s is fingered for
   // The labs only: pin the bow's contact point (beta), speed (m/s) and force on
   // the string (N) after the dynamics law; 0 = the law's.
   float labBeta = 0.f, labVb = 0.f, labForce = 0.f;
-  float labPinAfter = 0.f;  // s into the note before the pins apply (after the performer's own attack)  // the note (MIDI) string s is fingered for
+  float labPinAfter = 0.f;  // s into the note before the pins apply (after the performer's own attack)
 
   // At control rate: pitch, vibrato and force targets per string.
   void strings(StringTarget out[4], const PerformerControls& c) const {
