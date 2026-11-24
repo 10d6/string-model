@@ -6,6 +6,7 @@
 // Per 1/3-octave band: the target, the channels' mean power response (1/3-oct
 // smoothed), the left/right difference, and how much the fine structure
 // varies within the band (what vibrato sweeps through).
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -89,14 +90,33 @@ int directivity() {
     const float z = 1.f - (2.f * i + 1.f) / G, phi = 2.39996323f * i;
     dirs.push_back({std::atan2(std::sin(phi), std::cos(phi)) * 57.29578f, std::asin(z) * 57.29578f});
   }
+  // The player's head and torso: the instrument's own (RadiationShape).
+  const RadiationShape& sh = labInstrument().shape;
+  auto azel = [](const float* v) {
+    return std::pair<float, float>{std::atan2(v[1], v[0]) * 57.29578f, std::asin(std::clamp(v[2], -1.f, 1.f)) * 57.29578f};
+  };
   const std::pair<const char*, std::pair<float, float>> named[] = {
       {"front", {0, 0}}, {"fr-up", {0, 35}}, {"left", {90, 0}}, {"right", {-90, 0}}, {"back", {180, 0}}, {"top", {0, 90}}, {"bottom", {0, -60}},
-      {"head", {-110, 44}}, {"torso", {-150, -44}}};
+      {"head", azel(sh.head)}, {"torso", azel(sh.torso)}};
   const float octs[] = {250, 500, 1000, 2000, 4000, 8000};
   // Power per direction per 1/12-octave point from 177 Hz to 11.3 kHz.
   std::vector<float> fr;
   for (float f = 177.f; f < 11300.f; f *= std::pow(2.f, 1.f / 12.f)) fr.push_back(f);
-  auto measure = [&](float az, float el, std::vector<double>& out) {
+  // Played notes: every semitone over the instrument's range (lowest open
+  // string + 45), its partials (power 1/n^2) in the 1, 2 and 4 kHz octaves.
+  const int lowNote = labInstrument().strings[0].openNote;
+  std::vector<float> fh;                    // the partials' frequencies
+  std::vector<std::array<int, 3>> owner;    // note, band, harmonic number
+  for (int nn = lowNote; nn <= lowNote + 45; ++nn) {
+    const float f0 = 440.f * std::pow(2.f, (nn - 69) / 12.f);
+    for (int b = 0; b < 3; ++b) {
+      const float c = 1000.f * static_cast<float>(1 << b);
+      for (int h = 1; h * f0 < c * 1.4142f; ++h)
+        if (h * f0 >= c / 1.4142f) fh.push_back(h * f0), owner.push_back({nn - lowNote, b, h});
+    }
+  }
+  std::vector<std::vector<double>> PH(G);
+  auto measure = [&](float az, float el, std::vector<double>& out, std::vector<double>* outH) {
     RadiationSettings s;
     s.width = 0.f;
     s.micAz = az;
@@ -104,11 +124,15 @@ int directivity() {
     rad.setNow(s);
     out.resize(fr.size());
     for (std::size_t j = 0; j < fr.size(); ++j) out[j] = std::pow(10.0, rad.responseDb(fr[j], 0) / 10);
+    if (outH) {
+      outH->resize(fh.size());
+      for (std::size_t j = 0; j < fh.size(); ++j) (*outH)[j] = std::pow(10.0, rad.responseDb(fh[j], 0) / 10);
+    }
   };
   std::vector<std::vector<double>> P(G);
-  for (int i = 0; i < G; ++i) measure(dirs[i].first, dirs[i].second, P[i]);
+  for (int i = 0; i < G; ++i) measure(dirs[i].first, dirs[i].second, P[i], &PH[i]);
   std::vector<std::vector<double>> N(9);
-  for (int i = 0; i < 9; ++i) measure(named[i].second.first, named[i].second.second, N[i]);
+  for (int i = 0; i < 9; ++i) measure(named[i].second.first, named[i].second.second, N[i], nullptr);
   auto band = [&](const std::vector<double>& p, float c) {
     double s = 0;
     int n = 0;
@@ -137,6 +161,37 @@ int directivity() {
     hi = std::max(hi, di);
   }
   std::printf("semitone to semitone, 1-4 kHz: directivity index %.1f to %.1f dB (variation %.1f dB)\n", lo, hi, hi - lo);
+  // Per played note (Pätynen & Lokki's measure, KB §12.1: the maximum
+  // directivity's spread across tones; violin class 2.2-8.1 dB, cello 1.2-3.2):
+  // each note's partials in the band, summed per direction.
+  // Twice: over all 200 directions, and over every 9th (22, about as many
+  // as their array's microphones, which miss narrow lobes).
+  const int notes = 46;
+  for (int every : {1, 9}) {
+    std::printf("played notes, max re mean over %d directions:", (G + every - 1) / every);
+    for (int b = 0; b < 3; ++b) {
+      double nlo = 1e9, nhi = -1e9;
+      for (int nn = 0; nn < notes; ++nn) {
+        double mean = 0, mx = 0;
+        int cnt = 0;
+        bool any = false;
+        for (int i = 0; i < G; i += every) {
+          double p = 0;
+          for (std::size_t j = 0; j < fh.size(); ++j)
+            if (owner[j][0] == nn && owner[j][1] == b) p += PH[i][j] / (owner[j][2] * owner[j][2]), any = true;
+          mean += p;
+          ++cnt;
+          mx = std::max(mx, p);
+        }
+        if (!any) continue;
+        const double di = 10 * std::log10(mx / (mean / cnt));
+        nlo = std::min(nlo, di);
+        nhi = std::max(nhi, di);
+      }
+      std::printf("  %d kHz %.1f-%.1f (spread %.1f)", 1 << b, nlo, nhi, nhi - nlo);
+    }
+    std::printf(" dB\n");
+  }
   return 0;
 }
 

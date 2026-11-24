@@ -153,17 +153,22 @@ numbers instead, and nothing is fitted to those datasets.
    shape) goes with 8.6. The Iowa pp notes barely decay (the recordings'
    noise floor): fitted to mf/ff only. The Philharmonia's cello pizzicato is
    two C2 phrases: listening only.
-5. **Radiation and output** (cello doc §9 step 1): a solo, anechoic
-   library-mic response fitted from the Iowa arco (instrument-research
-   `tools/analysis/body_response.py`, 60-1500 Hz; the multi-note files
-   segmented) replaces the cello-section response for the Library Mic
-   outputs and the radiation target's low band; the upper band measured
-   against the Iowa arco (`radiation_target.py`, ±3 dB). Directivity (KB
-   §12.1, Pätynen & Lokki): omni below ~300 Hz, forward at 500 Hz with
-   front/back > 10 dB, the semitone-to-semitone variation (4.8 dB now;
-   cello class 1.2-3.2). BYU's cello directivity is tier C: not used.
-   `room_power.py --instrument cello`, cello body presets. Optional, off by
-   default: a stage-floor path through the endpin (§3.4).
+5. **Radiation and output** (8.5, done; MODEL.md "The cello"). A solo,
+   anechoic library-mic response fitted from the Iowa arco
+   (`body_response.py` on all 24 runs, tracked frame by frame: no need to
+   segment; split-half fine detail r 0.86) replaces the cello section's for
+   the Library Mic outputs (mono: the recordings are) and the target's low
+   band; the upper band measured against the Iowa arco
+   (`radiation_target.py --iowa`), the low band corrected by the Modelled
+   output's own residual (`combine_target.py --residual`): every half
+   octave 125 Hz-9 kHz within ±3 dB. Directivity: omni below ~300 Hz, the
+   cellist's torso as a shelf on each mic (front/back 10 dB in the 500 Hz
+   octave, 17 at 1 kHz), the beam from 300 Hz. Not reached: the 500 Hz
+   octave leans down rather than forward (one mode's lobe), and the
+   maximum directivity's spread across notes is 3.7-5 dB (cello class
+   1.2-3.2; more smoothing narrows the stereo). `room_power.py`, four cello
+   presets (Old & Open, New & Tight, Close Mic, Wolf Tamed; `"instrument":
+   1`). Not done (optional): the stage floor through the endpin (§3.4).
 6. **The cellist's hands and attacks.** Attacks: a starting force ~4x the
    sustain minimum, then down to the sustain window (Galluzzo); slow-start
    stiction (friction up to 2x for slow bow acceleration); a little

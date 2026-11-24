@@ -87,7 +87,7 @@ inline const InstrumentDef& cello() {
         {13.f, 16.f, 12.f, 11.f},
         data::kCelloRadiationHz, data::kCelloRadiationDb, data::kCelloRadiationCount,
         80.f,   // below A0 (~100 Hz) the cello radiates little: the open C's fundamental is weak [T]
-        1.12f,  // Modelled vs Library Mic (Smooth), 300 Hz-5 kHz: the same +1.5 dB as the violin's [T]
+        1.21f,  // Modelled vs Library Mic (Smooth), 300 Hz-5 kHz: the same +1.5 dB as the violin's [T]
         0.69f,  // KB §2.1
         {1.f, 1.f, 1.f, 0.8f},  // all four wound [T]
         0.15e-3f,               // [T]
@@ -100,9 +100,30 @@ inline const InstrumentDef& cello() {
     c.shape.monopoleHz = 300.f;
     c.shape.radius = 0.4f;
     c.shape.beamEl = -0.19f;
+    c.shape.beamFromHz = 300.f;  // already to the front at 500 Hz (KB §12.1)
     c.shape.calibFromHz = 64.f;
     c.shape.a0Hz = 100.f;
     c.shape.nasalHz = 660.f;
+    // The cellist sits behind the cello (KB §12.1, §12.3d): the torso shades
+    // the rear half, a shelf centred at 350 Hz (within 6 dB everywhere below
+    // ~300 Hz; front to back over 10 dB near 400-500 Hz, Meyer); the head is
+    // behind and above the body, a little to the left of the neck [T: the
+    // angles and levels].
+    {
+      const float head[3] = {-0.65f, 0.15f, 0.74f}, torso[3] = {-0.96f, 0.f, 0.28f};
+      for (int i = 0; i < 3; ++i) c.shape.head[i] = head[i], c.shape.torso[i] = torso[i], c.shape.back[i] = torso[i];
+    }
+    c.shape.headCos = 0.77f;
+    c.shape.torsoDb = 0.f;  // the shelf below is the torso's shade, the treble's too
+    c.shape.backDb = 16.f;
+    c.shape.backHz = 350.f;
+    c.shape.backCos = 0.f;
+    // The cello's fine pattern changes less from note to note than the
+    // violin's (max directivity across tones 1.2-3.2 dB vs 2.2-8.1, KB §12.1):
+    // part of each mode's power follows the smooth envelope. 0.4 (spread
+    // ~3.5-5 dB, radiation_lab directivity): more narrows the treble's
+    // stereo (L/R correlation 0.7-6 kHz 0.49 here, 0.76 at 0.6).
+    c.shape.smoothShare = 0.4f;
     // The hand (in the neck positions): the four fingers span a minor third
     // (first to fourth finger), a forward extension a major third; a shift
     // lands on the third finger (two above the hand's place) going up, the

@@ -1,0 +1,12 @@
+{
+  "synthkit": 1,
+  "synth": "string-model",
+  "patchVersion": 1,
+  "name": "Cello, Close Mic",
+  "params": {
+    "instrument": 1,
+    "mic.distance": 0.45,
+    "mic.elevation": 0,
+    "room.mix": 10
+  }
+}

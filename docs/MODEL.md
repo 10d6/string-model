@@ -170,16 +170,46 @@ measured body, per-string mode strengths, the wolf's acceptance tests):
   every string. The C's pp sits at its contact ceiling, the price of a
   playable pp on its narrow windows: the model's main limit on the cello.
 - Pizzicato: the violin's second polarisation (2.5× T60, gain 1). Against
-  the Iowa pizzicato (`pizz_decay.py --iowa`) it scores 0.69; a weaker,
+  the Iowa pizzicato (`pizz_decay.py --iowa`) it scores 0.71 (0.69 before
+  8.5's radiation); a weaker,
   longer one fits the two stages better but breaks the per-partial loss fit
   (PLAN.md 8.4).
 - Open strings: the allowance 13 / 16 / 12 / 11 cents (C..A), within ~6
   cents p..ff except the open A at pp and ff (+6.5, −6.5)
   (`open_strings.py --instrument cello`).
-- Radiation: the CC0 cello-section library curve alone (KB §12.7); the
-  Library Mic outputs the section's responses. Levels: as loud as the
-  violin through the Library Mic (Smooth); Modelled 1.5 dB above it, as on
-  the violin.
+- Radiation (8.5): a solo, anechoic library-mic response fitted from the
+  Iowa arco (instrument-research `body_response.py` on all 24 runs, pp-ff:
+  545k partials, the multi-note files tracked frame by frame; split-half r
+  0.99, fine detail 0.86 even without vibrato; `data/cello/
+  cello_solo_response.csv`). The Iowa files are mono, so the Library Mic is
+  mono (left = right); it replaced the CC0 cello section's responses, which
+  were 5-10 dB brighter above 1 kHz (a section, closer mics). The target
+  (`data/cello/radiation_target.csv`): that curve below 800 Hz,
+  `radiation_target.py --iowa` above (the synth's own bridge force against
+  the recordings, p and f), and the Modelled output's own residual below
+  800 Hz smoothed over an octave folded back in (`combine_target.py
+  --residual`): the cello's force is not 1/n at its low partials, and the
+  1/n curve left 125-500 Hz ~3 dB strong. Modelled vs Iowa per half octave:
+  within ±3 dB from 125 Hz to 9 kHz (EVALUATION.md).
+- Directivity (KB §12.1, Pätynen & Lokki, Meyer): omni below ~300 Hz; the
+  cellist's torso shades the rear half from the mid band up (a high shelf on
+  each mic's output, centred at 350 Hz, 16 dB at the back: the low modes'
+  skirts carry much of the 0.5-1 kHz sound, so shading the modes' patterns
+  alone left the back only 4 dB down); the forward beam from 300 Hz, a
+  little below horizontal; the head behind and above. Front to back: 10 dB
+  in the 500 Hz octave, 18 at 1 kHz, ~20 above. Part of each mode's power
+  (0.4) follows the smooth envelope, so the fine pattern varies less from
+  note to note than the violin's: the maximum directivity's spread across
+  notes 3.7-5 dB (violin 4.9-7; KB: the cello's class 1.2-3.2, the violin's
+  2.2-8.1). More smoothing reaches the range but takes the treble's stereo
+  life (L/R correlation at 0.7-6 kHz 0.49 at 0.4, 0.76 at 0.6, 0.42 before).
+  This draw's 500 Hz octave leans down (bottom +4.6, front −2: KB says
+  forward), one strong mode's lobe; a stronger beam doesn't move it.
+- Levels: the Library Mic (Smooth) as loud as the violin's (60 Hz-8 kHz;
+  within 0.4 dB: the section response had left the cello 3.6 dB under);
+  Modelled 1.5 dB above it at 300 Hz-5 kHz, as on the violin. The room
+  (`room_power.py --instrument cello`): each Space's wet/direct power about
+  half what it was, the front now louder than the sphere's mean.
 
 ## String (KB §6.1, §10)
 
@@ -1070,9 +1100,10 @@ the total bridge force (KB §12.3a):
   at 1.5 m, 13 at 4 m, 7 at 8 m; Room 100% at 1.5 m (−7.5 dB) is what a real
   hall of that size gives (critical distance ~3.6 m, KB §12.3e: −7.6 dB).
   No time of flight (8 m would add 23 ms of latency) and no air absorption
-  (under 1 dB at 8 kHz below 10 m). The floor reflection is left for the
-  cello (Phase 8): for a standing violinist it is minor, and the VSCO
-  calibration already contains the recordings' own floor.
+  (under 1 dB at 8 kHz below 10 m). The floor reflection is left for later
+  (PLAN.md 8.5: optional, not done): for a standing violinist it is minor,
+  and the VSCO calibration already contains the recordings' own floor; the
+  cello's Iowa recordings are anechoic.
 - **The room's feed (Phase 7b, KB §12.3e):** the reverb hears the violin's
   power response (the sphere average), not the mics' view: two more channels
   from the same modes, each mode at its mean level with a random sign

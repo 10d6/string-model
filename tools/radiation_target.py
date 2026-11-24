@@ -11,17 +11,24 @@ each note on its harmonics between 0.5 and 3 kHz; the result is the median
 per 1/6-octave band.
 
     python3 tools/radiation_target.py <vsco Arco Vib dir> [render] [out.csv|-] [output mode]
+    python3 tools/radiation_target.py --iowa ~/data/iowa/cello/wav/arco [render] [out.csv|-] [output mode]
+
+--iowa: the cello's Iowa MIS arco runs (anechoic, no vibrato; pp/mf/ff), each
+note found by tools/iowa.py and rendered on its own string (pp as p, ff as f;
+mf skipped, as the violin's measure uses p and f only).
 """
 import glob, json, os, re, subprocess, sys, tempfile
 import numpy as np
 from scipy.io import wavfile
 
-src = sys.argv[1]
-render = sys.argv[2] if len(sys.argv) > 2 else "build/stringmodel_render"
-out_csv = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] != "-" else None
+argv = [a for a in sys.argv[1:] if a != "--iowa"]
+iowa = "--iowa" in sys.argv
+src = argv[0]
+render = argv[1] if len(argv) > 1 else "build/stringmodel_render"
+out_csv = argv[2] if len(argv) > 2 and argv[2] != "-" else None
 # Optional 4th argument: render through this output mode instead of the
 # Pickup (2), e.g. 3 (Modelled) to check what's left after calibration.
-mode = int(sys.argv[4]) if len(sys.argv) > 4 else 2
+mode = int(argv[3]) if len(argv) > 3 else 2
 names = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 
 def harmonics(x, sr, f0, t0, t1):
@@ -42,20 +49,37 @@ def load(path):
     if x.ndim > 1: x = x.mean(axis=1)
     return sr, x / (np.abs(x).max() + 1e-12)
 
-pf, pd = [], []
-with tempfile.TemporaryDirectory() as tmp:
+def notes():
+    """(note, dynamic p/f, recording, rate, steady from, to, extra params)."""
+    if iowa:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import iowa as iw
+        for path in sorted(glob.glob(os.path.join(src, "*.wav"))):
+            info = iw.parse(path)
+            if not info or info[2] == "mf": continue
+            sr, x = iw.load(path)
+            for note, s, dyn, t0, t1 in iw.iowa_notes(path):
+                if t1 - t0 < 0.8: continue
+                # the steady middle (the recording's own peak normalisation is per file)
+                yield note, "p" if dyn == "pp" else "f", x, sr, t0 + 0.3, min(t1 - 0.2, t0 + 1.5), \
+                    {"instrument": 1, "string.select": s + 1}
+        return
     for path in sorted(glob.glob(os.path.join(src, "*.wav"))):
         m = re.search(r"_([A-G])(\d)_([pf])\.wav$", path)
         if not m: continue
         note = 12 * (int(m.group(2)) + 1) + names[m.group(1)]
         if note < 55: continue                     # below the violin's G3
-        dyn = m.group(3)
-        f0 = 440 * 2 ** ((note - 69) / 12)
         sr, x = load(path)
         # The steady part: from 0.4 s to 1.6 s, or the middle of shorter notes.
         dur = len(x) / sr
-        real = harmonics(x, sr, f0, min(0.4, dur * 0.25), min(1.6, dur * 0.75))
-        scen = {"patch": "init", "length": 2.0, "params": {"out.mode": mode, "room.mix": 0},
+        yield note, m.group(3), x, sr, min(0.4, dur * 0.25), min(1.6, dur * 0.75), {}
+
+pf, pd = [], []
+with tempfile.TemporaryDirectory() as tmp:
+    for note, dyn, x, sr, t0, t1, extra in notes():
+        f0 = 440 * 2 ** ((note - 69) / 12)
+        real = harmonics(x, sr, f0, t0, t1)
+        scen = {"patch": "init", "length": 2.0, "params": {"out.mode": mode, "room.mix": 0, **extra},
                 "events": [{"t": 0, "on": note, "vel": 45 if dyn == "p" else 110}, {"t": 1.8, "off": note}]}
         sp = os.path.join(tmp, "s.json"); wp = os.path.join(tmp, "s.wav")
         json.dump(scen, open(sp, "w"))
