@@ -32,7 +32,14 @@ static void writeWav(const char* path, const std::vector<float>& x, float fs) {
 
 int main(int argc, char** argv) {
   const float sr = 48000;
-  Instrument inst; inst.prepare(sr, labInstrument());
+  // LAB_Z0: scale every string's impedance (a lower-tension set; the wolf test).
+  static InstrumentDef def = labInstrument();
+  if (const char* e = std::getenv("LAB_Z0"))
+    for (auto& st : def.strings) {
+      st.z0 *= static_cast<float>(std::atof(e));
+      st.zr *= static_cast<float>(std::atof(e));
+    }
+  Instrument inst; inst.prepare(sr, def);
   PerformerControls pc; InstrumentControls ic;
   const char* mode = argc > 1 ? argv[1] : "detache";
   if (const char* e = std::getenv("LAB_FRICTION")) ic.friction = static_cast<FrictionModel>(std::atoi(e));  // 0 thermal, 1 classic, 2 enhanced
@@ -52,6 +59,10 @@ int main(int argc, char** argv) {
   if (std::getenv("LAB_BETA")) inst.performer().labBeta = static_cast<float>(std::atof(std::getenv("LAB_BETA")));
   if (std::getenv("LAB_VB")) inst.performer().labVb = static_cast<float>(std::atof(std::getenv("LAB_VB")));
   if (std::getenv("LAB_FORCE")) inst.performer().labForce = static_cast<float>(std::atof(std::getenv("LAB_FORCE")));
+  if (std::getenv("LAB_PIN_AFTER")) inst.performer().labPinAfter = static_cast<float>(std::atof(std::getenv("LAB_PIN_AFTER")));
+  if (std::getenv("LAB_A4")) pc.a4 = static_cast<float>(std::atof(std::getenv("LAB_A4")));
+  if (std::getenv("LAB_VIB")) pc.vibDepth = static_cast<float>(std::atof(std::getenv("LAB_VIB")));
+  if (std::getenv("LAB_WOLF")) ic.wolf = static_cast<float>(std::atof(std::getenv("LAB_WOLF")));
   if (std::getenv("LAB_SUSTAIN")) pc.sustainSpeed = static_cast<float>(std::atof(std::getenv("LAB_SUSTAIN")));
   if (std::getenv("LAB_WIDTH")) pc.changeWidth = static_cast<float>(std::atof(std::getenv("LAB_WIDTH")));
   if (std::getenv("LAB_CHANGE")) pc.bowChange = static_cast<float>(std::atof(std::getenv("LAB_CHANGE")));
@@ -98,9 +109,10 @@ int main(int argc, char** argv) {
     std::printf("%d modes\n", inst.bridge().modeCount());
     if (inst.def().strings[0].openNote < 48)  // the cello's range too, and Z0 |Y| per string
       for (float f : {65.4f, 82.4f, 98.f, 110.f, 131.f, 147.f, 165.f, 175.f, 185.f, 220.f, 300.f})
-        std::printf("  %6.1f Hz  |Y| %.3f s/kg  Z0|Y| C..A %.3f %.3f %.3f %.3f\n", f, inst.bridge().magnitude(f),
-                    inst.def().strings[0].z0 * inst.bridge().magnitude(f), inst.def().strings[1].z0 * inst.bridge().magnitude(f),
-                    inst.def().strings[2].z0 * inst.bridge().magnitude(f), inst.def().strings[3].z0 * inst.bridge().magnitude(f));
+        std::printf("  %6.1f Hz  |Y| C..A %.3f %.3f %.3f %.3f s/kg  Z0|Y| %.3f %.3f %.3f %.3f\n", f, inst.bridge().magnitude(f, 0),
+                    inst.bridge().magnitude(f, 1), inst.bridge().magnitude(f, 2), inst.bridge().magnitude(f, 3),
+                    inst.def().strings[0].z0 * inst.bridge().magnitude(f, 0), inst.def().strings[1].z0 * inst.bridge().magnitude(f, 1),
+                    inst.def().strings[2].z0 * inst.bridge().magnitude(f, 2), inst.def().strings[3].z0 * inst.bridge().magnitude(f, 3));
     for (float f : {196.f, 280.f, 400.f, 460.f, 550.f, 700.f, 1000.f, 1500.f, 2000.f, 2600.f, 3500.f, 5000.f, 8000.f})
       std::printf("  %6.0f Hz  |Y| %.3f s/kg\n", f, inst.bridge().magnitude(f));
     return 0;
@@ -187,12 +199,25 @@ int main(int argc, char** argv) {
     inst.performer().noteOn(note, vel, pc);
     const int n = static_cast<int>(secs * sr), win = static_cast<int>(0.005f * sr);
     double e = 0; float prevDir = 0; std::vector<float> lev; std::vector<int> changes;
+    long hStuck = 0, hN = 0, hSlips = 0, hGaps = 0, hLast = -1; double hSum = 0, hSq = 0; bool hPrev = false;
     const bool hf = std::getenv("LAB_HF") != nullptr;  // measure above ~1 kHz (2nd-order high-pass)
     float h1x = 0, h1y = 0, h2x = 0, h2y = 0;
     const float ra = std::exp(-2.f * 3.14159265f * 1000.f / sr);
     for (int i = 0; i < n; ++i) {
       const float y = inst.process(pc, ic);
       out.push_back(y);
+      if (i >= static_cast<int>(0.6f * sr)) {  // the stick test from 0.6 s (KB §7.3)
+        const int cs = inst.performer().currentString();
+        const bool sl = inst.string(cs).slipping();
+        hStuck += !sl;
+        ++hN;
+        if (sl && !hPrev) {
+          if (hLast >= 0) { const double g = i - hLast; hSum += g; hSq += g * g; ++hGaps; }
+          hLast = i;
+          ++hSlips;
+        }
+        hPrev = sl;
+      }
       float m = y;
       if (hf) {
         const float a = ra * (h1y + y - h1x); h1x = y; h1y = a;
@@ -222,6 +247,16 @@ int main(int argc, char** argv) {
           }
         }
       }
+    }
+    {
+      const int cs = inst.performer().currentString();
+      const double f0 = 440.0 * std::pow(2.0, (inst.performer().fingerNote(cs) - 69) / 12.0) * pc.a4 / 440.0;
+      const double eta = hN ? double(hStuck) / hN : 0, per = hN ? hSlips / (hN / sr * f0) : 0;
+      const double mean = hGaps ? hSum / hGaps : 0;
+      const double jit = hGaps > 1 ? std::sqrt(std::max(0.0, hSq / hGaps - mean * mean)) / mean : 1.0;
+      const char* regime = eta > 0.98 ? "stick" : eta < 0.05 ? "slip" : per > 1.5 ? "multiple" : per < 0.6 ? "subharmonic"
+                           : (jit > 0.25 || eta < 0.35) ? "raucous" : "helmholtz";
+      std::printf("from 0.6 s: stick %.3f, %.2f slips/period, jitter %.3f: %s\n", eta, per, jit, regime);
     }
     // Report: steady level (median after 0.5 s) and dips below it.
     std::vector<float> s(lev.begin() + 100, lev.end());

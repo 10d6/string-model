@@ -70,7 +70,8 @@ SM_INSTRUMENT=cello ./build/instrument_lab hold 50 4 0.7   # any lab on the cell
 python3 tools/analyze.py x.wav --fmin 58           # the cello's low notes need the lower pitch floor
 python3 tools/window_map.py                          # the cello's coupled windows: contact point x force, speed pinned
 python3 tools/schelleng_check.py                     # the cello D string's window vs Galluzzo's measurement
-python3 tools/wolf_check.py --string 1              # the cello's wolf: beating and Helmholtz % per note and dynamic
+python3 tools/wolf_check.py                         # the cello's wolf: the six acceptance tests (cello doc §5)
+python3 tools/wolf_check.py --simple --string 1     # the wolf as played: beat, rate, regime per note and dynamic
 python3 tools/partial_q.py --instrument cello --iowa ~/data/iowa/cello/wav/pizz --dyn pp,mf,ff   # cello losses vs Iowa
 python3 tools/open_strings.py --instrument cello    # cello open strings under the bow
 printf '2.5 69 1 .6\n2.95 69 0 .5\n3 74 1 .6\n4 74 0 .5\n' | ./build/bowing_lab 0.5 92 3 4   # bow direction, rebows

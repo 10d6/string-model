@@ -116,6 +116,11 @@ class Instrument {
       vert_[s].setDef(def_->strings[s], lv);
     }
     perf_.prepare(host_, *def_);
+    {
+      float z[4];
+      for (int s = 0; s < 4; ++s) z[s] = def_->strings[s].z0;
+      bridge_.setStringImpedances(z);
+    }
     bridge_.prepare(fs_, def_->modes, def_->modeCount, def_->hill, def_->bodySeed, def_->denseFrom, def_->denseTo,
                     def_->denseSpacing);
     perf_.setBridge(&bridge_);
@@ -216,6 +221,7 @@ class Instrument {
   // the bridge moves, which is how open strings ring in sympathy.
   float internalSample(float vb, const InstrumentControls& ic) {
     float S = 0.f, zs = 0.f, direct = 0.f;
+    float Sv[4] = {0.f, 0.f, 0.f, 0.f};  // per string, for the weighted solve
     bool any = false;
     const bool coupled = bridge_.coupling() > 0.f;
     const bool bridgeMoving = coupled && std::fabs(uPrev_) > 1e-7f;
@@ -239,7 +245,8 @@ class Instrument {
       // A finger landing or lifting (slurs) taps the string at the finger.
       st.setFingerNoise(wn + tap_[s]);
       direct += st.z0() * wn;
-      S += 2.f * st.z0() * st.step(vb, fb, ic.friction, ic.noise, noise, damp, pluck_[s]);
+      Sv[s] = 2.f * st.z0() * st.step(vb, fb, ic.friction, ic.noise, noise, damp, pluck_[s]);
+      S += Sv[s];
       // Intonation: slip onsets mark periods in Helmholtz motion.
       const bool sl = st.slipping();
       ++sinceSlip_[s];
@@ -253,16 +260,33 @@ class Instrument {
       uPrev_ = 0.f;
       return 0.f;
     }
-    float u = 0.f;
-    if (coupled) {
-      const float y0 = bridge_.y0();
-      u = (y0 * S + bridge_.history()) / (1.f + y0 * zs);
+    float force;
+    if (coupled && bridge_.weighted()) {
+      // Per-string mode strengths (Bridge.h): each string sees its own
+      // bridge velocity.
+      float uv[4], Fv[4];
+      bridge_.solveWeighted(Sv, uv);
+      float um = 0.f;
+      for (int s = 0; s < 4; ++s) {
+        if (active_[s]) str_[s].finish(uv[s]);
+        Fv[s] = Sv[s] - str_[s].z0() * uv[s];
+        um = std::max(um, std::fabs(uv[s]));
+      }
+      force = Fv[0] + Fv[1] + Fv[2] + Fv[3];
+      bridge_.advanceWeighted(Fv);
+      uPrev_ = um;
+    } else {
+      float u = 0.f;
+      if (coupled) {
+        const float y0 = bridge_.y0();
+        u = (y0 * S + bridge_.history()) / (1.f + y0 * zs);
+      }
+      for (int s = 0; s < 4; ++s)
+        if (active_[s]) str_[s].finish(u);
+      force = S - zs * u;
+      if (coupled) bridge_.advance(force);
+      uPrev_ = u;
     }
-    for (int s = 0; s < 4; ++s)
-      if (active_[s]) str_[s].finish(u);
-    const float force = S - zs * u;
-    if (coupled) bridge_.advance(force);
-    uPrev_ = u;
     // Vertical polarisations (plucks only): on a rigid bridge, into the output.
     float vert = 0.f;
     for (int s = 0; s < 4; ++s) {

@@ -1,7 +1,7 @@
 // Cello data (Phase 8). The strings are measured (KB §2.1, D'Addario
 // Kaplan Solutions); their losses are fitted to the Iowa MIS pizzicato (8.2);
-// the body is from the published modes (KB §5.4) with its main mode set for a
-// wolf; the playability assistant is calibrated on these strings
+// the body is the measured cello modes (cello doc §3, 8.3) with per-string
+// strengths for the wolf mode and the 209 Hz mode; the playability assistant is calibrated on these strings
 // (tools/calibrate_force.py, stick test, 8.2). Friction is the violin's
 // rosin: the measured cello rosin (mu_s 0.65) put this model's window far
 // above Galluzzo's (MODEL.md). The radiation and the player's habits are
@@ -45,39 +45,46 @@ inline const InstrumentDef& cello() {
         // (Smooth) is as loud (60 Hz-8 kHz) as the violin's
         // tests/legato-scale.json [T].
         0.06f,
-        // Signature modes (KB §5.4): A0 ~102 Hz (an air mode: weak at the
-        // bridge), the main body resonance ~175 Hz, strong and lightly damped:
-        // the wolf appears by itself on F3 of the G and C strings
-        // (tools/wolf_check.py). At 0.25 s/kg (8.1) the note doubled its
-        // period at every dynamic; 0.13 (m_eff ~0.35 kg at Q 50; Z0|Y| 0.13 on
-        // the G string, twice the violin's strongest coupling) gives the
-        // classic wolf: no Helmholtz at pp, beating at mf-ff, worse on the C,
-        // and gone with the Wolf Eliminator at ~0.5 (G) to 1 (C) [T].
-        // the 226 Hz cavity mode, ~320 Hz (a peak in the library curve, KB
-        // §12.7), a measured corpus mode at 433 Hz (Q 53, m_eff 180 g -> 0.11
-        // s/kg), and the 547 / 742 Hz cavity modes [T: levels other than 433].
+        // Signature modes, measured (cello doc §3.1, §8): A0 ~100 Hz (97-104
+        // measured; an air mode, weak at the bridge), T1 ~140 Hz (the top
+        // pivoting on the soundpost, weak), the main body mode at 185 Hz
+        // (165-196 measured; Q 23-71) that makes the wolf, ~209 Hz and ~281
+        // Hz, and a corpus mode measured at 433 Hz (Q 53, m_eff 180 g).
+        // Per-string strengths (Zhang et al.): the wolf mode is strongest at
+        // the C string's notch and falls toward the A, the 209 Hz mode the
+        // reverse, 281 Hz the same on all four [T: the weights; the data
+        // gives the order, not the ratios]. The wolf mode: Q 50, 0.17 s/kg at
+        // the C (m_eff 0.25 kg, in the measured 0.12-0.36 kg, bridge-
+        // referred), 0.14 at the G: F#3 wolfs on the G at mf and on the C at
+        // every dynamic, beating at 5-8 Hz (tools/wolf_check.py: five of the
+        // cello doc's six acceptance tests pass).
         {
-            {102.f, 30.f, 0.03f},
-            {175.f, 50.f, 0.13f},
-            {226.f, 30.f, 0.05f},
-            {320.f, 30.f, 0.10f},
+            {100.f, 40.f, 0.03f},
+            {140.f, 40.f, 0.02f},
+            {185.f, 50.f, 0.17f, {1.f, 0.9f, 0.75f, 0.6f}},
+            {209.f, 40.f, 0.06f, {0.6f, 0.75f, 0.9f, 1.f}},
+            {281.f, 40.f, 0.07f},
             {433.f, 53.f, 0.108f},
-            {547.f, 30.f, 0.05f},
-            {742.f, 30.f, 0.05f},
+            {0.f, 0.f, 0.f},
             {0.f, 0.f, 0.f},
         },
-        7,
-        // Bridge hill: lower than the violin's (KB §10: ~1-2 kHz [T]), and a
-        // heavier body: lower admittance.
-        {1600.f, 3.f, 0.06f},
-        800.f, 5000.f, 100.f,  // dense band: the bigger plates' modes are closer together [T]
+        6,
+        // Bridge hill: the cello bridge's first in-situ resonance, 1.2-1.5 kHz
+        // on three cellos (cello doc §3.2); a heavier body: lower admittance.
+        {1350.f, 3.f, 0.06f},
+        // Dense band from 800 Hz, every ~100 Hz [T]. The cello doc's guess of
+        // modal overlap from ~400 Hz (§8, [D]: the violin's ~1.3 kHz scaled by
+        // the mode ratio) made the open strings' partials at 500 Hz-1 kHz decay
+        // twice as fast as the Iowa pizzicato's (Q 160-190 vs 296,
+        // tools/partial_q.py); from 800 Hz they are within ~25%.
+        800.f, 5000.f, 100.f,
         0xce110u,
         {0.85f, 1.f, 1.f, 1.f},  // force trim: the C sat a little high in its window (calibrate_force.py)
         {0.4f, 0.6f, 0.6f, 1.0f},  // ff lift (calibrate_force.py): E4 on the A string needs the most, the open C the least
         {0.f, 0.1f, 0.f, 0.f},  // pp lift: a little more on the G (calibrate_force.py)
         // The bow's flattening of the open strings, corrected at p-mf
         // (tools/open_strings.py --instrument cello: within ~4 cents p..ff).
-        {13.f, 16.f, 12.f, 12.f},
+        {13.f, 16.f, 12.f, 11.f},
         data::kCelloRadiationHz, data::kCelloRadiationDb, data::kCelloRadiationCount,
         80.f,   // below A0 (~100 Hz) the cello radiates little: the open C's fundamental is weak [T]
         1.12f,  // Modelled vs Library Mic (Smooth), 300 Hz-5 kHz: the same +1.5 dB as the violin's [T]
@@ -94,7 +101,7 @@ inline const InstrumentDef& cello() {
     c.shape.radius = 0.4f;
     c.shape.beamEl = -0.19f;
     c.shape.calibFromHz = 64.f;
-    c.shape.a0Hz = 102.f;
+    c.shape.a0Hz = 100.f;
     c.shape.nasalHz = 660.f;
     // The hand (in the neck positions): the four fingers span a minor third
     // (first to fourth finger), a forward extension a major third; a shift
@@ -109,13 +116,14 @@ inline const InstrumentDef& cello() {
     c.hand.chordSpan = 5;
     c.hand.vibRefNote = 57;
     // The playability assistant on these strings (tools/calibrate_force.py
-    // --instrument cello, Helmholtz by the stick test: clean at Pressure 0
-    // with a mean margin of 0.57, the violin 0.62; the C string the least):
+    // --instrument cello, Helmholtz by the stick test: clean at Pressure 0 on
+    // every note and dynamic, mean margin 0.62 as the violin's):
     // - force across strings grows as Z0 (string_lab sweep: the window's
     //   centre does; Beigi & Conneely's F_min is ~Z^1 too, KB §7.1), not
     //   Z0^1.39 (2x too much on the C);
-    // - the body-force term only near real resonances (25 counted almost
-    //   every cello note, Z0 |Y| ~0.04 is common on these strings);
+    // - the body-force term only near real resonances, and gently (25 counted
+    //   almost every cello note, Z0 |Y| ~0.04 is common on these strings; 8
+    //   pressed 2.8x harder on the wolf note and hid the G string's wolf);
     // - the contact point between per-string limits from the coupled
     //   instrument's windows (tools/window_map.py): a floor that rises with
     //   bow speed (a fast bow near the bridge can't hold Helmholtz motion on
@@ -127,7 +135,7 @@ inline const InstrumentDef& cello() {
     //   this model's windows break up there, so the law stays nearer the
     //   bridge.
     c.forceZExp = 1.0f;
-    c.bodyForceK = 8.f;
+    c.bodyForceK = 4.f;
     // The bow's speed: 5 cm/s at pp (Galluzzo's measuring speed), ~0.33 m/s
     // at ff (cellists average 13-35 cm/s in repertoire, cello doc §6).
     c.vbPP = 0.05f;
@@ -147,7 +155,7 @@ inline const InstrumentDef& cello() {
       c.betaFloorB[s] = floorB[s];
       c.betaCeil[s] = ceil[s];
     }
-    c.wolfMode = 1;  // the Wolf Eliminator acts on the 175 Hz mode
+    c.wolfMode = 2;  // the Wolf Eliminator acts on the 185 Hz mode
     return c;
   }();
   return d;
