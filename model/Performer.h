@@ -160,6 +160,13 @@ class Performer {
 
   // Keys ---------------------------------------------------------------
   void noteOn(int note, float vel, const PerformerControls& c) {
+    // A key already held, pressed again within 30 ms: the same key arriving
+    // twice (a keyboard seen as two MIDI inputs, or a doubled MIDI route; a
+    // real key can't go down twice without coming up). Ignore it: in
+    // separate strokes (sautille, spiccato, martele) it restarted the stroke,
+    // a doubled attack, and its zero gap read as a very fast passage.
+    for (int i = 0; i < nHeld_; ++i)
+      if (held_[i] == note && now_ - press_[i] < kDoubleOn) return;
     prime(c);
     // Sautillé follows the playing tempo: the time between key presses.
     const float gap = now_ - lastOn_;
@@ -1274,6 +1281,7 @@ class Performer {
   float vbT_ = 0.2f, betaT_ = 0.08f, fT_ = 0.4f, dyn_ = 0.5f;
   float accel_ = 5.f, accelChange_ = 5.f, attackK_ = 10.f, accent_ = 0.f;
   float swellDb_ = 0.f, swellT_ = 0.3f;  // the attack swell's depth (dB) and length (s)
+  static constexpr float kDoubleOn = 0.03f;  // s: a held key's repeat within this is the same press, arriving twice
   static constexpr float kLongVb = 0.22f;  // m/s: the fastest long-note bow (Demoucron: half notes) [T]
   float kSwellSpeed = 0.4f;             // share of the swell taken by bow speed (the rest by distance)
   float landRate_ = 0.01f, liftRate_ = 0.01f, accentDecay_ = 0.999f;

@@ -332,6 +332,15 @@ What this shows:
 - A key played after all keys are up starts a **new stroke** in the other
   bow direction.
 - With `Legato Slurs` off, every key is a bow change.
+- **A key arriving twice** (a note-on for a key already held, within 30 ms
+  of its press) is ignored: a keyboard the browser sees as two MIDI inputs
+  (with "All MIDI inputs"), or a doubled MIDI route, sends every key twice,
+  and a real key can't go down twice without coming up. In separate strokes
+  (sautillé, spiccato, martelé) the repeat restarted the stroke, a doubled
+  attack, and its zero gap read as a very fast passage; in arco it slurred
+  inaudibly. A fast sautillé passage with every event doubled 2 ms later now
+  renders bit-identical to the single one. The kit's voice count still
+  shows 2 per key (its silent voices follow the raw keys).
 - The string is chosen per note: the highest string whose open note is at or
   below it. Through a slur, the current string is kept if the note is within
   a fifth above its open note.
