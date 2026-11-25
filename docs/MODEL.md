@@ -764,7 +764,9 @@ position; the same on every string) [T]:
   hammer-on mostly moves the other polarisation. Measured: the onset of a
   change rises 1–2 dB above `main`'s (0–6 dB above the steady note, from the
   string re-settling); no clicks.
-- **Out of reach: a shift** (Flesch's L-type). Going up, the hand moves so
+- **Out of reach: a shift** (Flesch's B-type: the old finger slides; earlier
+  docs called it L-type, which is Flesch's name for a finger change during
+  the slide). Going up, the hand moves so
   the note lands on the third finger; going down, on the second. The old
   finger slides with the hand, then the new finger lands (or, going down,
   the old one lifts off onto it). If the slide reaches the note, it is a
@@ -780,9 +782,17 @@ position; the same on every string) [T]:
 **Shifts** (KB §11.2 "Shifts, portamento"). The slide takes 8 ms + `Shift
 Time` × min(1, slide/5 st) × (1.6 − 1.2·velocity) [T]: a gentle key slides
 slowly (×1.4 at 0.2), a hard one quickly (×0.4 at 1). It follows a
-minimum-jerk curve, 10t³ − 15t⁴ + 6t⁵, the usual model of a human
-point-to-point reach (Flash & Hogan 1985), which starts and lands more gently
-than the cubic S-curve it replaces [T]. A 5-semitone shift (B4→G5 on the A
+minimum-jerk curve, 10u³ − 15u⁴ + 6u⁵, the usual model of a human
+point-to-point reach (Flash & Hogan 1985), in warped time u = t^1.61, so its
+fastest point falls at 0.65 of the slide: players' slides leave gently and
+speed into the note (Yang & Chew's logistic fits of performed portamenti:
+violinists' inflection after the midpoint, erhu players' before it; the
+value is ours [T]). Through a shift the vibrato pauses (the sliding hand
+can't vibrate): it fades out over 40 ms as the slide starts and comes back
+0.1 s after arrival, ramping in over 0.3 s (KB §11.2: a new note's vibrato
+starts after 100-300 ms, ramps over 150-400) [T]. Until 2026-11 it ran on at
+full depth through the glide and into the new note: a synth's portamento
+with an LFO on top, the main thing that sounded wrong. A 5-semitone shift (B4→G5 on the A
 string, velocity 64) measures 40 ms, the fast end of the KB's 50–150 ms. The
 finger's speed along the string,
 v = |dx/dt| with x = L(1 − 2^(−p/12)) and L = 0.328 m, does two things:
@@ -962,9 +972,23 @@ and stroke ×0.7 at 9 notes/s, up to ×1.5 at 3/s [T].
   fifth of the open note), so no shift happened. Now a player who slides
   keeps the string (Gesture layer, string choice). `tools/portamento_glide.py`
   (10 slow slurred leaps; those that cross strings or leave an open string
-  don't slide): at 0 every glide 0–12 ms; at 0.3, 78–116 ms on the five that
-  shift; at 1, 178–292 ms.
+  don't slide): at 0 every glide 0–12 ms; at 0.3, 46–74 ms on the five that
+  shift; at 1, 130–186 ms (before the glide reached the note: 78–116 and
+  178–292, the 10–90% span then including the gap before the finger drop).
 - The slide is up to ×7 longer at 1: none in fast passages.
+- It glides into the note: the new finger takes over part-way (its tap at
+  half the slide) and completes the slide, the "Russian" way from underneath,
+  instead of the old finger stopping at the intermediary note and the new
+  one dropping a third higher (Flesch's B-portamento; Flesch himself slid
+  "most of the way"). Quick shifts keep the B-type.
+- The bow eases off through it (players slide "with a slight diminuendo"):
+  3 dB at the slide's middle, a bell over the slide and 60 ms after, on the
+  swell's level law (slower bow, further from the bridge; short shifts
+  scaled down below 150 ms). Before, the glide swelled ~5 dB passing a body
+  resonance; now ~2.
+- The four changes (shape, vibrato pause, diminuendo, gliding in) were A/B'd
+  by ear one at a time on violin and cello; each helped, all four together
+  best (PR "Portamento").
 - A slurred B4→G5 on the A string (a shift), keys 1 s apart: 40 ms at 0,
   106 ms at 0.3, 264 ms at 1. Keys 0.25 s apart: 39 ms at any setting.
 

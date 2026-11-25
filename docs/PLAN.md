@@ -49,7 +49,7 @@ details: [MODEL.md](MODEL.md).
 | 6b | Player habits (instrument-research `player_technique_and_responsiveness.md`): Intonation Style (Pythagorean from the open strings, key estimated, double stops pure), Vibrato Shaping, double-stop weighting | done (#11) |
 | 6c | Meter and tempo: Metric Emphasis (accents, bowing to the meter with re-takes), bow weight frog/tip, spiccato length from the note rate, Portamento | done (#12) |
 | 6d | Open strings in tune under the bow (allowance only while bowed); evaluation tools moved into `tools/`; docs and lessons (`docs/EVALUATION.md`) | done (#13) |
-| 6e | Slurs: the left hand's position (finger changes in 2–3 ms with a tap or pluck; L-type shifts on a minimum-jerk curve), Slur Range; Auto Bow Change off by default; info text for every control | done (#14) |
+| 6e | Slurs: the left hand's position (finger changes in 2–3 ms with a tap or pluck; B-type shifts on a minimum-jerk curve), Slur Range; Auto Bow Change off by default; info text for every control | done (#14) |
 | 6f | Low notes: a sharp low cut below A0 (G3's fundamental was 17 dB too strong), brightness that follows bow force (p darker, f brighter, as in the recordings) | done (#15) |
 | 7a | Directional body: per-mode radiation patterns (random spherical harmonics + the measured front-up beam), a spaced omni pair you place with Mic Angle and Mic Elevation, the default reproducing the earlier sound | done (#16) |
 | 7b | Distance and the room: Mic Distance (1/r direct, the room stays, re-gained), the room fed by the power response, player shadowing | done (#17) |
@@ -61,6 +61,7 @@ details: [MODEL.md](MODEL.md).
 | — | Left hand: open-string notes stopped on the string below so they take vibrato (Avoid Open Strings); Portamento keeps the string so slides happen; harmonics' bow position and timbre | done (#24) |
 | — | A key arriving twice (a doubled MIDI input) is ignored: it restarted sautillé strokes | done (#25) |
 | — | Wrap-up before the cello: docs, reference numbers, the measurement scripts as tools (brightness spread, string brightness vs force, fundamental strength, perceptual breakdown, performer fuzz), the Phase 8 checklist | done (#26) |
+| — | Portamento (the owner: "sounds very synthy"): slides speed into the note (Yang & Chew: violinists' inflection after the midpoint), the vibrato pauses through a shift, the bow eases off 3 dB, and a portamento glides into the note (the new finger takes over part-way) instead of stopping a third short; A/B'd by ear one change at a time, all four kept | this PR |
 | 7c | On hold (the owner's choice, after 7b): close mics: the near field (equivalent sources) and the bow-noise source, mic types with proximity effect, presets. (Swapped with the old 7b: at 1.5 m a cardioid's proximity boost starts ~20 Hz, so mic types only matter close.) | |
 | 7 | Mic placement and room: close / studio / overhead / room positions (KB §12.3–12.4), near-field sources and bow noise for close mics, the room fed by the body's power response (darker, smoother), the room's level per output | |
 | 8 | Cello: Kaplan string data, body with a strong ~175 Hz mode (the wolf note should appear by itself, plus a "wolf eliminator"), heavier bow. Then viola/bass. Seven PRs, below ("Phase 8: the cello") | in progress |
