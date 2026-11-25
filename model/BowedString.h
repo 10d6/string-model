@@ -57,6 +57,8 @@ class BowedString {
     fs_ = fs;
     const int maxLen = static_cast<int>(fs / lowestHz) + 16;
     for (Delay* d : lines()) d->prepare(maxLen);
+    snapT_.assign(static_cast<std::size_t>(maxLen + 16), 0.f);
+    snapR_.assign(static_cast<std::size_t>(maxLen + 16), 0.f);
     thermal.prepare(fs);
     thermal2.prepare(fs);
     smooth_ = 1.f - std::exp(-1.f / (0.001f * fs));  // 1 ms for delay-length steps
@@ -127,6 +129,14 @@ class BowedString {
       first_ = false;
     }
     betaActual_ = dB / (dN + dB);
+    const float targetN = tdN_;
+    if (landPending_ != 0) startLanding();
+    if (landing_ != 0) {
+      // Landing: the string keeps its layout; the new note's lengths wait.
+      pendN_ = targetN;
+      tdN_ = dN_;
+      tdT_ = dT_;
+    }
     // Torsion high-pass y = a (y1 + x - x1), corner at 2 x the pitch [T].
     torA_ = std::exp(-2.f * 3.14159265f * 2.f * hz / fs_);
     // The shelves' gain falls with frequency, so the loop's gain at DC never
@@ -134,6 +144,20 @@ class BowedString {
     // can't have, that the bow's one-way drag would feed) decays at the low
     // rate.
   }
+
+  // A finger landing on (up = true: a hammer-on, the string gets shorter) or
+  // lifting off (false: longer) the vibrating string, over `seconds`. Takes
+  // effect with the next setGeometry(), which carries the new note: the
+  // finger meets the string at the new stop as a touch whose resistance
+  // grows from a light graze (the fundamental and the partials without a
+  // node there die, as on a harmonic) to a firm stop (a lift-off, the
+  // reverse); only then is the string re-laid out at its new length.
+  void land(bool up, float seconds) {
+    if (touchQ_ > 0.f) return;  // (a harmonic's own touch is in use)
+    landPending_ = up ? 1 : -1;
+    landLen_ = std::max(1, static_cast<int>(seconds * fs_));
+  }
+  bool landing() const { return landing_ != 0; }
 
   // A light finger touch (harmonics, KB §11.2): at q of the vibrating length
   // from the finger end (1/2, 1/3, 1/4...), with resistance rOverZ * Z0 (a
@@ -186,12 +210,21 @@ class BowedString {
   // pluck (N): an external force at the junction point with the bow off (a
   // plucking finger, KB §11.2 "Pizzicato").
   float step(float vb, float fb, FrictionModel model, float noiseAmt, float noise, float damp = 0.f, float pluck = 0.f) {
-    dN_ += (tdN_ - dN_) * smooth_;
-    dB_ += (tdB_ - dB_) * smooth_;
-    dT_ += (tdT_ - dT_) * smooth_;
-    dT_ = std::clamp(dT_, kMinD, dN_ - kMinD);
+    if (landing_ != 0) {
+      // R from a graze to a stop (or back), log-linearly.
+      const float u = static_cast<float>(landPos_) / static_cast<float>(landLen_);
+      const float x = landing_ > 0 ? u : 1.f - u;
+      touchR_ = kLandR0 * std::pow(kLandR1 / kLandR0, x);
+      if (++landPos_ >= landLen_) finishLanding();
+    } else {
+      dN_ += (tdN_ - dN_) * smooth_;
+      dB_ += (tdB_ - dB_) * smooth_;
+      dT_ += (tdT_ - dT_) * smooth_;
+      dT_ = std::clamp(dT_, kMinD, dN_ - kMinD);
+      touchR_ += (touchTarget_ - touchR_) * touchGlide_;
+    }
+    dB_ += landing_ != 0 ? (tdB_ - dB_) * smooth_ : 0.f;
     const float dBT = dN_ - dT_;
-    touchR_ += (touchTarget_ - touchR_) * touchGlide_;
 
     const int w = width_ > 0 && dB_ > static_cast<float>(width_) + kMinD ? width_ : 0;
     const float dBB = dB_ - static_cast<float>(w);  // bridge side of the second point
@@ -320,6 +353,77 @@ class BowedString {
   }
 
   static constexpr float kMinD = 2.f;
+  static constexpr float kLandR0 = 0.5f, kLandR1 = 1000.f;  // touch resistance / Z0: a graze .. a stop [T]
+
+  // The waves on the finger side as they are now, by distance x (samples)
+  // from the bow: toward the nut (snapT_) and toward the bow (snapR_).
+  // Positions past `keep` (samples) are taken as at rest.
+  void snapshot(int n, float keep) {
+    const float dBT = dN_ - dT_;
+    for (int x = 0; x < n; ++x) {
+      const float fx = static_cast<float>(x);
+      float t = 0.f, r = 0.f;
+      if (fx <= keep) {
+        t = fx <= dBT ? lineAt(toTouch_, fx) : lineAt(touchToNut_, fx - dBT);
+        r = fx <= dBT ? lineAt(fromTouch_, dBT - fx) : lineAt(nutToTouch_, dN_ - fx);
+      }
+      snapT_[static_cast<std::size_t>(x)] = t;
+      snapR_[static_cast<std::size_t>(x)] = r;
+    }
+  }
+  static float lineAt(const Delay& d, float delay) {
+    return delay >= 2.f ? d.read(delay) : d.tap(std::max(1, static_cast<int>(std::lround(delay))));
+  }
+  float snapAt(const std::vector<float>& v, float x, int n) const {
+    x = std::clamp(x, 0.f, static_cast<float>(n - 1));
+    const int i = std::min(static_cast<int>(x), n - 2);
+    const float f = x - static_cast<float>(i);
+    return v[static_cast<std::size_t>(i)] * (1.f - f) + v[static_cast<std::size_t>(i + 1)] * f;
+  }
+  // Re-lay the finger side out with lengths dN, dT (the junction dT from the
+  // nut), from the snapshot: the same waves at the same places.
+  void relayout(float dN, float dT, int n) {
+    const float dBT = dN - dT;
+    const int a = static_cast<int>(dBT) + 3, b = static_cast<int>(dT) + 3;
+    for (int d = 1; d <= a; ++d) {
+      toTouch_.set(d, snapAt(snapT_, static_cast<float>(d), n));
+      fromTouch_.set(d, snapAt(snapR_, dBT - static_cast<float>(d), n));
+    }
+    for (int d = 1; d <= b; ++d) {
+      touchToNut_.set(d, snapAt(snapT_, dBT + static_cast<float>(d), n));
+      nutToTouch_.set(d, snapAt(snapR_, dN - static_cast<float>(d), n));
+    }
+    dN_ = tdN_ = dN;
+    dT_ = tdT_ = dT;
+  }
+  void startLanding() {
+    const int dir = landPending_;
+    landPending_ = 0;
+    const float oldN = dN_, newN = tdN_;
+    const float cut = dir > 0 ? oldN - newN : newN - oldN;
+    if (cut < kMinD + 1.f) return;  // (no real change of length)
+    const int n = std::min(static_cast<int>(std::max(oldN, newN)) + 6, static_cast<int>(snapT_.size()));
+    snapshot(n, oldN);
+    // Hammer-on: the old length stays, the junction at the new stop; lift-off:
+    // the new (longer) length, the junction at the lifting finger, the freed
+    // segment at rest.
+    relayout(dir > 0 ? oldN : newN, cut, n);
+    landing_ = dir;
+    landPos_ = 0;
+    pendN_ = newN;
+    touchTarget_ = 0.f;
+  }
+  void finishLanding() {
+    // Hammer-on: only the bow side remains (past the stop is cut off); lift-off:
+    // the junction is transparent now. Either way, the plain layout.
+    const float keep = landing_ > 0 ? dN_ - dT_ : dN_;
+    const float newN = std::max(pendN_, 2.f * kMinD + 1.f);
+    const int n = std::min(static_cast<int>(std::max(dN_, newN)) + 6, static_cast<int>(snapT_.size()));
+    snapshot(n, keep);
+    landing_ = 0;
+    touchR_ = 0.f;
+    relayout(newN, 0.5f * newN, n);
+  }
   // The finger side is split at the touch point: bow -> touch -> nut and back.
   // With bow width, the bridge side is split at the second contact point.
   Delay toTouch_, touchToNut_, nutToTouch_, fromTouch_, toBridge_, fromBridge_, toB2_, fromB2_;
@@ -335,6 +439,9 @@ class BowedString {
   float dN_ = 100.f, dB_ = 10.f, tdN_ = 100.f, tdB_ = 10.f, betaActual_ = 0.1f;
   float dT_ = 50.f, tdT_ = 50.f, touchQ_ = 0.f, touchTarget_ = 0.f, touchR_ = 0.f, pluck_ = 0.f;
   float touchGlide_ = 0.001f;
+  std::vector<float> snapT_, snapR_;
+  int landPending_ = 0, landing_ = 0, landPos_ = 0, landLen_ = 1;
+  float pendN_ = 100.f;
   float level_ = 0.f, arrive_ = 0.f, lv_ = 0.f, fb_ = 0.f, fingerNoise_ = 0.f;
   int quiet_ = 0;
   bool asleep_ = true, first_ = true, slipping_ = false;

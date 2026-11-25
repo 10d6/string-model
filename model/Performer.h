@@ -6,8 +6,9 @@
 //   keys are up is a new stroke in the other bow direction. With legato off
 //   every key is a bow change (détaché).
 // - The left hand has a position (KB §11.2, player doc §3.3): a slurred note
-//   within its reach is a finger change (hammer-on / lift-off: the pitch
-//   switches in 2-3 ms with a small tap or pluck); one out of reach is a
+//   within its reach is a finger change (hammer-on / lift-off: the finger
+//   meets the string as a light touch that firms up over 20-25 ms, with a
+//   small tap or pluck); one out of reach is a
 //   shift: the old finger slides with the hand, then the new finger lands
 //   (a portamento glides on into the note). Slides speed up into the note,
 //   the vibrato pauses through them and the bow eases off.
@@ -93,6 +94,9 @@ struct StringTarget {
   float slide = 0.f;       // m/s: the stopping finger's speed along the string (shifts)
   float touchQ = 0.f;      // harmonics: touch point, fraction of the vibrating length from the finger end (0 = none)
   float touchR = 0.f;      // touch resistance / Z0
+  int landId = 0;          // changes when a finger lands on (or lifts off) this sounding string
+  bool landUp = true;      // a hammer-on (true) or a lift-off
+  float landT = 0.f;       // s: how long the finger takes to stop (or free) the string
 };
 
 class Performer {
@@ -370,6 +374,11 @@ class Performer {
         }
       } else if (dropT_[s] < 1.f) {
         // The slide has arrived: the new finger lands (or lifts) now.
+        if (landAfterSlide_[s]) {
+          landAfterSlide_[s] = false;
+          requestLanding(s, fingerTo_[s] > fingerVia_[s]);
+          dropT_[s] = 1.f;
+        }
         if (tapPending_[s] != 0.f) {
           tapStart_[s] = now_;
           tapAmp_[s] = tapPending_[s];
@@ -460,6 +469,9 @@ class Performer {
       out[s].damp = (bowed_[s] || s == str_) ? damp_ : 0.f;
       out[s].touchQ = touchQ_[s];
       out[s].touchR = touchQ_[s] > 0.f ? kTouchR : 0.f;
+      out[s].landId = landId_[s];
+      out[s].landUp = landUp_[s];
+      out[s].landT = landUp_[s] ? kLandOn : kLandOff;
       // Finger speed along the string during a shift: x = L (1 - 2^(-p/12)),
       // p semitones above the open string; dn/dt from the S-curve.
       out[s].slide = 0.f;
@@ -799,7 +811,14 @@ class Performer {
           tapPending_[s] = 0.f;
         }
       }
-      // A finger change with no slide lands at once.
+      // A finger change with no slide lands at once: softly (the string
+      // takes the landing, BowedString::land), so the pitch target moves now.
+      if (kSoftLanding && shiftT_[s] >= 1.f && dropT_[s] < 1.f) {
+        requestLanding(s, fingerTo_[s] > fingerVia_[s]);
+        dropT_[s] = 1.f;
+      } else if (kSoftLanding && shiftT_[s] < 1.f && dropT_[s] < 1.f) {
+        landAfterSlide_[s] = true;
+      }
       if (shiftT_[s] >= 1.f && tapPending_[s] != 0.f) {
         tapStart_[s] = now_;
         tapAmp_[s] = tapPending_[s];
@@ -1247,6 +1266,11 @@ class Performer {
     changing_ = true;
   }
 
+  void requestLanding(int s, bool up) {
+    ++landId_[s];
+    landUp_[s] = up;
+  }
+
   void computeDyn(const PerformerControls& c) {
     dyn_ = std::clamp(dynIn_ + c.velSens * (vel_now_ - 0.6f), 0.f, 1.f);
   }
@@ -1365,6 +1389,18 @@ class Performer {
   float accel_ = 5.f, accelChange_ = 5.f, attackK_ = 10.f, accent_ = 0.f;
   float swellDb_ = 0.f, swellT_ = 0.3f;  // the attack swell's depth (dB) and length (s)
   static constexpr float kDoubleOn = 0.03f;  // s: a held key's repeat within this is the same press, arriving twice
+  // A finger's landing on the vibrating string, soft: first a light touch
+  // (as on a harmonic: the fundamental dies, partials with a node near the
+  // finger lead to the new note), firm after kLandOn; a lift-off frees it
+  // over kLandOff (BowedString::land). The Philharmonia cellist's legato steps
+  // take a median 34 ms from pitch to pitch (17-65 ms); a 2-3 ms switch made
+  // same-string slurs sound artificial (the owner, by ear) [T: the values;
+  // the spread didn't follow the register, so no dependence on the string's
+  // height over the fingerboard].
+  static constexpr bool kSoftLanding = true;
+  static constexpr float kLandOn = 0.025f, kLandOff = 0.02f;  // s
+  int landId_[4]{};
+  bool landUp_[4]{true, true, true, true}, landAfterSlide_[4]{};
   static constexpr float kSlideInflect = 0.65f;  // where a slide is fastest, of its length (0.5: symmetric)
   static constexpr bool kVibStopsInShift = true;
   static constexpr bool kArriveGlide = true;

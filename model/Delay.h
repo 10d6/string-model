@@ -41,6 +41,8 @@ class Delay {
   }
   // Integer delay d >= 1 (no interpolation).
   float tap(int d) const { return at(d); }
+  // Overwrite the sample at integer delay d >= 1 (re-laying a string out).
+  void set(int d, float v) { buf_[static_cast<std::size_t>((w_ - d + 1) & mask_)] = v; }
   int capacity() const { return mask_ - 4; }
 
  private:
