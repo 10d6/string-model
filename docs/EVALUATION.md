@@ -211,6 +211,30 @@ the C string's fundamentals, and the C string's stopped pitch. Re-run after a ch
 (~1.5 min on two cores. `--clips DIR` writes one recording-then-synth pair per register and
 dynamic for listening; `--sr 192000` renders with the strings at 192 kHz.)
 
+### After the recorded onsets (Bow Catch 1)
+
+`model/Onsets.h` (MODEL.md "The cello": Recorded onsets). Median synth − recording, before →
+after, soft / loud:
+
+| Register | treble rise (ms), Phil | treble rise, bigcat | attack aperiodicity (dB), Phil | attack treble re sustain (dB), Phil |
+|---|---|---|---|---|
+| C2–F#2 | +141 → +56 / +26 → +8 | +105 → +57 / +23 → +23 | −7 → −3 / +1 → +6 | −9 → −4 / −6 → −3 |
+| G2–B2 | +150 → +136 / +20 → +20 | +82 → +82 / −13 → −12 | −10 → −9 / −3 → −2 | −7 → −3 / −4 → −4 |
+| C3–B3 | +58 → +10 / −36 → −36 | +51 → +20 / +71 → +70 | −9 → −6 / −6 → −4 | −5 → −2 / −4 → −3 |
+| C4–B4 | −8 → −4 / −64 → −64 | +38 → +39 / −47 → −47 | −8 → −1 / −7 → −7 | −1 → 0 / −2 → −2 |
+| C5–C6 | +85 → +91 / −12 → −12 | +75 → +77 / +27 → +27 | −2 → +6 / +3 → +6 | +2 → +1 / +1 → +1 |
+
+The level's rise and the first 60 ms move little (within ~8 ms and 3 dB) except in thumb
+position (soft rise +48 → +3 ms against the Philharmonia), so the onset rides the note
+rather than preceding it. `python3 -I tools/onset_level.py ~/data/bigcat`: the onset against
+the note 40-120 ms after it starts, synth − recording, median −0.1 dB (per string and
+dynamic within ±5 dB but the D string's f, −10). The violin: bit-identical.
+
+Lesson: scaling a recorded onset by the held level (the first version) put the scratch
+20-40 ms before the synth's note, which starts ~20 dB under its level where bigcat's starts
+near it, and the aperiodicity read 7-18 dB over both recordings. Transplant the ratio of
+noise to tone moment by moment, not the level.
+
 ## Techniques
 
 - **Measure through the synth, not only the labs.** The harmonics were in

@@ -99,6 +99,18 @@ struct StringTarget {
   float landT = 0.f;       // s: how long the finger takes to stop (or free) the string
 };
 
+// A stroke's start, for the recorded onsets (Onsets.h): read by the
+// Instrument when `id` changes.
+struct OnsetEvent {
+  int id = 0;
+  int string = 0;
+  float vel = 0.7f;      // the key's velocity, 0..1
+  float levelRatio = 1.f;  // the stroke's v_b / beta before the swell (the level law)
+  bool down = true;      // down-bow (frog to tip)
+  bool rebow = false;    // a bow change on the string, not from the air
+  int art = 0;           // Articulation
+};
+
 class Performer {
  public:
   void prepare(float fs, const InstrumentDef& def) {
@@ -486,6 +498,7 @@ class Performer {
   }
 
   float beta() const { return betaT_; }
+  const OnsetEvent& onset() const { return onset_; }
   float forceOn(int s) const { return force_[s]; }
   // Bow force re mf on the players' line, in octaves (smoothed; 0 unbowed).
   float brightness() const { return bright_; }
@@ -854,6 +867,7 @@ class Performer {
 
   // A new stroke: a bow change if the bow is moving, else from the air.
   void startStroke(float vel, const PerformerControls& c, bool change) {
+    const bool rebow = change && bowing_;
     noteAge_ = 0.f;
     rounding_ = false;
     strokeForce_ = 1.f;
@@ -916,6 +930,13 @@ class Performer {
     // heavier, tip lighter; residual error a few % per stroke) [T].
     strokeForce_ = 1.f + 0.03f * bipolar();
     computeTargets(c);
+    ++onset_.id;
+    onset_.string = str_;
+    onset_.vel = vel;
+    onset_.levelRatio = levelRatio_;
+    onset_.down = dir_ > 0.f;
+    onset_.rebow = rebow;
+    onset_.art = art_;
   }
 
   // Force scale per bowed string, relative to the assistant's base force:
@@ -1304,6 +1325,7 @@ class Performer {
     float vb = vbAttack + (std::min(vbLong, vbAttack) - vbAttack) * ease;
     if (art_ == kSpiccato || art_ == kSautille) beta = 0.18f - 0.1f * d;   // Demoucron: 58 / 40 / 29 mm at p / mf / f
     if (art_ == kPizzicato) beta = pluckBeta_;        // the pluck point
+    levelRatio_ = vbAttack / std::clamp(beta * std::pow(2.f, -1.5f * contactIn_), 0.015f, 0.3f);
     // Attack swell (startStroke): the level deficit, 40% from a slower bow
     // (the bow accelerates through the stroke, KB §11.5) and 60% from further
     // from the bridge, on the level law L = 7.7 ln(vb/beta); the force below
@@ -1386,6 +1408,8 @@ class Performer {
   float revFrom_ = 0.f, revStart_ = 0.f, revT_ = 0.06f, strokeForce_ = 1.f, turnAt_ = 0.03f;
   float vb_ = 0.f, dir_ = -1.f, bowPos_ = 0.15f;
   float vbT_ = 0.2f, betaT_ = 0.08f, fT_ = 0.4f, dyn_ = 0.5f;
+  float levelRatio_ = 2.5f;  // v_b / beta before the swell (computeTargets)
+  OnsetEvent onset_;
   float accel_ = 5.f, accelChange_ = 5.f, attackK_ = 10.f, accent_ = 0.f;
   float swellDb_ = 0.f, swellT_ = 0.3f;  // the attack swell's depth (dB) and length (s)
   static constexpr float kDoubleOn = 0.03f;  // s: a held key's repeat within this is the same press, arriving twice

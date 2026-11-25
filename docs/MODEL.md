@@ -190,6 +190,41 @@ radiation; 8.6 attacks and the hand):
   15 ms, 17 / 10 / 5 dB; now 148 / 210 / 50 ms, 16 / 19 / 10 dB). The
   Philharmonia cellist, measured only, agrees (f 195 ms and 19 dB, ff 75 ms
   and 11 dB): cellists start mf-f notes much softer than the violinist.
+- **Recorded onsets** (after 8.6; `model/Onsets.h`, `tools/make_onsets.py`, Bow Catch):
+  measured against the Philharmonia cello and bigcat (EVALUATION.md "Attacks and sustains
+  by register"), the model's attack opened like a filter and was too clean: its treble
+  grows with the swelling bow, a real bow's catch and scratch are full-band from the first
+  ~20 ms. Each stroke now adds a real cellist's onset to the bridge force (so the body,
+  mics and room act on it):
+  - The clips: the Karoryfer x bigcat cello's bowed sustains (CC0; 17 notes C2-C6 a minor
+    third apart, p/mp/mf/f, down and up bow), the first 0.2 s with the harmonics removed
+    (each heterodyned along the tracked pitch, as 10d6/strings does; the estimate divided by
+    the window's coverage, since the files start at the attack, and faded in over the 5 ms
+    before the onset), equalised by S/H (the recording's held harmonics against a
+    sawtooth's, a third of an octave smoothed, ±24 dB) so the residual-to-harmonics balance
+    survives in every band whatever bigcat's mic and body did. Odd takes (residual 9 dB over
+    the note's median, a click 22 dB over the RMS, the bounced takes 10d6/strings heard) use
+    the same note and bow at the nearest other dynamic. 32 kHz, mu-law 8-bit: 0.87 MB (the
+    browser page 1.49 → 2.7 MB).
+  - Playing: the nearest note (transposed, at most 1.5 semitones), the velocity's nearest
+    layer, the bow's direction. From the air the clip is scaled by the synth's own
+    bridge-force envelope (2.5 ms) over the recording's tone envelope (stored with it), so
+    it keeps the recording's noise-to-tone ratio while the note builds up: scaled by the
+    held level instead, the scratch came 20-40 ms before the note (the synth's attack starts
+    ~20 dB under its note, bigcat's near it). Capped at twice the note's level by the
+    performer's law (Z₀ (v_b/β)^0.886). Bow changes on the string get half, at that level;
+    spiccato and sautillé a clip cut to 80 ms; slurs, harmonics and pizzicato none [T].
+  - Level: `InstrumentDef::onsetGain` 0.19, fitted with `tools/onset_level.py` (Bow Catch 1
+    less 0, which is exactly the onset: it is added after the strings): the onset against
+    the note 40-120 ms after it starts, synth against recording, within ±5 dB per string and
+    dynamic but the D string's f (−10 dB; median −0.1 dB) [T].
+  - Measured (`attack_sustain.py`, Philharmonia soft / loud): the C string's treble arrives
+    141 → 56 / 26 → 8 ms late, its attack's treble re its sustain −9 → −4 / −6 → −3 dB; C3–B3
+    soft 58 → 10 ms; the attacks' aperiodicity nearer both recordings in most registers
+    (thumb position now 6 dB over). Not reached: G2–B2 (bigcat's onsets there are among its
+    quietest, and what's left is the model's own harmonics darkening through the swell, the
+    string's speed and contact point: a change of its own). The violin has no onsets (none
+    recorded yet): bit-identical.
 - The hand (8.6): thumb position from the octave up (the thumb across the
   strings; thumb to third finger a fourth, a semitone back; shifts down land
   three above the new place). `instrument_lab hand 3 24` (a two-octave
