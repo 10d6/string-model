@@ -22,6 +22,12 @@ struct HandDef {
   float downFinger = 2.f;  // a shift down, this far above
   int chordSpan = 7;       // the widest chord across adjacent strings (semitones between its lowest and highest stop)
   int vibRefNote = 69;     // vibrato is wider above this note and narrower below (player doc §3.1)
+  // Thumb position (the cello): with the hand's place this far above the
+  // open string or higher, the thumb lies across the strings as a finger and
+  // the hand reaches thumbBelow under it to thumbReach above; a shift down
+  // into it lands thumbDown above the new place (none on the violin).
+  float thumbFrom = 99.f;
+  float thumbReach = 5.f, thumbBelow = 1.f, thumbDown = 3.f;
 };
 
 struct InstrumentDef {
@@ -84,6 +90,19 @@ struct InstrumentDef {
   float betaFloorA[4]{}, betaFloorB[4]{}, betaCeil[4]{0.3f, 0.3f, 0.3f, 0.3f};
   // The body mode a wolf eliminator acts on (index into modes; -1: none).
   int wolfMode = -1;
+  // Attacks from the air (KB §7.2; cello doc §4.2): starting from rest needs
+  // ~4x the force that sustains the note (Galluzzo), so players press harder
+  // at first and let the force settle into the window. Extra force at the
+  // first contact, x the note's force (0: none), decaying with attackLiftTau
+  // (s); varied per note by attackVary (fraction: identical gestures don't
+  // give identical onsets, cello doc §4.3).
+  float attackLift = 0.f, attackLiftTau = 0.05f, attackVary = 0.f;
+  // The attack swell (Performer: a note grows into its level), by dynamic at
+  // d = 0.24, 0.35, 0.46, 0.571, 0.681, 0.792 (velocities 20..120): depth
+  // (dB at Attack Swell 1) and length (s). The violin's: fitted to the
+  // Philharmonia violinist's rise times.
+  float swellDb[6]{18.5f, 20.f, 23.f, 12.f, 6.6f, 5.9f};
+  float swellT[6]{0.36f, 0.36f, 0.356f, 0.2f, 0.268f, 0.26f};
   // The body's size and radiation patterns, and where the body controls act.
   RadiationShape shape{};
   HandDef hand{};

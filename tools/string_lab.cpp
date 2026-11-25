@@ -145,7 +145,7 @@ int main(int argc, char** argv) {
     std::printf("acc \\ F  ");
     for (float f : forces) std::printf("%6.2f", f);
     std::printf("\n");
-    int perfect = 0, good = 0, cells = 0;
+    int perfect = 0, good = 0, good10 = 0, cells = 0;
     for (float ac : accs) {
       std::printf("%7.2f  ", ac);
       for (float fb : forces) {
@@ -177,12 +177,15 @@ int main(int argc, char** argv) {
         ++cells;
         if (settled < 0 || first < 0) { std::printf("     -"); continue; }
         const float ms = std::max(0.f, (settled - first) / kFs * 1000.f);
+        if (settled - first <= static_cast<int>(10.f * P)) ++good10;
         if (settled - first <= static_cast<int>(1.5f * P)) { ++perfect; ++good; std::printf("     P"); }
         else { if (ms <= 50.f) ++good; std::printf("%6.0f", ms); }
       }
       std::printf("\n");
     }
-    std::printf("perfect %d, within 50 ms %d, of %d\n", perfect, good, cells);
+    // 50 ms is ~10 periods on the violin's G but 3 on the cello's C: judge
+    // the cello in periods (cello doc §4.3).
+    std::printf("perfect %d, within 50 ms %d, within 10 periods %d, of %d\n", perfect, good, good10, cells);
     return 0;
   }
   if (!std::strcmp(argv[1], "tone")) {

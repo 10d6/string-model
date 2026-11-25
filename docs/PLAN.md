@@ -169,15 +169,22 @@ numbers instead, and nothing is fitted to those datasets.
    1.2-3.2; more smoothing narrows the stereo). `room_power.py`, four cello
    presets (Old & Open, New & Tight, Close Mic, Wolf Tamed; `"instrument":
    1`). Not done (optional): the stage floor through the endpin (§3.4).
-6. **The cellist's hands and attacks.** Attacks: a starting force ~4x the
-   sustain minimum, then down to the sustain window (Galluzzo); slow-start
-   stiction (friction up to 2x for slow bow acceleration); a little
-   per-note randomness in attack thresholds; judged in periods, not ms
-   (`string_lab guettler`: C 6 / G 7 / D 11 / A 15 of 42 within 50 ms now).
-   The bow: ~80 g. Hands: thumb position, extensions; the dynamics law's
-   long-note speed (`kLongVb`) and attack swell from the Philharmonia
-   cello (measuring only); vibrato (KB §11.2: ~6.5 Hz); bounce strokes
-   (gravity barely helps on the cello, KB §11.1); Intonation Style tables.
+6. **The cellist's hands and attacks** (8.6, done; MODEL.md "The cello").
+   Attacks from the air land with twice the note's force, settling over
+   50 ms, ±20% per note (Galluzzo's ~4x the sustaining minimum): judged in
+   periods with `instrument_lab attacks`, median 21 → 13, within 10 periods
+   3 → 83 of 240. The attack swell gets a cello table fitted to the Iowa
+   arco's onsets (cellists start mf-f much softer). Thumb position from the
+   octave. Not done, on purpose: slow-start stiction (the performer never
+   starts that slowly), a cello vibrato rate (the literature's rates are the
+   violin's), bow mass (nowhere in the model), cello bounce strokes (the
+   templates have no gravity to lose), Intonation Style tables (the logic
+   is generic). The joint refit of losses, second polarisation and pluck:
+   tried (vertical 0.5 at 4x T60, losses 0.85x-1.3x): the second stage
+   then matches (−14 vs −15 dB/s) but the first stays too slow (−47 to −51
+   vs −68 dB/s) and the per-partial Q bands move off the recordings; a
+   faster first stage needs more low-frequency damping at the bridge, which
+   would mean redoing the bowing calibration. Kept as it was.
 7. **Evaluation and wrap-up.** `open_strings`, `harmonics_tuning`,
    `brightness_spread`, `fundamental_strength`, `perceptual.py` against the
    Philharmonia cello (measuring only; yardstick Iowa vs Philharmonia);

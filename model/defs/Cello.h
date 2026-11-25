@@ -136,6 +136,10 @@ inline const InstrumentDef& cello() {
     c.hand.downFinger = 1.f;
     c.hand.chordSpan = 5;
     c.hand.vibRefNote = 57;
+    // Thumb position from the octave up (the thumb across two strings at the
+    // octave harmonic): thumb to third finger a fourth [T].
+    c.hand.thumbFrom = 11.f;
+    c.hand.thumbReach = 5.f;
     // The playability assistant on these strings (tools/calibrate_force.py
     // --instrument cello, Helmholtz by the stick test: clean at Pressure 0 on
     // every note and dynamic, mean margin 0.62 as the violin's):
@@ -184,9 +188,33 @@ inline const InstrumentDef& cello() {
     // the level at 1 s within 1.5 dB. A weaker, longer second polarisation
     // (0.3 at 4x) matches the two stages better (0.64) but pulls every
     // partial's decay off the recordings (partial_q.py, 1-2 kHz Q 181 vs 293):
-    // the loss fit leans on it. A joint refit would lower the string's losses
-    // and redo the bowing calibration (later, with the pluck: PLAN.md 8.6).
+    // the loss fit leans on it. 8.6 tried a joint refit (PLAN.md): the first
+    // stage stays too slow whatever the string's losses; kept as it was.
     c.wolfMode = 2;  // the Wolf Eliminator acts on the 185 Hz mode
+    // Attacks from the air (cello doc §4.2-4.3): Galluzzo's switch-on
+    // onsets needed ~4x the sustaining minimum force. +100% at first contact
+    // (the note's force sits ~2x above its minimum), settling over ~50 ms,
+    // +-20% from note to note. instrument_lab attacks (with the swell below):
+    // within 10 periods of Helmholtz motion 3 -> 83 of 240, median 21 -> 13
+    // periods; the first slip ~5 ms after the key (the bow catches before it
+    // lets go). +150% did a little better on attacks but left the open G's
+    // pp window off Pressure 0 (calibrate_force.py) [T: the numbers].
+    // Galluzzo's slow-start stiction (a <~ 0.6 m/s^2) never applies: the
+    // performer's attacks accelerate at 2.5 m/s^2 or more.
+    c.attackLift = 1.f;
+    c.attackLiftTau = 0.05f;
+    c.attackVary = 0.2f;
+    // The attack swell, fitted to the Iowa arco's onsets (pp/mf/ff at
+    // velocities 45/80/110: within 3 dB of the held level after 138 / 218 /
+    // 55 ms, the first 60 ms 17 / 22 / 11 dB under; synth 148 / 210 / 50 ms,
+    // 16 / 19 / 10 dB; MODEL.md "The cello"). The cellist starts mf and f
+    // notes much softer than the violinist the violin's table came from (the
+    // Philharmonia cellist, measured only: f 195 ms and 19 dB, ff 75 ms and
+    // 11 dB).
+    {
+      const float db[6] = {18.5f, 18.f, 22.f, 28.f, 20.f, 14.f}, t[6] = {0.36f, 0.3f, 0.34f, 0.4f, 0.18f, 0.1f};
+      for (int i = 0; i < 6; ++i) c.swellDb[i] = db[i], c.swellT[i] = t[i];
+    }
     return c;
   }();
   return d;

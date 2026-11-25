@@ -61,7 +61,8 @@ switch needs no allocation. The labs test the violin unless
 `SM_INSTRUMENT=cello` is set (`tools/LabInstrument.h`).
 
 **The cello** (8.1 the KB alone; 8.2 strings, losses, playability; 8.3 the
-measured body, per-string mode strengths, the wolf's acceptance tests):
+measured body, per-string mode strengths, the wolf's acceptance tests; 8.5
+radiation; 8.6 attacks and the hand):
 - Strings: Kaplan (Z₀ 1.46 / 1.00 / 0.67 / 0.56 kg/s, KB §2.1), Z_R 3.3 Z₀
   (KB §2.4), scale 0.69 m.
 - Losses fitted to the Iowa MIS pizzicato (every partial's decay, pp/mf/ff,
@@ -169,6 +170,38 @@ measured body, per-string mode strengths, the wolf's acceptance tests):
   mic for every dynamic) C 13, G 13, D 10, A 9 dB; the violin ~20 dB on
   every string. The C's pp sits at its contact ceiling, the price of a
   playable pp on its narrow windows: the model's main limit on the cello.
+- Attacks (8.6, cello doc §4.2-4.3): starting from rest needs ~4x the
+  force that sustains the note (Galluzzo), so from the air the bow lands
+  with twice the note's force (`InstrumentDef::attackLift` 1, settling over
+  50 ms, ±20% per note: identical gestures don't give identical onsets).
+  `instrument_lab attacks` (the performer's own attacks: each string open
+  and +2/+4/+7, three velocities, five runs; periods from the first slip to
+  Helmholtz motion): within 10 periods 3 → 83 of 240, median 21 → 13
+  periods; the bow now catches ~5 ms before the first slip (1 ms before).
+  +150% did a little better on attacks but moved the open G's pp window off
+  Pressure 0 (`calibrate_force.py`). The violin: median 27 periods, 16 of
+  240 within 10 (unchanged). Slow-start stiction (μs up to 2x below
+  ~0.6 m/s²) is not modelled: the performer's attacks accelerate at 2.5 m/s²
+  or more.
+- Attack swell (8.6): the cello's own table (`InstrumentDef::swellDb/T`),
+  fitted to the Iowa arco's onsets. At velocities 45/80/110 the recordings
+  come within 3 dB of the held level after 138 / 218 / 55 ms, their first
+  60 ms 17 / 22 / 11 dB under (the synth with the violin's table: 178 / 65 /
+  15 ms, 17 / 10 / 5 dB; now 148 / 210 / 50 ms, 16 / 19 / 10 dB). The
+  Philharmonia cellist, measured only, agrees (f 195 ms and 19 dB, ff 75 ms
+  and 11 dB): cellists start mf-f notes much softer than the violinist.
+- The hand (8.6): thumb position from the octave up (the thumb across the
+  strings; thumb to third finger a fourth, a semitone back; shifts down land
+  three above the new place). `instrument_lab hand 3 24` (a two-octave
+  scale on the A string): 12 → 10 shifts. Intonation Style needs nothing of
+  its own: it tunes the open strings in pure fifths from A (the C 5.9 cents
+  flat) whatever they are. Vibrato keeps the shared Rate (KB §11.2: cello
+  6.5 Hz in concerto recordings, 5.3 in TinySOL; the violin's sample set
+  5.3/4.5). Spiccato and sautillé keep the violin's timed templates: they
+  have no gravity in them to lose (KB §11.1), and the cello's spiccato
+  separates like the Philharmonia cellist's low-register spiccato (~7-11 dB
+  between notes at 100-125 ms). The bow's mass (~80 g) appears nowhere in
+  the model.
 - Pizzicato: the violin's second polarisation (2.5× T60, gain 1). Against
   the Iowa pizzicato (`pizz_decay.py --iowa`) it scores 0.71 (0.69 before
   8.5's radiation); a weaker,
