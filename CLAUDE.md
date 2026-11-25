@@ -97,6 +97,8 @@ LAB_HF=1 tools/bow_change_gap.sh 69                # automatic bow change gap
 python3 tools/perceptual.py --data ~/data/phil/wav [--json out.json]   # perceptual distance to the Philharmonia recordings (2.5 min)
 python3 tools/perceptual.py --compare a.json b.json [--by-note] # two builds: note by note, per dynamic
 python3 tools/perceptual.py --yardstick             # recording vs recording
+python3 tools/attack_sustain.py --phil ~/data/phil-cello/wav --bigcat ~/data/bigcat --json a.json   # cello attacks and sustains by register (1.5 min)
+python3 tools/attack_sustain.py --compare a.json b.json        # two builds: what moved, per register and dynamic
 
 # browser page (API.md §11)
 cmake -S . -B build-web -G Ninja -DCMAKE_TOOLCHAIN_FILE=synthkit/cmake/wasm32-wasi.cmake -DCMAKE_BUILD_TYPE=Release && cmake --build build-web   # Release: without it the page is unoptimised (-O0)
@@ -176,7 +178,11 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
   (anechoic; arco and pizzicato pp/mf/ff, a run of notes per file; free of
   restrictions, so it may be fitted for shipped parameters) decoded to
   `~/data/iowa/cello/wav/{arco,pizz}`, and the owner's Philharmonia cello
-  zip decoded to `~/data/phil-cello/wav`. VSCO-2-CE has only a cello section
+  zip decoded to `~/data/phil-cello/wav`, and the Karoryfer × bigcat cello (CC0,
+  `git clone --depth 1 https://github.com/sfzinstruments/karoryfer-bigcat.cello ~/data/bigcat`:
+  the one cello the workspace can download; no vibrato, close-miked, names an octave low).
+  After changing the attack, the bow's noise, the cello's spectrum or its pitch, run
+  `tools/attack_sustain.py` before and after (EVALUATION.md "Attacks and sustains by register"). VSCO-2-CE has only a cello section
   (its library-mic curve, replaced in 8.5, is kept in `data/cello/` for
   reference). `pip install librosa` for instrument-research's
   `body_response.py`. A fresh session: ask the
