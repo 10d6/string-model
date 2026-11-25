@@ -19,6 +19,7 @@ from the repo root after `cmake --build build` (Release). Python tools take
 | Open strings in tune | `python3 tools/open_strings.py` | D, A, E within ±1.7 cents at every dynamic; G +3.1 / −0.7 / −2.3 at p / mf / ff |
 | Harmonics | `python3 tools/harmonics_tuning.py` | within ±3 cents (B6 −1), fundamental 35–68 dB down |
 | Harmonic timbre | `python3 tools/harmonic_timbre.py --data <phil wav>` | (synth harmonic − arco) − (real harmonic − arco), partials 2–6: −0.5 / +1.9 / +2.6 / −2.1 / −2.0 dB, mean 1.8 (before the left-hand PR +0.7 / +5.6 / +9.9 / +6.7 / +12.2, 7.0) |
+| Same-string slurs | `LAB_SLIPS=1 ./build/instrument_lab slurs 3` (and `SM_INSTRUMENT=cello`) | slips per period once the finger is down: violin 179 of 180 clean, cello 164 (median 1.00): a landing finger leaves clean Helmholtz motion |
 | Portamento | `python3 tools/portamento_glide.py` | glide (10–90%) on the leaps that shift: 0–12 ms at 0, 46–74 at 0.3, 130–186 at 1 (gliding into the note, fastest late; before: 78–116 / 178–292 with the finger-drop gap; before the left-hand PR none slid at any setting) |
 | Intonation Style | `python3 tools/intonation_check.py` | style 1 vs 0: C# +8, F# +6, B +4, G −4; double stops pure (third −14, sixths +14) |
 | Vibrato Shaping | `python3 tools/vibrato_extent.py` | shape 0 / 0.7: B4 26 / 20 cents, B6 27 / 32; B4 after a fast run 15 / 14, then 31 / 28 (vibrato default 26 cents) |

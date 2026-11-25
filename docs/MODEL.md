@@ -755,15 +755,36 @@ when the hand changes position. So the performer tracks the hand's place
 position; the same on every string) [T]:
 - **Within reach** (from one below the hand's place, a low first finger, to
   five above, an extended fourth), or to or from the open string: a **finger
-  change**. The pitch switches in 2 ms (a finger landing, hammer-on) or 3 ms
-  (lifting) with a fast S-curve (KB: 1–3 ms), with no slide, no lighter
-  finger and no winding noise. The landing finger taps the string and a
+  change**, with no slide, no lighter finger and no winding noise. On the
+  sounding string the finger lands softly (`BowedString::land`): it meets
+  the string as a touch, a resistance at the new stop, growing log-linearly
+  from 0.5 Z (a graze, as on a harmonic: the fundamental and the partials
+  without a node there die) to 1000 Z (a stop) over 25 ms; only then is the
+  string the new, shorter length. A lift-off is the reverse over 20 ms, the
+  freed segment starting at rest. The touch sits exactly at the new stop in
+  the vibrating string: the finger side's delay lines are re-laid out from
+  a snapshot of the travelling waves (the same waves at the same places),
+  once as the finger arrives and once when it's done. The finger dropping on
+  after a quick shift lands the same way.
+  - Why: the pitch used to switch in 2–3 ms (the KB's hammer-on), every
+    partial at once; same-string slurs sounded artificial, an attack with
+    too much high end (the owner), where crossings, whose old string rings
+    on as the new one starts, didn't. The Philharmonia cellist's legato
+    steps take a median 34 ms from pitch to pitch (17–65; the synth's was
+    16 ms, the method's own floor ~10). The owner compared a 30 ms pitch
+    glide (it cured it, but swept audibly on leaps) and this touch (best).
+    Ruled out by measurement first: no high-frequency burst at the synth's
+    changes (none above the cellist's), clean slipping after them (one slip
+    a period, `instrument_lab slurs` with LAB_SLIPS=1), and the tap, the
+    bow's place, its speed and force made no difference.
+  - The cellist's transition times don't follow the register (correlation
+    0.09 over ten phrases), so the landing time doesn't depend on the
+    string's height over the fingerboard [T: 25 / 20 ms].
+  The landing finger taps the string and a
   lifting one plucks it sideways: a 1.5 ms raised-cosine velocity pulse at
   the finger end, 0.05 m/s (landing) or 0.09 m/s (lifting) × (0.5 +
   velocity), random sign [T level]. The landing tap is the smaller because a
-  hammer-on mostly moves the other polarisation. Measured: the onset of a
-  change rises 1–2 dB above `main`'s (0–6 dB above the steady note, from the
-  string re-settling); no clicks.
+  hammer-on mostly moves the other polarisation.
 - **Out of reach: a shift** (Flesch's B-type: the old finger slides; earlier
   docs called it L-type, which is Flesch's name for a finger change during
   the slide). Going up, the hand moves so

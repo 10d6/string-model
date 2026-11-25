@@ -58,6 +58,7 @@ python3 synthkit/tools/stress.py build/stringmodel_render 300 --tail 5   # rando
 ./build/instrument_lab hold 69 12 0.7              # held note: bow changes, dips, attack time
 ./build/instrument_lab attacks 5                   # attacks as played: periods from the first slip to Helmholtz
 ./build/instrument_lab hand 3 24                   # the left hand: a two-octave scale on one string, its shifts
+LAB_SLIPS=1 ./build/instrument_lab slurs 3         # same-string slurs: slips per period once the finger is down
 ./build/instrument_lab chord 62 69                 # double stop: force and slip rate per string
 ./build/instrument_lab sympathy 67                 # each string's level: sympathetic ringing
 python3 tools/calibrate_force.py [--instrument cello]   # Helmholtz window (stick test) vs the playability assistant

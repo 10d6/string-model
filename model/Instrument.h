@@ -339,6 +339,10 @@ class Instrument {
       const float k = std::pow(2.f, corr_[s] / 1200.f);
       wantHz_[s] = target_[s].hz;
       str_[s].setTouch(target_[s].touchQ, target_[s].touchR);
+      if (target_[s].landId != landSeen_[s]) {
+        landSeen_[s] = target_[s].landId;
+        str_[s].land(target_[s].landUp, target_[s].landT);
+      }
       // Width in samples: the wave speed is 2 x scale x open pitch on any stop.
       const float openHz = 440.f * std::pow(2.f, (static_cast<float>(def_->strings[s].openNote) - 69.f) / 12.f);
       str_[s].setBowWidth(ic.bowWidth > 0.f ? static_cast<int>(std::lround(ic.bowWidth * fs_ / (2.f * def_->scaleLength * openHz))) : 0);
@@ -391,6 +395,7 @@ class Instrument {
   float host_ = 48000.f, fs_ = 96000.f;
   int os_ = 2, tick_ = 0;
   float corr_[4]{}, wantHz_[4]{440, 440, 440, 440};
+  int landSeen_[4]{};
   int sinceSlip_[4]{};
   bool prevSlip_[4]{};
   float dcX_ = 0.f, dcY_ = 0.f, dcR_ = 0.999f;

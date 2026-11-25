@@ -4,6 +4,10 @@
 //   instrument_lab hold <note> <seconds> [vel] [out.wav]
 //                                              one held note: level every 50 ms,
 //                                              bow changes marked, deepest dips
+//   instrument_lab slurs [runs]                same-string slurs as played: periods
+//                                              until Helmholtz motion after the
+//                                              change (LAB_SLIPS=1: slips per
+//                                              period once the finger is down)
 //   instrument_lab attacks [runs]              attacks from rest as played: per
 //                                              string, note and dynamic, periods
 //                                              from the first slip to Helmholtz
@@ -195,6 +199,92 @@ int main(int argc, char** argv) {
     std::printf("note %d, 1 s after release: ", note);
     for (int s = 0; s < 4; ++s) std::printf("%s %6.1f  ", inst.def().strings[s].name, db(inst.string(s).level()));
     std::printf("\n");
+    return 0;
+  }
+  if (!std::strcmp(mode, "slurs")) {
+    // Same-string slurs as played: each string, a held note then a slur up
+    // or down 1, 2 or 4 semitones (a finger change), three velocities.
+    // Cell: periods after the change until Helmholtz motion again (three
+    // slips in a row a period apart, within 5%); "P" = within 1.5.
+    const int runs = argc > 2 ? std::atoi(argv[2]) : 3;
+    const int steps[] = {1, 2, 4, -1, -2};
+    const float vels[] = {0.35f, 0.6f, 0.85f};
+    std::vector<float> all;
+    int clean = 0, cells = 0;
+    std::printf("string    ");
+    for (int st : steps) for (float v : vels) std::printf(" %+d/%.2f", st, v);
+    std::printf("\n");
+    for (int s = 0; s < 4; ++s) {
+      std::printf("%-8s  ", def.strings[s].name);
+      for (int st : steps) {
+        for (float v : vels) {
+          std::vector<float> per;
+          for (int r = 0; r < runs; ++r) {
+            Instrument in;
+            in.prepare(sr, def);
+            PerformerControls p = pc;
+            p.forcedString = s;
+            const int a = def.strings[s].openNote + 4 + (st < 0 ? 3 : 0) + r, b = a + st;
+            in.performer().noteOn(a, v, p);
+            for (int i = 0; i < static_cast<int>(0.6f * sr); ++i) in.process(p, ic);
+            in.performer().noteOn(b, v, p);
+            in.performer().noteOff(a, 0.5f, p);
+            const float P = sr / (440.f * std::pow(2.f, (b - 69) / 12.f));
+            int last = -1, run = 0, settled = -1;
+            bool prev = false;
+            for (int i = 0; i < static_cast<int>(0.4f * sr) && settled < 0; ++i) {
+              in.process(p, ic);
+              const bool sl = in.string(s).slipping();
+              if (sl && !prev) {
+                if (last >= 0 && std::fabs((i - last) - P) < 0.05f * P) ++run;
+                else run = 0;
+                if (run >= 3) settled = i - 3 * static_cast<int>(P + 0.5f);
+                last = i;
+              }
+              prev = sl;
+            }
+            // (with LAB_SLIPS: slips per period over the 20 periods after the
+            // finger has arrived, 60 ms on)
+            if (std::getenv("LAB_SLIPS")) {
+              int slips = 0;
+              bool pv = false;
+              const int from = static_cast<int>(0.06f * sr);
+              Instrument in2;
+              in2.prepare(sr, def);
+              in2.performer().noteOn(a, v, p);
+              for (int i = 0; i < static_cast<int>(0.6f * sr); ++i) in2.process(p, ic);
+              in2.performer().noteOn(b, v, p);
+              in2.performer().noteOff(a, 0.5f, p);
+              for (int i = 0; i < from + static_cast<int>(20 * P); ++i) {
+                in2.process(p, ic);
+                const bool sl = in2.string(s).slipping();
+                if (i >= from && sl && !pv) ++slips;
+                pv = sl;
+              }
+              per.push_back(slips / 20.f);
+              continue;
+            }
+            per.push_back(settled < 0 ? 1e9f : std::max(0.f, settled / P));
+          }
+          std::sort(per.begin(), per.end());
+          for (float x : per) ++cells, clean += x <= 1.5f, all.push_back(x);
+          const float m = per[per.size() / 2];
+          if (std::getenv("LAB_SLIPS")) std::printf(" %6.2f", m);
+          else if (m > 1e8f) std::printf("      -");
+          else if (m <= 1.5f) std::printf("      P");
+          else std::printf(" %6.0f", m);
+        }
+      }
+      std::printf("\n");
+    }
+    std::sort(all.begin(), all.end());
+    if (std::getenv("LAB_SLIPS")) {
+      int ok = 0;
+      for (float x : all) ok += x < 1.1f;
+      std::printf("slips per period after arrival: median %.2f, 90%% %.2f; clean (< 1.1) %d of %d\n", all[all.size() / 2], all[all.size() * 9 / 10], ok, static_cast<int>(all.size()));
+      return 0;
+    }
+    std::printf("clean (within 1.5 periods) %d of %d; median %.1f periods; 90%%: %.0f\n", clean, cells, all[all.size() / 2], all[all.size() * 9 / 10]);
     return 0;
   }
   if (!std::strcmp(mode, "hand")) {
