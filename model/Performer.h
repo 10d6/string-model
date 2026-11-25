@@ -328,7 +328,12 @@ class Performer {
     const float dip = stopping_ ? 1.f : c.changeFloor + (1.f - c.changeFloor) * sf * sf;
     accent_ *= accentDecay_;
     const float weight = 1.f + 0.12f * (0.5f - bowPos_);  // +6% at the frog, -6% at the tip
-    const float fTarget = fT_ * dip * (1.f + accent_) * strokeForce_ * weight;
+    float fTarget = fT_ * dip * (1.f + accent_) * strokeForce_ * weight;
+    if (startLift_ > 0.f) {
+      fTarget *= 1.f + startLift_;
+      startLift_ *= startLiftDecay_;
+      if (startLift_ < 1e-3f) startLift_ = 0.f;
+    }
     for (int s = 0; s < 4; ++s) {
       const float base = templateForce_ >= 0.f ? templateForce_ : fTarget;
       const float goal = (bowed_[s] && bowing_) ? std::min(base * fFactor_[s], fMax_[s]) : 0.f;
@@ -408,7 +413,9 @@ class Performer {
   // The labs only: pin the bow's contact point (beta), speed (m/s) and force on
   // the string (N) after the dynamics law; 0 = the law's.
   float labBeta = 0.f, labVb = 0.f, labForce = 0.f;
+  float handPlace() const { return hand_; }  // labs: the hand's place, semitones above the open string
   float labPinAfter = 0.f;  // s into the note before the pins apply (after the performer's own attack)
+  float labAttackLift = -1.f, labAttackTau = -1.f, labAttackVary = -1.f;  // >= 0: override InstrumentDef's
 
   // At control rate: pitch, vibrato and force targets per string.
   void strings(StringTarget out[4], const PerformerControls& c) const {
@@ -791,10 +798,11 @@ class Performer {
     else computeTargets(c);
   }
 
-  // The swell's depth (dB, at Attack Swell 1) by dynamic, fitted to the
-  // Philharmonia rise times per dynamic (pp..ff at velocities 20..120, i.e.
-  // dynamics 0.24..0.79 at the default Velocity -> Dynamics): within 3 dB of
-  // the sustain after ~150 / 160 / 170+ / 75 / 50 / 35 ms [T].
+  // The swell's depth (dB, at Attack Swell 1) and length by dynamic
+  // (InstrumentDef::swellDb/swellT). The violin's fitted to the Philharmonia
+  // rise times per dynamic (pp..ff at velocities 20..120, i.e. dynamics
+  // 0.24..0.79 at the default Velocity -> Dynamics): within 3 dB of the
+  // sustain after ~150 / 160 / 170+ / 75 / 50 / 35 ms [T].
   static float swellTable(float d, const float* v) {
     static constexpr float kD[6] = {0.24f, 0.35f, 0.46f, 0.571f, 0.681f, 0.792f};
     if (d <= kD[0]) return v[0];
@@ -802,14 +810,8 @@ class Performer {
       if (d < kD[i]) return v[i - 1] + (v[i] - v[i - 1]) * (d - kD[i - 1]) / (kD[i] - kD[i - 1]);
     return v[5];
   }
-  static float swellDepth(float d) {
-    static constexpr float kDb[6] = {18.5f, 20.f, 23.f, 12.f, 6.6f, 5.9f};
-    return swellTable(d, kDb);
-  }
-  static float swellLength(float d) {  // s
-    static constexpr float kT[6] = {0.36f, 0.36f, 0.356f, 0.2f, 0.268f, 0.26f};
-    return swellTable(d, kT);
-  }
+  float swellDepth(float d) const { return swellTable(d, def_->swellDb); }
+  float swellLength(float d) const { return swellTable(d, def_->swellT); }  // s
 
   // A new stroke: a bow change if the bow is moving, else from the air.
   void startStroke(float vel, const PerformerControls& c, bool change) {
@@ -839,6 +841,14 @@ class Performer {
     if (change && bowing_) {
       bowChange(c);
     } else {
+      // From the air: the starting force (InstrumentDef::attackLift).
+      const float lift = labAttackLift >= 0.f ? labAttackLift : def_->attackLift;
+      if (lift > 0.f) {
+        const float tau = labAttackTau >= 0.f ? labAttackTau : def_->attackLiftTau;
+        const float vary = labAttackVary >= 0.f ? labAttackVary : def_->attackVary;
+        startLift_ = lift * (1.f + vary * bipolar());
+        startLiftDecay_ = std::exp(-1.f / (std::max(tau, 1e-3f) * fs_));
+      }
       // From the air: alternate, unless the bow is nearly at one end.
       dir_ = bowPos_ > 0.8f ? -1.f : (bowPos_ < 0.2f ? 1.f : -dir_);
       // Bowing to the meter (player doc §2): a down-bow (frog to tip) on a
@@ -1018,7 +1028,9 @@ class Performer {
   // same on every string.
   bool inReach(float k) const {
     const float r = std::round(k);
-    return r <= 0.f || (r >= hand_ - def_->hand.reachBelow && r <= hand_ + def_->hand.reachAbove);
+    const bool thumb = hand_ >= def_->hand.thumbFrom;
+    const float below = thumb ? def_->hand.thumbBelow : def_->hand.reachBelow, above = thumb ? def_->hand.thumbReach : def_->hand.reachAbove;
+    return r <= 0.f || (r >= hand_ - below && r <= hand_ + above);
   }
   // Where the hand goes for a note out of reach [T]: going up, the note
   // lands on the third finger, so the old (lower) finger slides and a higher
@@ -1027,6 +1039,7 @@ class Performer {
   // and lifts off onto the note. (HandDef: how far above the hand's place
   // those fingers stop.)
   float handFor(float k, bool up) const {
+    if (!up && k - def_->hand.thumbDown >= def_->hand.thumbFrom) return std::round(k - def_->hand.thumbDown);
     return std::max(2.f, std::round(up ? k - def_->hand.upFinger : k - def_->hand.downFinger));
   }
 
@@ -1307,6 +1320,7 @@ class Performer {
   static constexpr float kLongVb = 0.22f;  // m/s: the fastest long-note bow (Demoucron: half notes) [T]
   float kSwellSpeed = 0.4f;             // share of the swell taken by bow speed (the rest by distance)
   float landRate_ = 0.01f, liftRate_ = 0.01f, accentDecay_ = 0.999f;
+  float startLift_ = 0.f, startLiftDecay_ = 0.999f;  // the attack's extra force (InstrumentDef::attackLift)
   float force_[4]{}, fFactor_[4]{1, 1, 1, 1}, offTime_[4]{}, fingerOffAt_[4]{};
   // Force cap per string: forceMax in low positions, scaled up high like the
   // force law itself (pos): short strings need more and stay clean (D5 and

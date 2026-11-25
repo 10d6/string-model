@@ -56,6 +56,8 @@ python3 synthkit/tools/stress.py build/stringmodel_render 300 --tail 5   # rando
 ./build/string_lab sweep 1 62 0.13                 # Schelleng map, open D
 ./build/string_lab tone 2 71 0.3 1.2 0.05 x.wav    # one stroke: pitch, slips/period, temperature
 ./build/instrument_lab hold 69 12 0.7              # held note: bow changes, dips, attack time
+./build/instrument_lab attacks 5                   # attacks as played: periods from the first slip to Helmholtz
+./build/instrument_lab hand 3 24                   # the left hand: a two-octave scale on one string, its shifts
 ./build/instrument_lab chord 62 69                 # double stop: force and slip rate per string
 ./build/instrument_lab sympathy 67                 # each string's level: sympathetic ringing
 python3 tools/calibrate_force.py [--instrument cello]   # Helmholtz window (stick test) vs the playability assistant
