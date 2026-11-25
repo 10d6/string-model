@@ -8,7 +8,9 @@
 // - The left hand has a position (KB §11.2, player doc §3.3): a slurred note
 //   within its reach is a finger change (hammer-on / lift-off: the pitch
 //   switches in 2-3 ms with a small tap or pluck); one out of reach is a
-//   shift: the old finger slides with the hand, then the new finger lands.
+//   shift: the old finger slides with the hand, then the new finger lands
+//   (a portamento glides on into the note). Slides speed up into the note,
+//   the vibrato pauses through them and the bow eases off.
 // - Keys pressed together (within the chord window) become a double stop on
 //   two adjacent strings sharing the bow, or a rolled chord for three or four
 //   (KB §11.2: the lower pair first, then onto the upper pair).
@@ -361,6 +363,11 @@ class Performer {
     for (int s = 0; s < 4; ++s) {
       if (shiftT_[s] < 1.f) {
         shiftT_[s] = std::min(1.f, shiftT_[s] + dt / shiftDur_[s]);
+        if (tapHalf_[s] != 0.f && shiftT_[s] >= 0.5f) {
+          tapStart_[s] = now_;
+          tapAmp_[s] = tapHalf_[s];
+          tapHalf_[s] = 0.f;
+        }
       } else if (dropT_[s] < 1.f) {
         // The slide has arrived: the new finger lands (or lifts) now.
         if (tapPending_[s] != 0.f) {
@@ -458,7 +465,7 @@ class Performer {
       out[s].slide = 0.f;
       if (shiftT_[s] < 1.f && stopped) {
         const float t = shiftT_[s];
-        const float dndt = (fingerVia_[s] - fingerFrom_[s]) * 30.f * t * t * (1.f - t) * (1.f - t) / shiftDur_[s];
+        const float dndt = (fingerVia_[s] - fingerFrom_[s]) * slideRate(t) / shiftDur_[s];
         const float pos = n - static_cast<float>(def_->strings[s].openNote);
         const float dxdn = def_->scaleLength * 0.0577623f * std::pow(2.f, -pos / 12.f);  // L ln2/12 2^(-p/12)
         out[s].slide = std::fabs(dxdn * dndt);
@@ -511,7 +518,7 @@ class Performer {
     const float grow = 1.f - c.vibShape * 0.25f * (1.f - std::min(1.f, std::max(0.f, age) / 1.5f));
     const float fast = vibFast_ * std::max(0.f, 1.f - keyAge_ / 0.5f);
     vibShapeK_ = 1.f + c.vibShape * (vibReg_ * (1.f - 0.7f * fast) - 1.f);
-    vibCents_ = 0.5f * c.vibDepth * (0.6f + 0.8f * d) * ramp * vibDepthJit_ * vibShapeK_ * grow;
+    vibCents_ = 0.5f * c.vibDepth * (0.6f + 0.8f * d) * ramp * vibDepthJit_ * vibShapeK_ * grow * vibAfterShift();
     vibRateNow_ = c.vibRate * (0.9f + 0.2f * d) * vibRateJit_ * vibMeterK_;
     // Fingers leave strings the bow has left, so they ring open (a "finger
     // off" release lifts the playing finger too, soon after the bow).
@@ -760,6 +767,13 @@ class Performer {
         const float newHand = handFor(k, up);
         float via = from + (newHand - hand_);
         via = up ? std::min(via, n) : std::max(via, n);  // never past the note
+        // Portamento glides into the note: the new finger takes over part-way
+        // and completes the slide (the "Russian" way, from underneath),
+        // rather than the old finger stopping at the intermediary note and
+        // the new one dropping on (Flesch's B-portamento, as quick shifts
+        // still do). Chosen by ear over the B-type (PLAN.md "Portamento").
+        const bool glideIn = kArriveGlide && c.portamento > 0.f && gapRaw_ >= 0.3f;
+        if (glideIn) via = n;
         hand_ = newHand;
         fingerVia_[s] = via;
         const float slideSt = std::fabs(via - from);
@@ -774,8 +788,14 @@ class Performer {
         const float leap = std::clamp((interval - 2.f) / 5.f, 0.f, 1.f);
         shiftDur_[s] *= 1.f + 6.f * c.portamento * slow * leap;
         shiftT_[s] = slideSt > 0.01f ? 0.f : 1.f;
+        if (slideSt > 0.01f) {
+          slideFrom_ = now_;
+          slideTo_ = now_ + shiftDur_[s];
+        }
         if (std::fabs(n - via) < 0.01f) {
           dropT_[s] = 1.f;  // the same finger: it just arrives
+          // (gliding in: the new finger lands half-way through the slide)
+          tapHalf_[s] = glideIn && tapPending_[s] != 0.f ? tapPending_[s] : 0.f;
           tapPending_[s] = 0.f;
         }
       }
@@ -1003,11 +1023,27 @@ class Performer {
   // point-to-point reach (Flash & Hogan 1985): it starts and lands more
   // gently than a cubic S-curve [T]. A finger landing or lifting is a fast
   // S-curve (KB §11.2: 1-3 ms).
+  // Players' slides are not symmetric: fitted with a logistic curve, a
+  // violinist's slide turns fastest after its midpoint (Yang & Chew 2015/16:
+  // the normalised inflection time sits past 0.5 for the violin, before it
+  // for the erhu): the finger leaves gently and speeds into the note. Time
+  // is warped (u = t^p) so the minimum-jerk curve's fastest point lands at
+  // kSlideInflect of the slide [T: the value].
+  static float slideWarpP() { return std::log(0.5f) / std::log(kSlideInflect); }
+  static float slideCurve(float t) {
+    const float u = kSlideInflect == 0.5f ? t : std::pow(t, slideWarpP());
+    return u * u * u * (10.f + u * (6.f * u - 15.f));
+  }
+  // d(slideCurve)/dt.
+  static float slideRate(float t) {
+    const float p = kSlideInflect == 0.5f ? 1.f : slideWarpP();
+    const float u = std::pow(t, p);
+    const float du = p == 1.f ? 1.f : p * std::pow(std::max(t, 1e-6f), p - 1.f);
+    return 30.f * u * u * (1.f - u) * (1.f - u) * du;
+  }
   float currentFinger(int s) const {
     if (shiftT_[s] < 1.f) {
-      const float t = shiftT_[s];
-      const float mj = t * t * t * (10.f + t * (6.f * t - 15.f));
-      return fingerFrom_[s] + (fingerVia_[s] - fingerFrom_[s]) * mj;
+      return fingerFrom_[s] + (fingerVia_[s] - fingerFrom_[s]) * slideCurve(shiftT_[s]);
     }
     if (dropT_[s] < 1.f) {
       const float t = dropT_[s];
@@ -1255,6 +1291,18 @@ class Performer {
       vb *= std::exp(-kSwellSpeed * swellNow / 7.7f);
       beta *= std::exp((1.f - kSwellSpeed) * swellNow / 7.7f);
     }
+    // Through a slide the bow eases off (players slide "with a slight
+    // diminuendo"; a lighter left hand too, KB §11.2): a dip of kSlideDipDb
+    // (bell-shaped over the slide and the landing), on the same level law as
+    // the swell; short shifts barely [T].
+    if (kSlideDipDb > 0.f && art_ == kArco && slideFrom_ >= 0.f && now_ >= slideFrom_ && now_ < slideTo_ + kSlideDipTail) {
+      const float len = slideTo_ + kSlideDipTail - slideFrom_;
+      const float x = (now_ - slideFrom_) / len;
+      const float dip = kSlideDipDb * std::min(1.f, (slideTo_ - slideFrom_) / 0.15f) * std::sin(3.14159265f * x);
+      vb *= std::exp(-kSwellSpeed * dip / 7.7f);
+      beta *= std::exp((1.f - kSwellSpeed) * dip / 7.7f);
+      swellNow += dip;
+    }
     // A touched string vibrates in k segments, like a string 1/k as long: the
     // bow goes closer to the bridge, by sqrt(k) (relative to the whole string;
     // by k it sat as far along the segment as a stopped note's bow, and the
@@ -1317,10 +1365,28 @@ class Performer {
   float accel_ = 5.f, accelChange_ = 5.f, attackK_ = 10.f, accent_ = 0.f;
   float swellDb_ = 0.f, swellT_ = 0.3f;  // the attack swell's depth (dB) and length (s)
   static constexpr float kDoubleOn = 0.03f;  // s: a held key's repeat within this is the same press, arriving twice
+  static constexpr float kSlideInflect = 0.65f;  // where a slide is fastest, of its length (0.5: symmetric)
+  static constexpr bool kVibStopsInShift = true;
+  static constexpr bool kArriveGlide = true;
+  static constexpr float kSlideDipDb = 3.f, kSlideDipTail = 0.06f;  // dB, s
+  static constexpr float kVibStopT = 0.04f, kVibAfterShift = 0.1f, kVibRampShift = 0.3f;  // s
   static constexpr float kLongVb = 0.22f;  // m/s: the fastest long-note bow (Demoucron: half notes) [T]
   float kSwellSpeed = 0.4f;             // share of the swell taken by bow speed (the rest by distance)
   float landRate_ = 0.01f, liftRate_ = 0.01f, accentDecay_ = 0.999f;
-  float startLift_ = 0.f, startLiftDecay_ = 0.999f;  // the attack's extra force (InstrumentDef::attackLift)
+  float startLift_ = 0.f, startLiftDecay_ = 0.999f;
+  float tapHalf_[4]{};  // a finger landing half-way through a slide (gliding in)
+  float slideFrom_ = -1.f, slideTo_ = -1.f;  // the latest shift's slide: start and arrival (now_ clock)
+  // The vibrato through a shift (KB §11.2): the hand that slides can't also
+  // vibrate. It stops as the slide starts (kVibStopT), and comes back after
+  // arrival: kVibAfterShift later, ramping in over kVibRampShift [T, from the
+  // KB's onset 100-300 ms and ramp 150-400 ms for a new note].
+  float vibAfterShift() const {
+    if (!kVibStopsInShift || slideFrom_ < 0.f || now_ < slideFrom_) return 1.f;
+    if (now_ < slideTo_) return std::max(0.f, 1.f - (now_ - slideFrom_) / kVibStopT);
+    const float g = std::clamp((now_ - slideTo_ - kVibAfterShift) / kVibRampShift, 0.f, 1.f);
+    const float gone = std::max(0.f, 1.f - (slideTo_ - slideFrom_) / kVibStopT);  // a quick shift barely stopped it
+    return gone + (1.f - gone) * g * g * (3.f - 2.f * g);
+  }  // the attack's extra force (InstrumentDef::attackLift)
   float force_[4]{}, fFactor_[4]{1, 1, 1, 1}, offTime_[4]{}, fingerOffAt_[4]{};
   // Force cap per string: forceMax in low positions, scaled up high like the
   // force law itself (pos): short strings need more and stay clean (D5 and
