@@ -125,6 +125,92 @@ p-p (5–95 %), from the onset; the synth 17 (VSCO's calmer player), after
 0.25 s, none on open strings. Signed: the attack is too loud in the mids
 (+41) and highs (+15) for its sustain.
 
+## Attacks and sustains by register (the cello, `tools/attack_sustain.py`)
+
+The owner, after 8.6: the cello's attacks sound soft, and its sustains at the top and bottom
+of the range aren't quite there. `tools/attack_sustain.py` matches every recording with a
+synth note (pitch, length, dynamic) and measures both the same way: the level's rise and the
+treble's rise (above 2 kHz), the first 60 ms re the sustain, how aperiodic the first 80 ms
+are (each period against the next: noise re periodic power), the attack's treble re the
+sustain's, the sustain's aperiodicity, its spectrum by harmonic number, its pitch. The
+references (measured only, never committed):
+- the Philharmonia cello, 1 and 1.5 s arco-normal, pp–ff (373 notes), at
+  `~/data/phil-cello/wav` (vibrato from the onset, a studio)
+- the Karoryfer × bigcat cello (CC0, `github.com/sfzinstruments/karoryfer-bigcat.cello`, at
+  `~/data/bigcat`), down-bow sustains p–f every minor third (68 notes), played by the synth
+  without vibrato (the samples have none). Close-miked and cut mid-bow.
+
+The two cellists differ in style (bigcat's attacks start ~6 dB under the held level, the
+Philharmonia's ~14), and the mics differ in spectrum (bigcat close and bright). So read what
+both agree on, and relative measures (the rises, the attack against its own sustain) over
+absolute spectra. The aperiodicity reads known noise within ~1 dB down to a floor of −26 to
+−30 dB (a 65 Hz note with vibrato −26).
+
+**Baseline** (main after #34, 48 kHz, defaults, Room 20%). Each cell is synth / recording,
+the median over the register; soft = pp–mp, loud = f–ff for the Philharmonia, p–mp and mf–f
+for bigcat:
+
+| Register | Treble rise, ms (Phil soft) | (Phil loud) | (bigcat soft) | Attack aperiodicity, dB (Phil soft) | Attack treble re sustain, dB (Phil soft) | Sustain aperiodicity, dB (Phil soft) | (bigcat soft) | h1 re all harmonics, dB (Phil loud) | (bigcat loud) | Pitch, cents (Phil, all) | (bigcat, all) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| C2–F#2 C string | 182 / 18 | 43 / 6 | 173 / 61 | -11.7 / -5.0 | 3.0 / 13.2 | -36.7 / -25.9 | -41.0 / -21.8 | -15.0 / -27.9 | -15.3 / -20.7 | -8.4 / -1.6 | -7.1 / -0.4 |
+| G2–B2 | 180 / 40 | 50 / 22 | 173 / 91 | -14.8 / -5.3 | 2.4 / 9.4 | -40.1 / -26.3 | -45.0 / -27.8 | -1.8 / -6.9 | -1.2 / -4.1 | -4.2 / -1.3 | -3.2 / -4.1 |
+| C3–B3 | 154 / 96 | 60 / 74 | 131 / 119 | -19.5 / -8.6 | 3.0 / 7.5 | -40.5 / -30.3 | -43.5 / -29.2 | -1.1 / -5.0 | -1.2 / -8.5 | -2.6 / -7.5 | -2.9 / 0.3 |
+| C4–B4 | 168 / 168 | 60 / 120 | 158 / 118 | -22.3 / -14.5 | 0.2 / 1.5 | -36.3 / -33.5 | -40.0 / -25.7 | -1.1 / -0.9 | -1.2 / -8.2 | -0.7 / -8.4 | -2.4 / 2.1 |
+| C5–C6 thumb | 182 / 96 | 78 / 54 | 164 / 72 | -17.8 / -16.2 | 0.2 / -0.9 | -25.9 / -28.5 | -28.1 / -23.1 | -1.4 / -2.0 | -1.1 / -5.5 | -4.7 / 1.6 | -3.7 / 0.9 |
+
+What both references agree on:
+1. **The attack opens like a filter.** On the C and G strings the recordings' treble (above
+   2 kHz) is in place 6–40 ms after the onset (bigcat 60–90 at soft dynamics), even when
+   their level takes 180–270 ms to swell; the synth's treble arrives with its swell, 170–180
+   ms at soft dynamics. Spectrograms show it: the synth's bandwidth fans out over ~150 ms,
+   the recordings are full-band from the first ~20 ms. This, more than the level, is the soft
+   attack: the synth's level rises *faster* than the Philharmonia cellist's on every string
+   but the top (soft: 137–158 ms against 179–270).
+2. **The attack is too clean.** At soft dynamics the first 80 ms are 6–11 dB less aperiodic
+   than the Philharmonia's from C2 to B3 (8 dB at C4–B4), and the recordings' attack carries
+   7–13 dB more treble than their own sustain on the C and G strings, the synth's 2–3.
+3. **The held tone is too clean**: from C2 to B3, 10–14 dB less aperiodic than the
+   Philharmonia at soft dynamics (its vibrato and room add some) and 14–19 dB less than
+   bigcat (no vibrato on either side); C4–B4 3 and 14 dB; in thumb position about even with
+   the Philharmonia, 5 dB under bigcat.
+4. **The C string's fundamental is too strong**: re all harmonics, 13 dB over the
+   Philharmonia and 5 over bigcat (the radiation's fit is checked from 125 Hz, above these
+   fundamentals); G2–B3 4–5 dB (Philharmonia) and 3–7 (bigcat). Air Resonance −9 dB takes
+   3 dB off.
+5. **The C string's stopped notes are flat**: C#2–F#2 6–16 cents under equal temperament
+   (median −8; the open C −2), the recordings within a few cents. Not Intonation Style (0:
+   unchanged) and not the force (Pressure −0.6: 1–3 cents flatter still).
+6. **The top is slow and a little flat.** In thumb position the soft notes' treble arrives
+   80–90 ms later than in either recording and the level 50–80 ms later; the pitch sits 5–6
+   cents under the recordings' (which are 1–2 cents sharp). Intonation Style accounts for
+   2–3 cents (style 0: −1 to −3 under).
+
+Ruled out or measured:
+- **The junction's sampling** (KB §6.4: f_s ≥ 20 f₀/β is ~720 Hz at 96 kHz, β 0.15): the
+  top register rendered at 192 kHz (strings at 192 kHz) changes pitch by under 0.5 cent and
+  the spectrum by under 1 dB. Not the top's problem.
+- **Rosin Noise 0.4** (default 0.12) closes the low strings' sustain noise (Phil C string
+  soft −11 → −6 dB; bigcat −20 → −12) and the attack's treble deficit (−9 → −1 dB), but
+  leaves the attack's aperiodicity, and overshoots the treble noise in the sustain (6–8 dB
+  more than the default) and the top's noise (+10). Its noise is the wrong shape (too high),
+  and it can't be the same amount on every string.
+- **Attack Bite 1**: within ~1–2 dB / 10 ms of the default everywhere.
+- **Attack Swell 0**: the first 60 ms come 10–14 dB over the Philharmonia's (13–21 at the
+  top) and 2–6 over bigcat's, and the attack's aperiodicity overshoots both by up to 20–30
+  dB: the swell (or most of it) is needed; what's missing is the treble and grit under it.
+- **Pressure −0.6** on the top: the pitch moves the wrong way (−1 to −2 cents).
+
+What this points at: a full-band onset (the catch and scratch) independent of the bow's
+swelling force (a recorded onset residual from bigcat, CC0, or a modelled bow-noise source),
+noise in the held tone that grows toward the low strings and soft dynamics, a low cut on
+the C string's fundamentals, and the C string's stopped pitch. Re-run after a change and compare:
+
+    python3 tools/attack_sustain.py --phil ~/data/phil-cello/wav --bigcat ~/data/bigcat --json after.json
+    python3 tools/attack_sustain.py --compare before.json after.json
+
+(~1.5 min on two cores. `--clips DIR` writes one recording-then-synth pair per register and
+dynamic for listening; `--sr 192000` renders with the strings at 192 kHz.)
+
 ## Techniques
 
 - **Measure through the synth, not only the labs.** The harmonics were in
