@@ -3,6 +3,9 @@
 // played, which the tests run constantly without a break. So a report means
 // a path no test reaches: the panel says what broke, a toast says so once,
 // and the browser's console (F12) keeps the details to send to Claude.
+// One report is about the MIDI coming in rather than the synth: a key
+// pressed again while it's still down means its release never arrived (a
+// stuck note; pressing it again now clears it).
 
 const RULES = [
   [1, "the bow on more than two strings"],
@@ -13,6 +16,7 @@ const RULES = [
   [32, "a key held twice"],
   [64, "a key the instrument held that was up (let go)"],
   [128, "more voices shown than keys down"],
+  [256, "a key pressed again while still down: its release never arrived, or two sources played it (the earlier note was let go)"],
 ];
 const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const noteName = (n) => `${NAMES[n % 12]}${Math.floor(n / 12) - 1}`;

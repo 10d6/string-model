@@ -47,11 +47,11 @@ early when it hears a key come up that another press still holds.
 |---|---|---|
 | Note-on | `noteOn` | a voice starts |
 | Note-off, the key's last press | `noteOff` | its voice is released |
-| Note-on of a key already down, more than 30 ms after its last press (a sequencer's overlapping notes; the same note on another MIDI channel) | `noteOn` again: a restrike | another voice |
-| Note-off of such a key, another press still down | nothing: the note goes on | that voice is released |
-| Note-on of a key already down on the same channel within 30 ms (one key arriving twice: a keyboard the browser sees as two MIDI inputs, a doubled route) | nothing | nothing |
+| Note-on of a key already down, within 30 ms of its press, on any channel (one key arriving twice: a keyboard the browser sees as two MIDI inputs, a doubled route, a keyboard layering two channels) | nothing | nothing |
 | Note-off matching such a doubled note-on | nothing | nothing |
-| Note-on / note-off in C1–B1 with `Keyswitches` on | nothing: sets `String` or `Articulation` | nothing |
+| Note-on of a key already down, later than that (its release never arrived, as when the page's lit key stays on; or two sources overlap the same note, a sequencer) | `noteOn` again: a restrike. Reported by the key check | the earlier press's voice is released (a note-off on its channel), then the new one starts: one voice per key |
+| Note-off of the press a re-press ended | nothing | nothing |
+| Note-on / note-off in C1–B1 with `Keyswitches` on (a key not already down as a note) | nothing: sets `String` or `Articulation` | nothing |
 | The release of a key pressed as a keyswitch | nothing, even if `Keyswitches` was turned off meanwhile | nothing |
 | The release of a key pressed as a note | `noteOff`, even if `Keyswitches` was turned on meanwhile | released |
 | Note-on with velocity 0 | a note-off (key-up velocity 64) | |
@@ -60,10 +60,15 @@ early when it hears a key come up that another press still holds.
 | Stop all sound (CC120) | `allNotesOff`, the strings fade over 5 ms, then the instrument is reset; the body and room ring out their short tails. A note in those 5 ms plays | as CC123 |
 | The `Instrument` switch | the old instrument's `allNotesOff`; it fades and rings out (below). Keys still down don't sound on the new one; their releases are ignored | unchanged |
 
-The instrument merges channels (one instrument plays them all: a key is up
-when no press of it is left on any channel); the voices are paired per
-channel, as the kit pairs them, so Keys counts every press per key and
-channel. The instrument's events
+A key is down or up, whatever the channel: a real key can't go down twice,
+so a second press of a key that is down ends the first (a stuck note clears
+when its key is pressed again, as on any keyboard instrument). The voices
+are paired per channel, as the kit pairs them, so Keys remembers the
+channel of the press holding each key. (A first version counted a second
+press as a second, overlapping one, for sequencers: then a lost release
+needed two releases, and pressing the stuck key again didn't clear it. The
+owner found it; `keys_lost_release_then_pressed_again`, `keys-repeats.json`.)
+The instrument's events
 wait on a queue and apply at their own sample in `processGlobal`; if the
 queue (512 per host block) ever fills, a note-off takes the place of the
 latest event that isn't one, so no key is left down.
@@ -92,6 +97,7 @@ rules hold however the keys are played, and are checked:
 | The note, or every chord note, being bowed is a key down; no key is held twice | `Performer::audit` |
 | Every key the instrument holds is really down (once the queue has caught up: Keys hears an event at the start of a host block, the performer at its sample) | `Keys::strayHeld` |
 | The page shows no more voices than presses routed to it (for longer than 0.25 s) | `checkKeys` (`ctx.activeVoices()`) |
+| A key isn't pressed while it's down: if it is, its release never arrived (reported; handled by the re-press above) | `Keys` (`Repress`), `checkKeys` |
 
 `key_tests` and `performer_fuzz` check the performer's rules every
 millisecond, and `key_tests`' router fuzz checks all but the last on random
@@ -100,7 +106,11 @@ while you play (`checkKeys`): a new break is posted to the page
 (`keys.check`), where the Key Check panel (`ui/custom.js`) shows what broke
 and a toast says so once, with the details in the browser's console; where
 it's safe it's repaired (a stray key is let go, a bow left on with no key is
-lifted). The tests never trip it, so a report means a path no test reaches.
+lifted). The tests never trip it, so a report means a path no test reaches. The
+re-press report is the exception: it's about the MIDI coming in, a release
+lost before the synth (the page's lit key stays on too), and says which key.
+A stuck note can't be caught before then: until its key is pressed again,
+the synth has no way to know the key isn't still held.
 Found with it at once: the hand-over above (stress seed 46; `performer_fuzz`
 tremolo seed 19, sautillé seed 24).
 

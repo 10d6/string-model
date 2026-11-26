@@ -76,6 +76,11 @@ TEST(keys_keyswitch_toggled_while_a_key_is_down) {
   Keys k;
   CHECK(k.press(26, 0, 0.0, false) == Route::Both);
   CHECK(k.release(26, 0) == Route::Both);  // decided at the press, not the release
+  // Down as a note, its release lost, Keyswitches turned on: pressing it
+  // again is still a re-press of the note (so a stuck note there clears).
+  CHECK(k.press(27, 0, 0.0, false) == Route::Both);
+  CHECK(k.press(27, 0, 1.0, true) == Route::Repress);
+  CHECK(k.release(27, 0) == Route::Both);
   CHECK(k.press(26, 0, 1.0, true) == Route::Keyswitch);
   CHECK(k.release(26, 0) == Route::Keyswitch);  // turned off meanwhile: still a keyswitch
 }
@@ -91,19 +96,36 @@ TEST(keys_doubled_input) {
   CHECK(k.press(30, 0, 2.0, true) == Route::Keyswitch);
   CHECK(k.press(30, 0, 2.001, true) == Route::Keyswitch);
   CHECK(k.release(30, 0) == Route::Keyswitch);
-  CHECK(k.release(30, 0) == Route::Keyswitch);
+  CHECK(k.release(30, 0) == Route::Ignore);  // nobody hears it either way
+  CHECK(k.represses() == 0);
 }
 
-// A sequencer's overlapping notes, or the same note on two channels: the
-// instrument hears the release only when the last press goes up; the voices
-// hear each.
-TEST(keys_repeated_key_while_down) {
+// The owner's stuck C4: a press whose release never arrived, then the key
+// pressed again. A key can't go down twice, so the second press ends the
+// first (the voices let go of it: one voice per key), the instrument
+// restrikes, and the next release ends the note. Before, the second press
+// counted as a second, overlapping press and the note needed two releases.
+TEST(keys_lost_release_then_pressed_again) {
+  Keys k;
+  CHECK(k.press(60, 0, 0.0, true) == Route::Both);  // its release is lost
+  int replaced = -1;
+  CHECK(k.press(60, 0, 2.0, true, &replaced) == Route::Repress);
+  CHECK(replaced == 0);
+  CHECK(k.represses() == 1);
+  CHECK(k.voices() == 1);
+  CHECK(k.release(60, 0) == Route::Both);  // ends the note
+  CHECK(!k.down(60));
+  CHECK(k.voices() == 0);
+}
+
+// A sequencer overlapping the same note: the second press restrikes, the
+// first release ends the note (as a single key would), the second is ignored.
+TEST(keys_overlapping_presses) {
   Keys k;
   CHECK(k.press(60, 0, 0.0, true) == Route::Both);
-  CHECK(k.press(60, 0, 0.5, true) == Route::Both);  // restrike
-  CHECK(k.release(60, 0) == Route::Voices);         // one press up, the key still down
-  CHECK(k.down(60));
+  CHECK(k.press(60, 0, 0.5, true) == Route::Repress);
   CHECK(k.release(60, 0) == Route::Both);
+  CHECK(k.release(60, 0) == Route::Ignore);
   CHECK(!k.down(60));
 }
 
@@ -111,7 +133,7 @@ TEST(keys_doubled_window_edge) {
   Keys k;
   CHECK(k.press(60, 0, 0.0, true) == Route::Both);
   CHECK(k.press(60, 0, Keys::kDoubled - 1e-4, true) == Route::Ignore);
-  CHECK(k.press(60, 0, Keys::kDoubled + 1e-4, true) == Route::Both);  // a restrike, not a double
+  CHECK(k.press(60, 0, Keys::kDoubled + 1e-4, true) == Route::Repress);  // a re-press, not a double
 }
 
 TEST(keys_clear_forgets_every_key) {
@@ -123,68 +145,73 @@ TEST(keys_clear_forgets_every_key) {
   CHECK(k.downCount() == 0);
   CHECK(k.release(60, 0) == Route::Ignore);
   CHECK(k.release(26, 0) == Route::Ignore);  // nothing left to swallow: harmless either way
+  CHECK(k.press(60, 0, 1.0, true) == Route::Both);  // a fresh press, not a re-press
 }
 
-// The same note on two channels (a keyboard layering two channels, MPE): each
-// channel's voice gets its own release, and the instrument hears the release
-// only when both are up. Within 30 ms on another channel is not a double:
-// a doubled input repeats the same message, on the same channel.
-TEST(keys_two_channels) {
+// Channels: a key is one key. The same note on another channel at the same
+// moment (a keyboard layering two channels) is one press; later, it's a
+// re-press, which hands the voice to the new channel. Each release is
+// matched on its own channel.
+TEST(keys_channels) {
   Keys k;
   CHECK(k.press(60, 0, 0.0, true) == Route::Both);
-  CHECK(k.press(60, 1, 0.001, true) == Route::Both);  // another channel: a voice of its own
-  CHECK(k.release(60, 0) == Route::Voices);
-  CHECK(k.down(60));
-  CHECK(k.release(60, 1) == Route::Both);
+  CHECK(k.press(60, 1, 0.001, true) == Route::Ignore);  // layered: the same press
+  CHECK(k.release(60, 0) == Route::Both);
+  CHECK(k.release(60, 1) == Route::Ignore);
   CHECK(!k.down(60));
-  // In the other order.
+  int replaced = -1;
   CHECK(k.press(62, 0, 1.0, true) == Route::Both);
-  CHECK(k.press(62, 1, 1.5, true) == Route::Both);
-  CHECK(k.release(62, 1) == Route::Voices);
-  CHECK(k.release(62, 0) == Route::Both);
+  CHECK(k.press(62, 1, 1.5, true, &replaced) == Route::Repress);
+  CHECK(replaced == 0);
+  CHECK(k.release(62, 0) == Route::Ignore);  // the ended press's release
+  CHECK(k.down(62));
+  CHECK(k.release(62, 1) == Route::Both);
   // A release on a channel the key wasn't pressed on: nobody hears it.
   CHECK(k.press(64, 0, 2.0, true) == Route::Both);
   CHECK(k.release(64, 3) == Route::Ignore);
   CHECK(k.release(64, 0) == Route::Both);
 }
 
-// The case that would leave a lit key: a doubled press on channel 0, and the
-// same note on channel 1. Every voice the kit started still gets its release.
-TEST(keys_doubled_and_another_channel) {
-  Keys k;
-  CHECK(k.press(60, 0, 0.0, true) == Route::Both);
-  CHECK(k.press(60, 0, 0.002, true) == Route::Ignore);  // doubled
-  CHECK(k.press(60, 1, 0.1, true) == Route::Both);
-  CHECK(k.release(60, 0) == Route::Voices);  // channel 0's voice
-  CHECK(k.release(60, 0) == Route::Ignore);  // its doubled release
-  CHECK(k.down(60));                         // channel 1 still holds it
-  CHECK(k.release(60, 1) == Route::Both);    // channel 1's voice, and the instrument
-  CHECK(!k.down(60));
-}
-
 // Random presses and releases on three channels (toggling Keyswitches,
-// doubling, repeating), checked from both listeners' side: per channel the
-// voices get exactly one release for each press they got (the kit pairs them
-// by note and channel), never one too many; the instrument hears a key go up
-// only once it went down, and only when no press of it is left; at the end
-// every key is up for both.
+// doubling, pressing keys again while down, losing releases), checked from
+// both listeners' side, as the kit pairs voices (by note and channel):
+// - every release the voices get matches a voice they hold;
+// - a key never has more than one voice (no doubled notes on the page);
+// - the instrument hears a key go up only once it went down;
+// - every key the instrument holds is down, and at the end, once every key
+//   is let go (lost releases included: the key is pressed again and let go,
+//   as the owner did), every key is up for both.
 TEST(keys_fuzz_balanced) {
   for (int seed = 0; seed < 300; ++seed) {
     std::mt19937 g(static_cast<unsigned>(seed));
     std::uniform_real_distribution<double> u(0, 1);
     Keys k;
-    int voices[128][3]{}, pressed[128][3]{};
+    int voices[128][16]{};
     bool instDown[128]{};
+    std::vector<std::pair<int, int>> pressed;  // (note, channel) presses whose release will come
     bool ks = true, ok = true;
     double t = 0;
+    auto voicesOf = [&](int n) {
+      int v = 0;
+      for (int c = 0; c < 16; ++c) v += voices[n][c];
+      return v;
+    };
+    auto press = [&](int n, int ch) {
+      int replaced = -1;
+      const Route r = k.press(n, ch, t, ks, &replaced);
+      if (r == Route::Repress) {
+        if (replaced < 0 || voices[n][replaced] <= 0) ok = false;
+        --voices[n][replaced];
+      }
+      if (r == Route::Both || r == Route::Repress) ++voices[n][ch], instDown[n] = true;
+      if (voicesOf(n) > 1) ok = false;  // one voice per key
+    };
     auto release = [&](int n, int ch) {
       const Route r = k.release(n, ch);
-      if (r == Route::Both || r == Route::Voices) --voices[n][ch];
-      if (voices[n][ch] < 0) ok = false;  // a release the kit has no voice for
       if (r == Route::Both) {
-        if (!instDown[n]) ok = false;  // the instrument never heard it go down
+        if (--voices[n][ch] < 0) ok = false;  // a release the kit has no voice for
+        if (!instDown[n]) ok = false;         // the instrument never heard it go down
         instDown[n] = false;
-        for (int c = 0; c < 3; ++c) ok = ok && voices[n][c] == 0;  // only the last release
       }
     };
     for (int ev = 0; ev < 500; ++ev) {
@@ -193,22 +220,27 @@ TEST(keys_fuzz_balanced) {
       const int n = 20 + static_cast<int>(u(g) * 30);
       const int ch = u(g) < 0.7 ? 0 : 1 + static_cast<int>(u(g) * 2);
       if (u(g) < 0.55) {
-        ++pressed[n][ch];
-        const Route r = k.press(n, ch, t, ks);
-        if (r == Route::Both) ++voices[n][ch], instDown[n] = true;
-        if (r == Route::Voices) ok = false;  // a press never goes to the voices alone
-      } else if (pressed[n][ch] > 0) {
-        --pressed[n][ch];
+        press(n, ch);
+        if (u(g) < 0.95) pressed.push_back({n, ch});  // else its release is lost
+      } else if (!pressed.empty()) {
+        const int i = static_cast<int>(u(g) * static_cast<double>(pressed.size()));
+        release(pressed[i].first, pressed[i].second);
+        pressed.erase(pressed.begin() + i);
+      }
+      for (int m = 0; m < 128; ++m) ok = ok && (!instDown[m] || k.down(m) || Keys::inKeyswitchRange(m));
+    }
+    for (auto& p : pressed) release(p.first, p.second);
+    // Keys whose release was lost are still down: the player presses each again and lets go.
+    for (int n = 0; n < 128; ++n)
+      if (k.down(n)) {
+        t += 1.0;
+        int ch = 0;
+        for (int c = 0; c < 16; ++c)
+          if (voices[n][c] > 0) ch = c;
+        press(n, ch);
         release(n, ch);
       }
-    }
-    for (int n = 0; n < 128; ++n)
-      for (int ch = 0; ch < 3; ++ch)
-        while (pressed[n][ch]-- > 0) release(n, ch);
-    for (int n = 0; n < 128; ++n) {
-      ok = ok && !instDown[n] && !k.down(n);
-      for (int ch = 0; ch < 3; ++ch) ok = ok && voices[n][ch] == 0;
-    }
+    for (int n = 0; n < 128; ++n) ok = ok && !instDown[n] && !k.down(n) && voicesOf(n) == 0;
     if (!ok) std::printf("  keys fuzz seed %d\n", seed);
     CHECK(ok);
   }
@@ -841,7 +873,8 @@ TEST(chord_harmonics_become_arco) {
 // ---------------------------------------------------------------------------
 // Random MIDI through the synth's own path (processEvents: Keys, then the
 // performer): channels, doubled messages, keyswitches toggled mid-phrase,
-// repeated keys, all notes off, the articulation and release changing. Every
+// repeated keys, lost releases (then the key pressed again to clear it), all
+// notes off, the articulation and release changing. Every
 // millisecond both listeners' rules are checked: Performer::audit, and every
 // key the instrument holds is really down (Keys::strayHeld). At the end every
 // key is up: the bow lifts and the voices are all let go.
@@ -858,7 +891,7 @@ TEST(router_fuzz) {
       std::vector<std::pair<int, int>> down;  // (note, channel) presses not yet released
       auto send = [&](bool on, int n, int ch, float v) {
         const Route route = on ? keys.press(n, ch, t, ks) : keys.release(n, ch);
-        if (route == Route::Both) {
+        if (route == Route::Both || route == Route::Repress) {
           if (on) r.p().noteOn(n, v, r.pc);
           else r.p().noteOff(n, v, r.pc);
         }
@@ -893,7 +926,7 @@ TEST(router_fuzz) {
           if (!isDown || u(g) < 0.1f) {  // sometimes a key pressed again while down (a sequencer)
             const float v = 0.2f + 0.7f * u(g);
             send(true, n, ch, v);
-            down.push_back({n, ch});
+            if (u(g) < 0.95f) down.push_back({n, ch});  // else its release is lost
             if (u(g) < 0.15f) send(true, n, ch, v), down.push_back({n, ch});  // doubled input
           }
         } else {
@@ -904,6 +937,15 @@ TEST(router_fuzz) {
         if (u(g) < 0.75f) step(0.005f + 0.1f * u(g));  // else at the same moment
       }
       for (auto& d : down) send(false, d.first, d.second, 0.5f);
+      // Keys whose release was lost are still down (and may sound): the
+      // player presses each again and lets go, as the owner did.
+      for (int n = 0; n < 128; ++n)
+        if (keys.down(n)) {
+          step(0.1f);
+          send(true, n, 0, 0.6f);
+          step(0.05f);
+          send(false, n, 0, 0.5f);
+        }
       step(1.5f);
       CHECK(strays == 0);
       CHECK(r.quiet());
@@ -920,11 +962,11 @@ int main() {
   RUN(keys_keyswitch_press_and_release);
   RUN(keys_keyswitch_toggled_while_a_key_is_down);
   RUN(keys_doubled_input);
-  RUN(keys_repeated_key_while_down);
+  RUN(keys_lost_release_then_pressed_again);
+  RUN(keys_overlapping_presses);
   RUN(keys_doubled_window_edge);
   RUN(keys_clear_forgets_every_key);
-  RUN(keys_two_channels);
-  RUN(keys_doubled_and_another_channel);
+  RUN(keys_channels);
   RUN(keys_fuzz_balanced);
   RUN(performer_note_on_off);
   RUN(performer_slur_and_return);

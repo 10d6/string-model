@@ -200,6 +200,7 @@ struct StringModel : Synth {
     checkBad_ = 0;
     extraVoices_ = 0;
     sinceReport_ = 1 << 30;
+    repressed_ = -1;
     pitchBend_ = 0.f;
     pressureAt_ = 0.f;
   }
@@ -217,7 +218,8 @@ struct StringModel : Synth {
     for (auto& e : ctx.in()) {
       if (e.isNoteOn() || e.isNoteOff()) {
         const double t = static_cast<double>(clock_ + e.sample) / sr_;
-        const auto route = e.isNoteOn() ? keys_.press(e.note, e.channel, t, keyswitchesOn) : keys_.release(e.note, e.channel);
+        int replaced = -1;
+        const auto route = e.isNoteOn() ? keys_.press(e.note, e.channel, t, keyswitchesOn, &replaced) : keys_.release(e.note, e.channel);
         if (route == sm::Keys::Route::Keyswitch) {
           // Keyswitches set a parameter (the page and host follow) and don't sound:
           // C1 Auto, C#1 G, D1 D, D#1 A, E1 E (String);
@@ -230,7 +232,16 @@ struct StringModel : Synth {
           continue;
         }
         if (route == sm::Keys::Route::Ignore) continue;
-        if (route == sm::Keys::Route::Both) enqueue(e);
+        if (route == sm::Keys::Route::Repress) {
+          // A key pressed again while down: its release never arrived (or two
+          // sources overlap). The voices let go of the earlier press, so the
+          // page shows one; the instrument restrikes; the key check reports it.
+          MidiEvent off = NoteOff{e.note, replaced};
+          off.sample = e.sample;
+          ctx.out(off);
+          repressed_ = e.note;
+        }
+        enqueue(e);
         ctx.out(e);  // the silent voices follow the keys
         continue;
       }
@@ -304,12 +315,15 @@ struct StringModel : Synth {
   //   page shows no more voices than presses
   //   routed to it, for more than kExtraVoicesFor (the voices follow each
   //   event at its own sample, so they can lag for up to a host block).
+  // - a key pressed again while down (Keys' Repress): its release never
+  //   arrived, or two sources overlap; already handled (the earlier press
+  //   ends), reported because a lost release is what made the note stick.
   // A new break is posted to the page (keys.check: code, note, keys down,
   // voices shown; at most once a second) and, where it's safe, repaired: a
   // stray key is let go, a bow left on with no key down is lifted. The
   // tests (key_tests, performer_fuzz) run the same rules and never trip
   // them, so a report means a path no test reaches: tell Claude.
-  enum : int { kCheckStray = 64, kCheckExtraVoices = 128 };
+  enum : int { kCheckStray = 64, kCheckExtraVoices = 128, kCheckRepress = 256 };
   void checkKeys(GlobalContext& ctx, int frames) {
     auto& p = body_[cur_].inst.performer();
     int note = -1;
@@ -318,6 +332,7 @@ struct StringModel : Synth {
     // its own sample (queue_): compare them only once the queue has caught up.
     const int stray = queued_ == 0 ? keys_.strayHeld(p) : -1;
     if (stray >= 0) bad |= kCheckStray, note = stray;
+    if (repressed_ >= 0) bad |= kCheckRepress, note = repressed_;
     const int shown = ctx.activeVoices();
     extraVoices_ = shown > keys_.voices() ? extraVoices_ + frames : 0;
     if (extraVoices_ > static_cast<int>(kExtraVoicesFor * sr_)) bad |= kCheckExtraVoices;
@@ -326,6 +341,7 @@ struct StringModel : Synth {
       ctx.post(keyCheck, {static_cast<float>(bad), static_cast<float>(note), static_cast<float>(keys_.downCount()),
                           static_cast<float>(shown)});
       sinceReport_ = 0;
+      repressed_ = -1;  // reported (a repress waits for the next report otherwise)
     }
     checkBad_ = bad;
     if (stray >= 0) p.noteOff(stray, 64.f / 127.f, pc_);
@@ -575,6 +591,7 @@ struct StringModel : Synth {
   int checkBad_ = 0;                 // the key check: rules broken at the last control block
   int extraVoices_ = 0;              // samples the page has shown more voices than presses
   int sinceReport_ = 1 << 30;        // samples since the last keys.check message
+  int repressed_ = -1;               // a key pressed again while down, to report (-1: none)
 };
 
 SK_SYNTH(StringModel)
