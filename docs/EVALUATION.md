@@ -36,7 +36,7 @@ from the repo root after `cmake --build build` (Release). Python tools take
 | Cello dynamic range | held notes, `bow.dynamics` 0.05 vs 0.95 | ff − pp: C 4, G 10, D 11, A 11 dB (Iowa arco: 13 / 13 / 10 / 9; violin ~20 on every string) |
 | Flattening, ALFs (cello G) | `SM_INSTRUMENT=cello ./build/string_lab tone 1 43 <vb> <F> <beta> enhanced` | Helmholtz −1 to −30 cents, more at high force and slow speed (measured −6 typical, −60 worst); at 5 cm/s sub-harmonic above 2–4 N, none at 20 cm/s (as measured) |
 | Cello losses | `python3 tools/partial_q.py --instrument cello --iowa <Iowa pizz> --dyn pp,mf,ff` | median Q real / synth, open: 60–150 Hz 208/145 (few partials), 150–500 196/208, 0.5–1 kHz 296/212, 1–2 kHz 369/334; stopped: 60–150 94/73, 150–500 163/161, 0.5–1 kHz 220/209, 1–2 kHz 293/312 (2–4 kHz noisy; 8.5's radiation moved them by up to 10) |
-| Cello open strings | `python3 tools/open_strings.py --instrument cello` | p −2.6 / −1.7 / +2.4 / +6.5, mf +3.8 / +5.8 / +3.1 / +3.6, ff −1.0 / −1.7 / −1.9 / −6.5 cents (C G D A) |
+| Cello open strings | `python3 tools/open_strings.py --instrument cello` | p −2.6 / −1.7 / +3.1 / +7.0, mf +3.8 / +5.8 / +3.1 / +2.9, ff −1.0 / −1.7 / −1.9 / −6.0 cents (C G D A) |
 | The wolf, as played | `python3 tools/wolf_check.py --simple --string 1` (and `--string 0`) | F#3 only: G string mf raucous with a 1.6 dB beat, pp/ff Helmholtz; C string pp sub-harmonic, mf/ff multiple slipping beating 2.1–2.2 dB at 6–8 Hz; neighbours and the D string Helmholtz. Wolf Eliminator 0.5: G clean, C clean at mf/ff (its pp stays weak even at 1) |
 | The wolf's acceptance tests (cello doc §5) | `python3 tools/wolf_check.py` | 1 only within ±25 c of the mode: pass. 2 rate up with speed, down with force: pass (rates 5–6 Hz). 3 worst note rises as beta falls: no (−20 / −10 / −50 c at beta 0.13 / 0.09 / 0.06). 4 the eliminator removes it: pass. 5 odd harmonics beat more: pass (4.7 vs 1.7 dB). 6 Z0 x0.7 shrinks the range: pass (3 pitches → 1) |
 | Cello attacks from rest | `SM_INSTRUMENT=cello ./build/string_lab guettler <s> <open> 0.1 enhanced` | the string alone, fixed force and acceleration: within 50 ms of 42: C 6, G 7, D 11, A 15 (violin D 19); within 10 periods C 10, G 13, D 12, A 15 (50 ms is 3 periods on the open C) |
@@ -249,6 +249,12 @@ the first 60 ms sit between the two cellists. The cost: the attacks' aperiodicit
 over the recordings, most on loud notes on the C string and at the top (+13 dB over the
 Philharmonia) and on G2–B2 against bigcat: the model's own attack is rougher when it starts
 nearer its level (Attack Swell 0 overshot by 20-30 dB). `onset_level.py`: median −1.0 dB.
+
+**Stopped notes in tune** (MODEL.md "Stopped notes in tune"). Held pitch, synth −
+recording by register (cents), before → after: Philharmonia C2–F#2 −7.9 → −1.1, G2–B2 −3.6 →
++2.0, C3 up unchanged; bigcat C2–F#2 −5.7 → −4.3 (its F#2 is wolf-pulled), G2–B2 +0.7 → +4.0.
+Against equal temperament (no vibrato, Intonation Style 0, vel 45/80/110) every stopped note
+on every string is within ±2.6 cents, but F#2 from mf up (the wolf).
 
 Lesson: scaling a recorded onset by the held level (the first version) put the scratch
 20-40 ms before the synth's note, which starts ~20 dB under its level where bigcat's starts

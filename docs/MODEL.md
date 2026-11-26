@@ -190,6 +190,21 @@ radiation; 8.6 attacks and the hand):
   15 ms, 17 / 10 / 5 dB; now 148 / 210 / 50 ms, 16 / 19 / 10 dB). The
   Philharmonia cellist, measured only, agrees (f 195 ms and 19 dB, ff 75 ms
   and 11 dB): cellists start mf-f notes much softer than the violinist.
+- **Stopped notes in tune** (after 8.6; `InstrumentDef::stoppedTuneCents`): the bow
+  flattens stopped notes as it does open strings, the heavier strings most. Measured held
+  (Intonation Style 0, no vibrato, vel 45/80/110), stopped notes sat C −6 to −12 cents
+  (−16 at F#2 ff), G −2 to −4, D ~−1, A 0, while the recordings' C string is within a few
+  cents. A player hears it and places the finger a little higher: bowed stopped notes are
+  raised C +8.5, G +3, D +1, A 0 cents (harmonics about half, pizzicato none) [T]. Now
+  within ±2.6 cents on every string and dynamic but F#2 from mf up (−8 to −11): its second
+  harmonic locks to the wolf mode (185 Hz) and pulls it flat, as a real wolf does; the
+  Wolf Eliminator puts it in tune (+1 to +5). The violin: none (bit-identical).
+  - The low fundamentals (EVALUATION.md "Attacks and sustains by register", finding 4),
+    tried and left: a −5 dB shelf below 160 Hz in the radiation target moved the
+    fundamentals re the note by only 1-2 dB (below ~200 Hz the body's explicit low modes,
+    A0 and the 185 Hz mode, dominate), and the two references disagree there by 8-20 dB
+    (the Philharmonia's lowest notes very thin). Refit the low modes against the anechoic
+    Iowa arco when it is in the workspace.
 - **Recorded onsets** (after 8.6; `model/Onsets.h`, `tools/make_onsets.py`, Bow Catch):
   measured against the Philharmonia cello and bigcat (EVALUATION.md "Attacks and sustains
   by register"), the model's attack opened like a filter and was too clean: its treble

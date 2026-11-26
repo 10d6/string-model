@@ -115,6 +115,10 @@ struct InstrumentDef {
   float onsetGain = 0.f;
   float onsetExp[4]{0.886f, 0.886f, 0.886f, 0.886f};
   float onsetTrimDb[4]{};
+  // The bow flattens stopped notes too, the heavier strings most; the player
+  // hears it and places the finger a little higher: bowed stopped notes are
+  // raised by this much (none plucked) [T]. Default none.
+  float stoppedTuneCents[4]{};
   // The body's size and radiation patterns, and where the body controls act.
   RadiationShape shape{};
   HandDef hand{};

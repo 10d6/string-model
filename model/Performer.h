@@ -467,6 +467,11 @@ class Performer {
       float tune = stopped ? 0.f : def_->openTuneCents[s] * 0.01f * openAllow_[s] * allow;
       // Open strings in pure fifths around A (G -3.9, D -2.0, E +2.0 cents).
       if (!stopped) tune += 0.01f * c.intonStyle * openPureCents(s);
+      // Stopped notes: the finger corrects the bow's flattening (the
+      // instrument's stoppedTuneCents), only while bowed; harmonics, bowed
+      // lighter, about half.
+      if (stopped && lead && art_ != kPizzicato)
+        tune += def_->stoppedTuneCents[s] * 0.01f * (touchQ_[s] > 0.f ? 0.55f : 1.f);
       const float noteHz = mtof(n + tune, c.a4);
       float vib = 0.f;
       if (stopped && (lead || s == str_)) {
