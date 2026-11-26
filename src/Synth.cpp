@@ -5,7 +5,8 @@
 // synth, run in processGlobal: the strings will share a bridge (sympathetic
 // ringing, wolf notes), which per-note voices can't do sample by sample.
 // processEvents hands the notes and controllers to the instrument; the kit's
-// voices are silent placeholders that only track the keys. See docs/MODEL.md.
+// voices are silent placeholders that only track the keys. See docs/MODEL.md
+// and, for how a key event is routed, model/Keys.h and docs/MODEL.md "Keys".
 #include <synthkit/synth.h>
 
 #include <algorithm>
@@ -13,6 +14,7 @@
 #include <vector>
 
 #include "../model/Instrument.h"
+#include "../model/Keys.h"
 #include "../model/Meter.h"
 #include "../model/Radiation.h"
 #include "ir/CelloIR.h"
@@ -23,7 +25,10 @@ using namespace sk;
 struct StringModel;
 
 // The kit's voices only follow the keys (for the page's meter and lit keys);
-// they make no sound. The instrument plays every note itself.
+// they make no sound. The instrument plays every note itself. They get the
+// same keys the instrument does (model/Keys.h) and never the sustain or
+// sostenuto pedal (processEvents), which the instrument ignores: a voice is
+// held exactly while its key is down.
 struct SilentVoice : Voice {
   void start(const NoteOn&, const StartInfo&) override { held = true; }
   void release() override { held = false; }
@@ -183,46 +188,78 @@ struct StringModel : Synth {
     reverb_.prepare(sr_, 1200);
     queued_ = 0;
     blockPos_ = 0;
+    clock_ = 0;
+    keys_.clear();
+    cutLen_ = std::max(1, static_cast<int>(kCutFade * sr_));
+    cut_ = -1;
     pitchBend_ = 0.f;
     pressureAt_ = 0.f;
   }
 
+  // Every incoming event is routed here: notes through Keys (model/Keys.h),
+  // which decides whether the instrument, the silent voices, both or neither
+  // hear it; everything the instrument needs goes on queue_, which
+  // processGlobal plays at each event's own sample.
   void processEvents(EventContext& ctx) override {
     // Anything left from the last host block (shouldn't happen) applies now.
     for (int i = 0; i < queued_; ++i) queue_[i].sample = 0;
     blockPos_ = 0;
-    const bool keys = ctx.on(keyswitches);
+    const bool keyswitchesOn = ctx.on(keyswitches);
     transport_ = ctx.transport();
     for (auto& e : ctx.in()) {
-      // Keyswitches set a parameter (the page and host follow) and don't sound:
-      // C1 Auto, C#1 G, D1 D, D#1 A, E1 E (String);
-      // F1 Arco, F#1 Martelé, G1 Spiccato, G#1 Tremolo, A1 Pizzicato, A#1 Harmonics, B1 Sautillé.
-      if (keys && (e.isNoteOn() || e.isNoteOff()) && e.note >= kKeyswitchLow && e.note < kKeyswitchLow + 12) {
-        if (e.isNoteOn()) {
-          const int k = e.note - kKeyswitchLow;
-          if (k < 5) ctx.setParam(stringSel, static_cast<float>(k));
-          else ctx.setParam(artic, static_cast<float>(k - 5));
+      if (e.isNoteOn() || e.isNoteOff()) {
+        const double t = static_cast<double>(clock_ + e.sample) / sr_;
+        const auto route = e.isNoteOn() ? keys_.press(e.note, e.channel, t, keyswitchesOn) : keys_.release(e.note, e.channel);
+        if (route == sm::Keys::Route::Keyswitch) {
+          // Keyswitches set a parameter (the page and host follow) and don't sound:
+          // C1 Auto, C#1 G, D1 D, D#1 A, E1 E (String);
+          // F1 Arco, F#1 Martelé, G1 Spiccato, G#1 Tremolo, A1 Pizzicato, A#1 Harmonics, B1 Sautillé.
+          if (e.isNoteOn()) {
+            const int k = e.note - sm::Keys::kKeyswitchLow;
+            if (k < 5) ctx.setParam(stringSel, static_cast<float>(k));
+            else ctx.setParam(artic, static_cast<float>(k - 5));
+          }
+          continue;
         }
+        if (route == sm::Keys::Route::Ignore) continue;
+        if (route == sm::Keys::Route::Both) enqueue(e);
+        ctx.out(e);  // the silent voices follow the keys
         continue;
       }
-      if (queued_ < kQueue) queue_[queued_++] = e;
-      ctx.out(e);  // the silent voices follow the keys
+      // The instrument has no pedals: keep them from the silent voices too, or
+      // the page would show keys held that the instrument has let go.
+      if (e.isCC(64) || e.isCC(66)) continue;
+      if (e.isCC(120) || e.isCC(123)) keys_.clear();  // the kit lets its voices go too
+      enqueue(e);
+      ctx.out(e);
     }
-    // Keep the queue sorted by sample (insertion sort, small n).
-    for (int i = 1; i < queued_; ++i) {
-      MidiEvent e = queue_[i];
-      int j = i - 1;
-      while (j >= 0 && queue_[j].sample > e.sample) {
-        queue_[j + 1] = queue_[j];
-        --j;
-      }
-      queue_[j + 1] = e;
+  }
+
+  // Queue an event for the instrument, in sample order (stable: events at the
+  // same sample keep their order). Full (512 events in one host block, which
+  // shouldn't happen): a note-off takes the place of the latest event that
+  // isn't one, so no key is left down; anything else is dropped.
+  void enqueue(const MidiEvent& e) {
+    int at = queued_;
+    if (queued_ == kQueue) {
+      if (!e.isNoteOff()) return;
+      for (at = queued_ - 1; at >= 0 && queue_[at].isNoteOff(); --at) {}
+      if (at < 0) return;
+      for (int k = at; k + 1 < queued_; ++k) queue_[k] = queue_[k + 1];
+      at = --queued_;
     }
+    while (at > 0 && queue_[at - 1].sample > e.sample) {
+      queue_[at] = queue_[at - 1];
+      --at;
+    }
+    queue_[at] = e;
+    ++queued_;
   }
 
   void handle(const MidiEvent& e) {
     auto& p = body_[cur_].inst.performer();
     if (e.isNoteOn()) {
+      if (cut_ >= 0) finishCut();  // a note straight after Stop all sound plays
       // The meter only while a transport plays (the kit's clock always runs).
       const auto& t = transport_;
       p.setMeter(t.playing ? sm::metricStrength(e.beat - t.barStart, t.timeSigNum, t.timeSigDen) : -1.f);
@@ -233,9 +270,20 @@ struct StringModel : Synth {
       pitchBend_ = e.value;
     } else if (e.type == MidiEvent::Type::ChannelPressure || e.type == MidiEvent::Type::PolyPressure) {
       pressureAt_ = e.value;
-    } else if (e.type == MidiEvent::Type::CC && (e.cc == 120 || e.cc == 123)) {
+    } else if (e.isCC(123)) {
+      p.allNotesOff();  // All notes off: the bow lifts, the strings ring on
+    } else if (e.isCC(120)) {
+      // Stop all sound: the strings fade over kCutFade, then are reset (the
+      // body and room ring out their short tails).
       p.allNotesOff();
+      if (cut_ < 0) cut_ = 0;
     }
+  }
+
+  // The end of Stop all sound: the strings (and the performer) start afresh.
+  void finishCut() {
+    body_[cur_].inst.reset();
+    cut_ = -1;
   }
 
   void processGlobal(GlobalContext& ctx, Buffer& io) override {
@@ -331,7 +379,12 @@ struct StringModel : Synth {
         if (ob) ob->rad.control(rs);
       }
       radTick_ = (radTick_ + 1) & 15;
-      const float force = cb.inst.process(pc_, ic_) * gain;
+      float force = cb.inst.process(pc_, ic_) * gain;
+      if (cut_ >= 0) {
+        // Stop all sound: a raised-cosine fade of the strings, then a reset.
+        force *= 0.5f + 0.5f * std::cos(3.14159265f * static_cast<float>(cut_) / static_cast<float>(cutLen_));
+        if (++cut_ >= cutLen_) finishCut();
+      }
       float l = 0.f, r = 0.f;
       play(cb, mode, force, l, r, feedL_[i & 31], feedR_[i & 31]);
       if (ob) {
@@ -364,6 +417,7 @@ struct StringModel : Synth {
       queued_ -= qi;
     }
     blockPos_ += io.frames;
+    clock_ += io.frames;
 
     // Room. The Modelled output feeds it the violin's power response (the
     // radiation's room channels, KB §12.3e: what the room hears is the sound
@@ -443,7 +497,7 @@ struct StringModel : Synth {
   static constexpr int kQueue = 512;
   static constexpr float kSwitchFade = 0.03f;  // s: the old instrument fades out
   static constexpr float kSwitchTail = 0.25f;  // s: then its body rings out (the longest library IR is ~0.17 s)
-  static constexpr int kKeyswitchLow = 24;  // C1
+  static constexpr float kCutFade = 0.005f;   // s: Stop all sound's fade of the strings
   static constexpr float kWet = 0.12f;
   // Each space's wet/direct power ratio at Room 100% (Modelled output, the
   // reference distance; tools/room_power.py).
@@ -467,6 +521,9 @@ struct StringModel : Synth {
   float dryL_[32]{}, dryR_[32]{}, wetL_[32]{}, wetR_[32]{};
   float feedL_[32]{}, feedR_[32]{};  // the radiation's room feed (Modelled)
   float trim_ = 0.f;                 // the distance trim at the end of the last block
+  sm::Keys keys_;                    // which keys are down; where each key event goes
+  int64_t clock_ = 0;                // samples since prepare (the start of this host block in processEvents)
+  int cut_ = -1, cutLen_ = 240;      // Stop all sound: samples into the fade (-1: none); its length
 };
 
 SK_SYNTH(StringModel)

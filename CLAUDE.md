@@ -88,7 +88,8 @@ python3 tools/portamento_glide.py                  # Portamento: glide times on 
 python3 tools/brightness_spread.py --vsco "<VSCO>/Strings/Solo Violin/Arco Vib" [render ...]   # f - p colour vs the recordings
 python3 tools/force_brightness.py                  # the string alone (string_lab): brightness vs bow force
 python3 tools/fundamental_strength.py --data ~/data/phil/wav   # 1st partial re 2-4 per note vs the recordings
-./build/performer_fuzz 50 && ./build/performer_fuzz 50 doubled  # key handling: random fast playing, then one key -> one note
+./build/key_tests                                  # every way a note starts and stops (model/Keys.h, the performer; docs/MODEL.md "Keys")
+./build/performer_fuzz 50 && ./build/performer_fuzz 50 doubled  # key handling: random fast playing; all keys up -> the bow lifts; one key -> one note (SM_INSTRUMENT=cello too)
 python3 tools/intonation_check.py                  # Intonation Style: scale, double stops
 python3 tools/vibrato_extent.py                    # Vibrato Shaping
 python3 tools/pizz_decay.py "<VSCO>/Strings/Solo Violin/Pizz"   # two-stage decay vs recordings
@@ -139,8 +140,12 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
   the recordings' (docs/EVALUATION.md).
 - After changing the string, friction, the brightness tilt or the
   performer's dynamics law, rerun `tools/brightness_spread.py` (f − p within
-  ~1 dB of VSCO per band). After changing the key logic, run
-  `performer_fuzz` (single and doubled) and the stress test.
+  ~1 dB of VSCO per band). After changing the key logic (`model/Keys.h`,
+  the performer's keys, `processEvents`), run `key_tests`, `performer_fuzz`
+  (single and doubled, violin and cello) and the stress test (both modes),
+  and add a case to `tests/key_tests.cpp` for each bug found. Every key
+  event is routed once, in `Keys`: the instrument and the kit's voices must
+  hear the same keys.
 - After changing friction, string, bridge or the open-string allowance, also
   run `tools/open_strings.py` and `tools/harmonics_tuning.py`; after changing
   the performer's bowing rules, `bowing_lab` (no mid-note rebows); after
@@ -223,7 +228,7 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
 
 ## CI
 
-Every PR: native checks (`--check`, and `performer_fuzz` single and doubled), the browser page (Chromium test + browser-vs-native
+Every PR: native checks (`--check`, `key_tests`, and `performer_fuzz` single and doubled on both instruments), the browser page (Chromium test + browser-vs-native
 comparison on `tests/chord.json`; chaotic passages diverge between the two
 builds, see `ci.yml`) and a Pages preview linked on the PR. Plugin builds for Windows,
 macOS and Linux (plugin check, pluginval, auval; a zip per OS) are off for

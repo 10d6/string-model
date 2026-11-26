@@ -4,7 +4,13 @@
 // - Monophonic, last-note priority. Overlapping keys slur (same bow, finger
 //   change) when the interval is within the slur range; a new key after all
 //   keys are up is a new stroke in the other bow direction. With legato off
-//   every key is a bow change (détaché).
+//   every key is a bow change (détaché). Letting go of the sounding key
+//   returns to the newest key still down (up to kMaxHeld are remembered).
+//   The synth feeds it through Keys.h, which merges channels and doubled
+//   inputs: one noteOn per press of a key, one noteOff when it's really up.
+//   On its own it still ignores a held key pressed again within kDoubleOn,
+//   restrikes one pressed again later, and ignores a noteOff for a key it
+//   doesn't hold (tests/key_tests.cpp).
 // - The left hand has a position (KB §11.2, player doc §3.3): a slurred note
 //   within its reach is a finger change (hammer-on / lift-off: the finger
 //   meets the string as a light touch that firms up over 20-25 ms, with a
@@ -197,12 +203,13 @@ class Performer {
     // subdivisions (+15% / -4% velocity at the default) [T].
     if (meter_ >= 0.f) vel = std::clamp(vel * (1.f + 0.5f * c.metric * (meter_ - 0.4f)), 0.f, 1.f);
     removeHeld(note);
-    if (nHeld_ < kMaxHeld) {
-      held_[nHeld_] = note;
-      vel_[nHeld_] = vel;
-      press_[nHeld_] = now_;
-      ++nHeld_;
-    }
+    // Full: forget the oldest key, so the newest (the one that sounds) is
+    // always held and its release is heard.
+    if (nHeld_ == kMaxHeld) removeHeldAt(0);
+    held_[nHeld_] = note;
+    vel_[nHeld_] = vel;
+    press_[nHeld_] = now_;
+    ++nHeld_;
     // A note after a "stop" release is a new stroke from rest.
     const bool wasStopping = stopping_;
     stopping_ = false;
@@ -510,6 +517,8 @@ class Performer {
   float bowVelocity() const { return vb_; }
   int currentString() const { return str_; }
   int chordSize() const { return chordN_; }
+  int heldCount() const { return nHeld_; }  // keys down (tests)
+  int sounding() const { return note_; }    // the note last played (the top of a chord), -1 before any
   bool bowing() const { return bowing_; }
   bool bowedString(int s) const { return bowed_[s]; }
   float bowPosition() const { return bowPos_; }
@@ -578,15 +587,16 @@ class Performer {
   }
 
   void removeHeld(int note) {
-    int j = 0;
-    for (int i = 0; i < nHeld_; ++i)
-      if (held_[i] != note) {
-        held_[j] = held_[i];
-        vel_[j] = vel_[i];
-        press_[j] = press_[i];
-        ++j;
-      }
-    nHeld_ = j;
+    for (int i = nHeld_ - 1; i >= 0; --i)
+      if (held_[i] == note) removeHeldAt(i);
+  }
+  void removeHeldAt(int i) {
+    for (int j = i; j + 1 < nHeld_; ++j) {
+      held_[j] = held_[j + 1];
+      vel_[j] = vel_[j + 1];
+      press_[j] = press_[j + 1];
+    }
+    --nHeld_;
   }
 
   // The last key went up: end the note the chosen way.

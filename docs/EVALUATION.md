@@ -10,7 +10,8 @@ from the repo root after `cmake --build build` (Release). Python tools take
 | What | Command | Last result |
 |---|---|---|
 | Render checks | `./build/stringmodel_render --check . --out build/renders` | all pass (includes block-size independence, 25 random patches) |
-| Stress | `python3 synthkit/tools/stress.py build/stringmodel_render 300 --tail 5` | 0 of 300 ring on. With the default 3 s tail, passages that hit the pizzicato keyswitch can fail on open strings still decaying at −78 dBFS: natural, not stuck |
+| Stress | `python3 synthkit/tools/stress.py build/stringmodel_render 300 --tail 5` (and `--mode overlap`) | 0 of 300 ring on. With the default 3 s tail, passages that hit the pizzicato keyswitch can fail on open strings still decaying at −78 dBFS: natural, not stuck. Keys PR: 0 of 150 balanced, 0 of 100 overlap |
+| Stress, cello | `python3 synthkit/tools/stress.py build/stringmodel_render 60 --tail 5 instrument=1` | 4 of 60 above −80 dBFS 5 s after the last key (main the same): open strings ringing in sympathy after the open C was played, their 2nd partials strongest (C 130.5, G 196, D 147, A 220 Hz), −42 to −56 dB 1 s after the last key, falling 7–9 dB/s. Not stuck (the key logic is clean: key_tests, performer_fuzz on the cello); slower than the real cello's late pizzicato decay (−15 dB/s, Cello pizzicato decay row), a question for the strings' losses |
 | Schelleng map | `./build/string_lab sweep 1 62 0.13 enhanced` (add `LAB_WIDTH=3` for the bow width) | wedge holds Demoucron's pp/mf/ff points, all inside (ff was at the flattened edge); low-force edge higher, less flattening (map in MODEL.md) |
 | Attacks (Guettler plane) | `./build/string_lab guettler 1 62 0.1 enhanced` and the grids `1 62 0.06`, `0 55 0.1`, `2 69 0.08`, `3 76 0.1` | over the five grids (210 attacks): 31 perfect, 103 within 50 ms (before the loss shelves 29 / 112; thermal 2003: 0 / 50; classic: 23 / 71) |
 | Force window | `python3 tools/calibrate_force.py` (~25 min) | every row straddles 0 (margin ≥ 0.2; B3 ff −0.4..+1.0; the open G at d0 measured with the G pp trim) |
@@ -55,7 +56,10 @@ from the repo root after `cmake --build build` (Release). Python tools take
 | Brightness spread | `python3 tools/brightness_spread.py --vsco <Arco Vib> [render …]` | f − p at 2–4 / 4–8 / 8–16 kHz re 0.5–2 kHz, G3–E5: synth +3.4 / +5.9 / +8.4, VSCO +2.5 / +6.4 / +8.0 (same as the Brightness vs dynamics row; this is its tool) |
 | String brightness vs force | `python3 tools/force_brightness.py [enhanced classic thermal]` | ×4 force at fixed v_b, β (Helmholtz throughout): G3 +3.0 / +8.8 / +7.7 dB, A4 +0.9 / +2.9 / +9.2 (enhanced, no bow width) |
 | Fundamental strength | `python3 tools/fundamental_strength.py --data <phil wav>` | 1st partial re 2–4, synth − real: G3 −2.7, D4 −3.2, A4 −29 (mf/f takes; −15 with mp), E5 −1.3 dB (PLAN Ideas) |
-| Key handling | `./build/performer_fuzz [n] [doubled]` | 0 of 140 passages bad, single and doubled input (every articulation) |
+| Key handling | `./build/key_tests` | 701 checks pass, every way a note starts and stops (MODEL.md "Keys"), violin and cello; ASan/UBSan clean |
+| Key handling, random | `./build/performer_fuzz [n] [doubled]` (and `SM_INSTRUMENT=cello`) | 0 of 350 passages bad, single and doubled input, violin; the same on the cello. Since the Keys PR it also checks that all keys up lifts the bow (before pressing the next key, which used to hide a stuck bow), with quick and gentle key-ups and the release mode and articulation changing mid-phrase |
+| Key routing, rendered | `tests/keys-repeats.json`, `keys-pedals.json`, `keys-panic.json` (in `--check`) | pass; on main, the same key held twice (sequencer overlap, two MIDI channels) went silent while a key was still down (−81 / −84 dB), and Stop all sound left plucked strings at −39 dB |
+| Browser, played live | a 40-note legato arco phrase over Web MIDI in headless Chromium (main-thread stalls of 40–200 ms; every message doubled) | no voice or sound left after the last key, either way; doubled input showed 2× voices on main, 1 per key now; bunched presses become double stops only with ≥ 100 ms stalls (8 in 2,217 notes at 200 ms) |
 | Slurs | `./build/stringmodel_render tests/slurs.json` + a 1 ms-hop pitch track (12 ms windows) | finger changes 2–4 ms (was 10–14), shifts 5–11 ms in a fast scale; onsets 1–2 dB above `main`'s, no clicks |
 | Bowing to the meter | `./build/bowing_lab 0.5 92 3 4 < events` (see the file's header) | pickups up-bow from mid-bow, downbeats down-bow, alternation, no mid-note rebows in phrases |
 | Browser speed | `node synthkit/web/test/bench-web.cjs build-web/web/stringmodel.html tests/chord.json` (Release build!) | ~7× realtime with the room, ~12× without |
@@ -451,4 +455,14 @@ noise to tone moment by moment, not the level.
 - **Robust to MIDI quirks.** A keyboard the browser saw as two inputs sent
   every key twice; the synth restarted sautillé strokes on the repeat. A
   real key can't go down twice, so the performer ignores a held key's
-  repeat within 30 ms; `performer_fuzz doubled` keeps it so.
+  repeat within 30 ms; `performer_fuzz doubled` keeps it so. The synth's
+  own routing (model/Keys.h) now does the same before the kit's voices see
+  it, so the page shows one voice per key.
+- **A stuck-note test must check before the next key.** performer_fuzz
+  pressed a key after letting everything go and checked one string was
+  bowed: a new key resets most stuck state, so a stuck bow would have
+  passed. Check the silence first (`key_tests`, `performer_fuzz`).
+- **The instrument and the voices must hear the same keys.** Two listeners
+  that disagree make stuck notes (one hears a press but not its release) or
+  early stops (one hears a release another press still holds). Route every
+  key event once, in one place (Keys), and test the routing on its own.
