@@ -91,12 +91,29 @@ class Keys {
     for (Key& k : key_) k = Key{};
   }
 
-  // Tests: is this key down (played, on any channel; not a keyswitch)?
+  // Is this key down (played, on any channel; not a keyswitch)?
   bool down(int note) const { return valid(note) && key_[note].plays > 0; }
   int downCount() const {
     int n = 0;
     for (const Key& k : key_) n += k.plays > 0;
     return n;
+  }
+  // Presses the voices are holding: what the page's voice count should show
+  // (up to the kit's voice limit).
+  int voices() const {
+    int n = 0;
+    for (const Key& k : key_) n += k.plays;
+    return n;
+  }
+
+  // The listeners agree: every key the instrument holds is down here.
+  // Returns the first that isn't (a note that would stick), or -1. P is the
+  // Performer (heldCount, heldNote); a template keeps this header free of it.
+  template <class P>
+  int strayHeld(const P& performer) const {
+    for (int i = 0; i < performer.heldCount(); ++i)
+      if (!down(performer.heldNote(i))) return performer.heldNote(i);
+    return -1;
   }
 
  private:

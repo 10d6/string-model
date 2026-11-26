@@ -1,7 +1,8 @@
 // Fuzz the performer's key handling (no synthkit): random fast playing in
 // every articulation (overlapping keys, chords, simultaneous events, quick and
 // gentle key-ups, the release mode and articulation changing mid-phrase),
-// then let go of everything and check that within a second the bow is off
+// checking the performer's rules (Performer::audit) every millisecond, then
+// let go of everything and check that within a second the bow is off
 // every string (nothing stuck), then press one key and check that exactly
 // one string is bowed and no chord is left. With "doubled", every event also
 // arrives a second time 2 ms later (a keyboard the browser sees as two MIDI
@@ -38,8 +39,14 @@ int main(int argc, char** argv) {
       InstrumentControls ic;
       pc.articulation = art;
       auto& p = inst.performer();
+      // Performer::audit every millisecond: its rules hold however the keys
+      // were played (the first break is reported).
+      int auditBad = 0, auditNote = -1;
       auto run = [&](float sec) {
-        for (int i = 0; i < static_cast<int>(sec * 48000.f); ++i) inst.process(pc, ic);
+        for (int i = 0; i < static_cast<int>(sec * 48000.f); ++i) {
+          inst.process(pc, ic);
+          if (i % 48 == 0 && !auditBad) auditBad = inst.performer().audit(auditNote);
+        }
       };
       auto on = [&](int n, float v) {
         p.noteOn(n, v, pc);
@@ -79,11 +86,12 @@ int main(int argc, char** argv) {
       run(0.2f);
       int bowed = 0;
       for (int s = 0; s < 4; ++s) bowed += p.bowedString(s);
-      const bool ok = lifted && (art == 4 ? bowed == 0 : (bowed == 1 && p.chordSize() <= 1));  // pizzicato: no bow
+      const bool ok = !auditBad && lifted && (art == 4 ? bowed == 0 : (bowed == 1 && p.chordSize() <= 1));  // pizzicato: no bow
       ++total;
       if (!ok) {
         ++bad;
         std::printf("%s seed %d: %sbowed strings %d, chord %d\n", names[art], seed, lifted ? "" : "STUCK after all keys up; then ", bowed, p.chordSize());
+        if (auditBad) std::printf("  Performer::audit 0x%x (note %d)\n", auditBad, auditNote);
       }
     }
   }

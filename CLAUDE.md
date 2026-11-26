@@ -145,7 +145,11 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
   (single and doubled, violin and cello) and the stress test (both modes),
   and add a case to `tests/key_tests.cpp` for each bug found. Every key
   event is routed once, in `Keys`: the instrument and the kit's voices must
-  hear the same keys.
+  hear the same keys. The key check (`Performer::audit`, `checkKeys`,
+  docs/MODEL.md "The key check") runs in the tests every millisecond and
+  in the synth while the owner plays: a report on the page's Key Check
+  panel (the owner sends the console details) is a path no test reaches:
+  reproduce it, fix it, add the case.
 - After changing friction, string, bridge or the open-string allowance, also
   run `tools/open_strings.py` and `tools/harmonics_tuning.py`; after changing
   the performer's bowing rules, `bowing_lab` (no mid-note rebows); after

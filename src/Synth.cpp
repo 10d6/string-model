@@ -145,6 +145,11 @@ struct StringModel : Synth {
     bowNoise = b.add("bow.hairNoise").name("Bow Noise").range(0, 2).def(1).smoothing(0).group("Bow");
   }
 
+  // The key check (checkKeys): the engine tells the page when a rule about
+  // the keys breaks (ui/custom.js shows it).
+  MessageId keyCheck;
+  void defineMessages(MessageBuilder& b) override { keyCheck = b.add("keys.check"); }
+
   std::unique_ptr<Voice> makeVoice() override { return std::make_unique<SilentVoice>(); }
 
   void prepare(const PrepareInfo& info) override {
@@ -192,6 +197,9 @@ struct StringModel : Synth {
     keys_.clear();
     cutLen_ = std::max(1, static_cast<int>(kCutFade * sr_));
     cut_ = -1;
+    checkBad_ = 0;
+    extraVoices_ = 0;
+    sinceReport_ = 1 << 30;
     pitchBend_ = 0.f;
     pressureAt_ = 0.f;
   }
@@ -284,6 +292,44 @@ struct StringModel : Synth {
   void finishCut() {
     body_[cur_].inst.reset();
     cut_ = -1;
+  }
+
+  // The key check, once per control block: rules that hold however the
+  // keys are played (the notes sounding needn't match the keys down: a
+  // slur, a rolled chord, a ringing string all differ).
+  // - the performer's own (Performer::audit): the bow on at most two
+  //   strings, never with no key down, on notes that are keys down;
+  // - the two listeners agree: every key the instrument holds is down
+  //   (Keys::strayHeld, once every queued event has been played), and the
+  //   page shows no more voices than presses
+  //   routed to it, for more than kExtraVoicesFor (the voices follow each
+  //   event at its own sample, so they can lag for up to a host block).
+  // A new break is posted to the page (keys.check: code, note, keys down,
+  // voices shown; at most once a second) and, where it's safe, repaired: a
+  // stray key is let go, a bow left on with no key down is lifted. The
+  // tests (key_tests, performer_fuzz) run the same rules and never trip
+  // them, so a report means a path no test reaches: tell Claude.
+  enum : int { kCheckStray = 64, kCheckExtraVoices = 128 };
+  void checkKeys(GlobalContext& ctx, int frames) {
+    auto& p = body_[cur_].inst.performer();
+    int note = -1;
+    int bad = p.audit(note);
+    // Keys hears an event at the start of the host block, the performer at
+    // its own sample (queue_): compare them only once the queue has caught up.
+    const int stray = queued_ == 0 ? keys_.strayHeld(p) : -1;
+    if (stray >= 0) bad |= kCheckStray, note = stray;
+    const int shown = ctx.activeVoices();
+    extraVoices_ = shown > keys_.voices() ? extraVoices_ + frames : 0;
+    if (extraVoices_ > static_cast<int>(kExtraVoicesFor * sr_)) bad |= kCheckExtraVoices;
+    sinceReport_ += frames;
+    if ((bad & ~checkBad_) != 0 && sinceReport_ > static_cast<int>(sr_)) {
+      ctx.post(keyCheck, {static_cast<float>(bad), static_cast<float>(note), static_cast<float>(keys_.downCount()),
+                          static_cast<float>(shown)});
+      sinceReport_ = 0;
+    }
+    checkBad_ = bad;
+    if (stray >= 0) p.noteOff(stray, 64.f / 127.f, pc_);
+    if (bad & (sm::Performer::kAuditBowWithoutKey | sm::Performer::kAuditStopTooLong)) p.allNotesOff();
   }
 
   void processGlobal(GlobalContext& ctx, Buffer& io) override {
@@ -418,6 +464,7 @@ struct StringModel : Synth {
     }
     blockPos_ += io.frames;
     clock_ += io.frames;
+    checkKeys(ctx, io.frames);
 
     // Room. The Modelled output feeds it the violin's power response (the
     // radiation's room channels, KB §12.3e: what the room hears is the sound
@@ -498,6 +545,7 @@ struct StringModel : Synth {
   static constexpr float kSwitchFade = 0.03f;  // s: the old instrument fades out
   static constexpr float kSwitchTail = 0.25f;  // s: then its body rings out (the longest library IR is ~0.17 s)
   static constexpr float kCutFade = 0.005f;   // s: Stop all sound's fade of the strings
+  static constexpr float kExtraVoicesFor = 0.25f;  // s: more voices than presses this long is a report
   static constexpr float kWet = 0.12f;
   // Each space's wet/direct power ratio at Room 100% (Modelled output, the
   // reference distance; tools/room_power.py).
@@ -524,6 +572,9 @@ struct StringModel : Synth {
   sm::Keys keys_;                    // which keys are down; where each key event goes
   int64_t clock_ = 0;                // samples since prepare (the start of this host block in processEvents)
   int cut_ = -1, cutLen_ = 240;      // Stop all sound: samples into the fade (-1: none); its length
+  int checkBad_ = 0;                 // the key check: rules broken at the last control block
+  int extraVoices_ = 0;              // samples the page has shown more voices than presses
+  int sinceReport_ = 1 << 30;        // samples since the last keys.check message
 };
 
 SK_SYNTH(StringModel)

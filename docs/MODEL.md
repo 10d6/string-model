@@ -69,12 +69,45 @@ queue (512 per host block) ever fills, a note-off takes the place of the
 latest event that isn't one, so no key is left down.
 
 Inside the performer (the gesture layer, below) the keys are a list,
-newest last, of up to 16: one more forgets the oldest, so the newest is
-always heard to come up. A note-off for a key it doesn't hold is ignored.
+newest last, of up to 16: one more forgets the oldest. Letting go of the
+key of the note sounding hands over to the newest key down; letting go of
+any other key changes nothing; the last key up ends the note. (Until the
+key check below, the hand-over followed "the newest key", which isn't
+always the note sounding: a chord drops the keys that don't fit, the newest
+among them, and a chord let go down to one note plays that note. Its key
+going up while the newest was down left the note bowed with no key: in
+fast tremolo, sautillé and overlapping chords.) A note-off for a key it
+doesn't hold is ignored.
+
+**The key check.** The notes sounding needn't match the keys down: a slur
+(two keys, one note), a rolled chord (four keys, two strings bowed), a chord
+too wide for the hand (its top note), a keyswitch (a key, no note), a
+ringing string (no key) all differ, so counting them would cry wolf. These
+rules hold however the keys are played, and are checked:
+
+| Rule | Checked by |
+|---|---|
+| The bow is on at most two strings, and on as many as the note or chord being bowed | `Performer::audit` |
+| The bow is never on with no key down (a "stop" release rests on the string up to ~0.2 s, never more than 2 s) | `Performer::audit` |
+| The note, or every chord note, being bowed is a key down; no key is held twice | `Performer::audit` |
+| Every key the instrument holds is really down (once the queue has caught up: Keys hears an event at the start of a host block, the performer at its sample) | `Keys::strayHeld` |
+| The page shows no more voices than presses routed to it (for longer than 0.25 s) | `checkKeys` (`ctx.activeVoices()`) |
+
+`key_tests` and `performer_fuzz` check the performer's rules every
+millisecond, and `key_tests`' router fuzz checks all but the last on random
+MIDI through Keys. The synth checks all of them once per control block
+while you play (`checkKeys`): a new break is posted to the page
+(`keys.check`), where the Key Check panel (`ui/custom.js`) shows what broke
+and a toast says so once, with the details in the browser's console; where
+it's safe it's repaired (a stray key is let go, a bow left on with no key is
+lifted). The tests never trip it, so a report means a path no test reaches.
+Found with it at once: the hand-over above (stress seed 46; `performer_fuzz`
+tremolo seed 19, sautillé seed 24).
 
 Tested by `tests/key_tests.cpp` (every row above that the model owns, on
-both instruments; each bug found gets a case), `performer_fuzz` (random
-playing: all keys up must lift the bow, then one key bows one string), the
+both instruments, chords and their roll included; each bug found gets a
+case), `performer_fuzz` (random playing: all keys up must lift the bow,
+then one key bows one string), the
 scenarios `tests/keys-*.json` (the synth's routing, rendered) and
 `synthkit/tools/stress.py` (random playing through the whole synth: the
 output must go silent).
@@ -658,9 +691,9 @@ What this shows:
 **Keys.** Last-note priority, plus double stops and chords:
 - Overlapping keys **slur**: the same bow, and the left hand changes the note
   (below). Keys further apart than `Slur Range` (1–24 semitones, default
-  12) take a new bow instead, so only close notes slur. Letting go of the top
-  key goes back to a key still held, by the same rule; in pizzicato it
-  re-sounds nothing.
+  12) take a new bow instead, so only close notes slur. Letting go of the
+  key of the note sounding goes back to the newest key still held, by the
+  same rule; in pizzicato it re-sounds nothing.
 - A key played after all keys are up starts a **new stroke** in the other
   bow direction.
 - With `Legato Slurs` off, every key is a bow change.

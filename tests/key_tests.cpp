@@ -222,9 +222,25 @@ struct Rig {
   InstrumentControls ic;
   explicit Rig(int instrument) { inst.prepare(48000.0, instrumentDef(instrument)); }
   Performer& p() { return inst.performer(); }
+  // Runs the instrument, checking the performer's rules (Performer::audit)
+  // every millisecond: a broken rule fails the test wherever it happens.
   void run(float s) {
-    for (int i = 0; i < static_cast<int>(s * 48000.f); ++i) inst.process(pc, ic);
+    for (int i = 0; i < static_cast<int>(s * 48000.f); ++i) {
+      inst.process(pc, ic);
+      if (i % 48 == 0) audit();
+    }
   }
+  void audit() {
+    int note;
+    const int bad = p().audit(note);
+    ++checks;
+    if (bad && !reported) {
+      ++failures;
+      reported = true;  // once per rig
+      std::printf("FAIL %s: Performer::audit 0x%x (note %d)\n", current, bad, note);
+    }
+  }
+  bool reported = false;
   void on(int n, float v = 0.7f) { p().noteOn(n, v, pc); }
   void off(int n, float rel = 0.5f) { p().noteOff(n, rel, pc); }
   int bowedCount() {
@@ -534,6 +550,370 @@ TEST(performer_reset) {
   CHECK(r.quiet());
 }
 
+
+// Found by the key check (Performer::audit) on stress seed 46: five keys in
+// 35 ms make a chord of the two top notes (the rest don't fit), dropping the
+// newest key (47); the chord let go down to 60 plays 60; then 60's key goes
+// up while 47 (the newest) is down. The performer only handed over when the
+// newest key went up, so 60 played on with no key. Now the key of the
+// sounding note hands over to the newest key down.
+TEST(performer_released_key_stops_under_a_dropped_key) {
+  Rig r(0);
+  r.on(36), r.on(72);
+  r.run(0.01f);
+  r.off(36);
+  r.run(0.01f);
+  r.on(36), r.on(66);
+  r.run(0.005f);
+  r.on(60);
+  r.run(0.005f);
+  r.on(47);
+  r.off(66);
+  r.off(72);
+  r.run(0.005f);
+  CHECK(r.p().sounding() == 60);
+  r.off(60);
+  r.run(0.05f);
+  CHECK(r.p().sounding() != 60);
+  CHECK(r.p().sounding() == 47);  // the newest key down
+  CHECK(r.p().bowing());
+  r.off(47);
+  r.off(36);
+  r.run(0.4f);
+  CHECK(r.quiet());
+}
+
+// The same idea without a chord: letting go of a key that isn't sounding
+// leaves the note alone, even when it's the newest key down.
+TEST(performer_release_of_a_key_not_sounding) {
+  Rig r(0);
+  r.on(55);
+  r.on(88);  // too wide: 88 plays
+  r.run(0.1f);
+  r.on(62);  // 40 ms+ later: slurs to 62, the newest
+  r.run(0.2f);
+  CHECK(r.p().sounding() == 62);
+  r.off(88);  // not sounding: nothing changes
+  r.run(0.05f);
+  CHECK(r.p().sounding() == 62);
+  r.off(62);  // sounding: back to the newest key down, 55
+  r.run(0.05f);
+  CHECK(r.p().sounding() == 55);
+  r.off(55);
+  r.run(0.4f);
+  CHECK(r.quiet());
+}
+
+// ---------------------------------------------------------------------------
+// Chords: the Chord Window (keys pressed within it are one chord) and the
+// Chord Roll (3-4 notes: the bow takes one pair of strings at a time).
+
+static bool bowedPair(Rig& r, int a, int b) {
+  for (int s = 0; s < 4; ++s)
+    if (r.p().bowedString(s) != (s == a || s == b)) return false;
+  return true;
+}
+
+// Window 0 means "only keys at the same moment": a DAW's chord (or keys the
+// browser delivers in one block) is still a chord; 1 ms apart is not.
+TEST(chord_window_zero) {
+  Rig r(0);
+  r.pc.chordWindow = 0.f;
+  r.on(62);
+  r.on(69);
+  r.run(0.1f);
+  CHECK(r.p().chordSize() == 2);
+  r.off(62);
+  r.off(69);
+  r.run(0.4f);
+  Rig q(0);
+  q.pc.chordWindow = 0.f;
+  q.on(62);
+  q.run(0.001f);
+  q.on(69);
+  q.run(0.1f);
+  CHECK(q.p().chordSize() == 0);
+  CHECK(q.bowedCount() == 1);
+  q.off(62);
+  q.off(69);
+  q.run(0.4f);
+  CHECK(q.quiet());
+}
+
+// The parameter moves the boundary: 60 ms apart is a chord in an 80 ms
+// window, 30 ms apart is not in a 20 ms one.
+TEST(chord_window_values) {
+  for (float window : {0.08f, 0.02f}) {
+    Rig r(0);
+    r.pc.chordWindow = window;
+    const float gap = window > 0.05f ? 0.06f : 0.03f;
+    r.on(62);
+    r.run(gap);
+    r.on(69);
+    r.run(0.1f);
+    CHECK(r.p().chordSize() == (window > 0.05f ? 2 : 0));
+    r.off(62);
+    r.off(69);
+    r.run(0.4f);
+    CHECK(r.quiet());
+  }
+}
+
+// A third key within the window joins the double stop.
+TEST(chord_grows_within_the_window) {
+  Rig r(0);
+  r.on(55);
+  r.run(0.01f);
+  r.on(62);
+  r.run(0.01f);
+  CHECK(r.p().chordSize() == 2);
+  r.on(69);
+  r.run(0.01f);
+  CHECK(r.p().chordSize() == 3);
+  for (int n : {55, 62, 69}) r.off(n);
+  r.run(0.4f);
+  CHECK(r.quiet());
+}
+
+// From silence the chord is one stroke; over a note already bowing it's a
+// new stroke on the new pair.
+TEST(chord_strokes) {
+  Rig r(0);
+  const int before = r.p().onset().id;
+  r.on(62);
+  r.on(69);
+  r.run(0.2f);
+  CHECK(r.p().onset().id == before + 1);
+  r.off(62);
+  r.off(69);
+  r.run(0.4f);
+  Rig q(0);
+  q.on(62);
+  q.run(0.3f);
+  const int mid = q.p().onset().id;
+  q.on(69);
+  q.on(76);
+  q.run(0.2f);
+  CHECK(q.p().chordSize() == 2);
+  CHECK(q.p().onset().id == mid + 1);
+  CHECK(bowedPair(q, 2, 3));  // A and E: the new keys, not the held D
+  for (int n : {62, 69, 76}) q.off(n);
+  q.run(0.4f);
+  CHECK(q.quiet());
+}
+
+// The roll: lower pair, then onto the next pair every Chord Roll seconds.
+TEST(chord_roll_timing) {
+  for (int i = 0; i < kInstrumentCount; ++i)
+    for (float roll : {0.06f, 0.15f}) {
+      Rig r(i);
+      r.pc.rollTime = roll;
+      for (int s = 0; s < 4; ++s) r.on(instrumentDef(i).strings[s].openNote);
+      r.run(0.5f * roll);
+      CHECK(bowedPair(r, 0, 1));
+      r.run(roll);  // 1.5 roll
+      CHECK(bowedPair(r, 1, 2));
+      r.run(roll);  // 2.5 roll
+      CHECK(bowedPair(r, 2, 3));
+      r.run(3.f * roll);  // stays on the top pair
+      CHECK(bowedPair(r, 2, 3));
+      for (int s = 0; s < 4; ++s) r.off(instrumentDef(i).strings[s].openNote);
+      r.run(0.4f);
+      CHECK(r.quiet());
+    }
+}
+
+TEST(chord_roll_three_notes) {
+  Rig r(0);
+  r.on(55);
+  r.on(62);
+  r.on(69);
+  r.run(0.03f);
+  CHECK(bowedPair(r, 0, 1));
+  r.run(0.06f);
+  CHECK(bowedPair(r, 1, 2));
+  for (int n : {55, 62, 69}) r.off(n);
+  r.run(0.4f);
+  CHECK(r.quiet());
+}
+
+// Letting go of a chord note mid-roll: the bow stays on the rest.
+TEST(chord_release_mid_roll) {
+  Rig r(0);
+  for (int n : {55, 62, 69, 76}) r.on(n);
+  r.run(0.3f);  // on the top pair
+  r.off(76);
+  r.run(0.05f);
+  CHECK(r.p().chordSize() == 3);
+  CHECK(bowedPair(r, 1, 2));  // the top pair of what's left
+  r.off(55);
+  r.run(0.05f);
+  CHECK(r.p().chordSize() == 2);
+  CHECK(bowedPair(r, 1, 2));
+  r.off(69);
+  r.run(0.05f);
+  CHECK(r.p().chordSize() == 0);
+  CHECK(r.bowedCount() == 1);
+  CHECK(r.p().sounding() == 62);
+  r.off(62);
+  r.run(0.4f);
+  CHECK(r.quiet());
+  // Early in a three-note roll, the top note up: the lower pair goes on.
+  Rig q(0);
+  for (int n : {55, 62, 69}) q.on(n);
+  q.run(0.02f);
+  q.off(69);
+  q.run(0.1f);
+  CHECK(q.p().chordSize() == 2);
+  CHECK(bowedPair(q, 0, 1));
+  q.off(55);
+  q.off(62);
+  q.run(0.4f);
+  CHECK(q.quiet());
+}
+
+// Too wide for the hand: no chord, the top key plays; letting it go returns
+// to the lower key, still down.
+TEST(chord_too_wide) {
+  Rig r(0);
+  r.on(55);
+  r.on(88);
+  r.run(0.2f);
+  CHECK(r.p().chordSize() == 0);
+  CHECK(r.bowedCount() == 1);
+  CHECK(r.p().sounding() == 88);
+  r.off(88);
+  r.run(0.2f);
+  CHECK(r.p().sounding() == 55);
+  CHECK(r.p().bowing());
+  r.off(55);
+  r.run(0.4f);
+  CHECK(r.quiet());
+}
+
+// Pizzicato chords are strummed low to high ~12 ms apart, whatever the
+// Chord Roll; no bow.
+TEST(chord_pizzicato_strum) {
+  for (float roll : {0.02f, 0.2f}) {
+    Rig r(0);
+    r.pc.articulation = kPizzicato;
+    r.pc.rollTime = roll;
+    r.on(55);
+    r.on(62);
+    r.on(69);
+    float first[4] = {-1, -1, -1, -1};
+    for (int k = 0; k < 48 * 80; ++k) {  // 80 ms
+      r.inst.process(r.pc, r.ic);
+      for (int s = 0; s < 3; ++s)
+        if (first[s] < 0 && r.p().pluckForce(s) != 0.f) first[s] = static_cast<float>(k) / 48000.f;
+    }
+    r.audit();
+    CHECK(!r.p().bowing());
+    CHECK(r.p().chordSize() == 0);
+    CHECK(first[0] >= 0 && first[1] > first[0] && first[2] > first[1]);
+    CHECK(first[2] - first[0] > 0.018f && first[2] - first[0] < 0.030f);  // 2 x ~12 ms
+    for (int n : {55, 62, 69}) r.off(n);
+    r.run(0.2f);
+    CHECK(r.quiet());
+  }
+}
+
+// Chords can't be harmonics: they're bowed arco, no string lightly touched.
+// (The stroke itself began with the first key, as a harmonic: the chord
+// joins it rather than restarting it.)
+TEST(chord_harmonics_become_arco) {
+  Rig r(0);
+  r.pc.articulation = kHarmonics;
+  r.on(62);
+  r.on(69);
+  r.run(0.2f);
+  CHECK(r.p().chordSize() == 2);
+  StringTarget t[4];
+  r.p().strings(t, r.pc);
+  for (int s = 0; s < 4; ++s) CHECK(t[s].touchQ == 0.f);
+  r.off(62);
+  r.off(69);
+  r.run(0.4f);
+  CHECK(r.quiet());
+}
+
+
+// ---------------------------------------------------------------------------
+// Random MIDI through the synth's own path (processEvents: Keys, then the
+// performer): channels, doubled messages, keyswitches toggled mid-phrase,
+// repeated keys, all notes off, the articulation and release changing. Every
+// millisecond both listeners' rules are checked: Performer::audit, and every
+// key the instrument holds is really down (Keys::strayHeld). At the end every
+// key is up: the bow lifts and the voices are all let go.
+TEST(router_fuzz) {
+  for (int i = 0; i < kInstrumentCount; ++i)
+    for (int seed = 0; seed < 15; ++seed) {
+      std::mt19937 g(static_cast<unsigned>(seed * 3 + i));
+      std::uniform_real_distribution<float> u(0.f, 1.f);
+      Rig r(i);
+      Keys keys;
+      bool ks = true;
+      double t = 0;
+      int strays = 0;
+      std::vector<std::pair<int, int>> down;  // (note, channel) presses not yet released
+      auto send = [&](bool on, int n, int ch, float v) {
+        const Route route = on ? keys.press(n, ch, t, ks) : keys.release(n, ch);
+        if (route == Route::Both) {
+          if (on) r.p().noteOn(n, v, r.pc);
+          else r.p().noteOff(n, v, r.pc);
+        }
+      };
+      auto step = [&](float sec) {
+        const int n = static_cast<int>(sec * 48000.f);
+        for (int k = 0; k < n; ++k) {
+          r.inst.process(r.pc, r.ic);
+          if (k % 48 == 0) {
+            r.audit();
+            if (keys.strayHeld(r.p()) >= 0) ++strays;
+          }
+        }
+        t += n / 48000.0;
+      };
+      const int lo = instrumentDef(i).strings[0].openNote;
+      for (int ev = 0; ev < 250; ++ev) {
+        const float x = u(g);
+        if (x < 0.03f) ks = !ks;
+        else if (x < 0.05f) r.pc.articulation = static_cast<int>(u(g) * 7.f);
+        else if (x < 0.07f) r.pc.releaseMode = static_cast<int>(u(g) * 4.f);
+        else if (x < 0.08f) {  // all notes off
+          keys.clear();
+          r.p().allNotesOff();
+          // The keys are still physically down; their releases come later.
+        }
+        if (u(g) < 0.55f || down.empty()) {
+          const int n = u(g) < 0.1f ? 24 + static_cast<int>(u(g) * 12.f) : lo + static_cast<int>(u(g) * 36.f);
+          const int ch = u(g) < 0.8f ? 0 : 1 + static_cast<int>(u(g) * 2.f);
+          bool isDown = false;
+          for (auto& d : down) isDown |= d.first == n && d.second == ch;
+          if (!isDown || u(g) < 0.1f) {  // sometimes a key pressed again while down (a sequencer)
+            const float v = 0.2f + 0.7f * u(g);
+            send(true, n, ch, v);
+            down.push_back({n, ch});
+            if (u(g) < 0.15f) send(true, n, ch, v), down.push_back({n, ch});  // doubled input
+          }
+        } else {
+          const int k = static_cast<int>(u(g) * static_cast<float>(down.size()));
+          send(false, down[k].first, down[k].second, u(g));
+          down.erase(down.begin() + k);
+        }
+        if (u(g) < 0.75f) step(0.005f + 0.1f * u(g));  // else at the same moment
+      }
+      for (auto& d : down) send(false, d.first, d.second, 0.5f);
+      step(1.5f);
+      CHECK(strays == 0);
+      CHECK(r.quiet());
+      CHECK(keys.voices() == 0);
+      CHECK(keys.downCount() == 0);
+      CHECK(r.p().heldCount() == 0);
+      if (strays || !r.quiet()) std::printf("  router fuzz instrument %d seed %d: strays %d\n", i, seed, strays);
+    }
+}
+
 int main() {
   RUN(keys_plain_press_and_release);
   RUN(keys_unknown_release_is_ignored);
@@ -562,6 +942,19 @@ int main() {
   RUN(performer_auto_bow_change_long_note);
   RUN(performer_all_notes_off);
   RUN(performer_reset);
+  RUN(performer_released_key_stops_under_a_dropped_key);
+  RUN(performer_release_of_a_key_not_sounding);
+  RUN(chord_window_zero);
+  RUN(chord_window_values);
+  RUN(chord_grows_within_the_window);
+  RUN(chord_strokes);
+  RUN(chord_roll_timing);
+  RUN(chord_roll_three_notes);
+  RUN(chord_release_mid_roll);
+  RUN(chord_too_wide);
+  RUN(chord_pizzicato_strum);
+  RUN(chord_harmonics_become_arco);
+  RUN(router_fuzz);
   std::printf("%d of %d checks failed\n", failures, checks);
   return failures ? 1 : 0;
 }
