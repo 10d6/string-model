@@ -102,6 +102,9 @@
           "param": "bow.catch"
         },
         {
+          "param": "bow.hairNoise"
+        },
+        {
           "param": "bow.change"
         },
         {
@@ -264,12 +267,14 @@
     "mic.angle": "Where the mics stand around the player (Modelled output). 0°: in front, facing the player; 90°: on the player's left, where the scroll points; −90°: on the right; 180°: behind. The violin's treble beams forward and up, so the sides are a little darker and behind is darker still. Every place has its own colour, changing from note to note.",
     "mic.elevation": "The mics' height, as an angle seen from the violin (Modelled output). 0°: level with it; 30° (default): a little above, the usual close-mic height; 90°: straight overhead. Below 0° the treble falls away: the violin radiates little toward the floor.",
     "mic.distance": "How far the mics are from the violin (Modelled output). Further away, the direct sound falls while the room stays, so you hear more room and a softer edge; the level is re-gained so it stays about as loud. 1.5 m is the default. Closer than 40 cm currently behaves like 40 cm (close-mic sound is coming).",
+    "bow.hairNoise": "The bow's noise in a held note (cello): the hair's rasp between the harmonics, from about 100 Hz to 2 kHz, in a burst at every slip, measured from real cellos (the Iowa and bigcat recordings) as the part the friction alone doesn't make. Rosin Noise is the friction's own grain, higher up. 1: as the recordings; 0: none (the old, cleaner tone); 2: twice as much.",
     "bow.catch": "The bow's catch and scratch at the start of each stroke (cello), from a real cellist's recorded onsets (the Karoryfer x bigcat cello, CC0) with the note itself taken out, so the model still plays the note. 1: as the recordings, following each note as it builds up; 0: the model's attack alone; 2: twice as gritty. Bow changes get half, short strokes a short one, slurs, harmonics and pizzicato none.",
     "bow.swell": "How much a bowed note grows into its level, as players do. Real soft notes start gently and swell over about a fifth of a second; loud ones settle faster. 0: every note starts at full level at once (the old behaviour); 1: as the Philharmonia violinist plays. Slurred notes don't swell, and a new bow in a fast passage only a little."
   },
   "enabledWhen": {
     "body.wolf": { "when": { "param": "instrument", "is": "Cello" }, "why": "The violin has no wolf note: choose the Cello." },
-    "bow.catch": { "when": { "param": "instrument", "is": "Cello" }, "why": "Recorded onsets exist for the cello only so far: choose the Cello." }
+    "bow.catch": { "when": { "param": "instrument", "is": "Cello" }, "why": "Recorded onsets exist for the cello only so far: choose the Cello." },
+    "bow.hairNoise": { "when": { "param": "instrument", "is": "Cello" }, "why": "Measured for the cello only so far: choose the Cello." }
   },
   "keyboard": true
 }

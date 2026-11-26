@@ -101,6 +101,7 @@ python3 tools/attack_sustain.py --phil ~/data/phil-cello/wav --bigcat ~/data/big
 python3 tools/attack_sustain.py --compare a.json b.json        # two builds: what moved, per register and dynamic
 python3 -I tools/make_onsets.py ~/data/bigcat model/data/CelloOnsets.h   # the cello's recorded onsets (bigcat, CC0)
 python3 -I tools/onset_level.py ~/data/bigcat      # the onsets' noise-to-tone ratio vs the recordings (fits InstrumentDef::onsetGain)
+python3 -I tools/bow_noise.py --iowa ~/data/iowa/cello/wav/arco --bigcat ~/data/bigcat   # the held tone's noise per string/dynamic/band vs the recordings (7 min; --header regenerates data/CelloBowNoise.h, then refit bowNoiseTrimDb)
 
 # browser page (API.md §11)
 cmake -S . -B build-web -G Ninja -DCMAKE_TOOLCHAIN_FILE=synthkit/cmake/wasm32-wasi.cmake -DCMAKE_BUILD_TYPE=Release && cmake --build build-web   # Release: without it the page is unoptimised (-O0)
@@ -185,7 +186,8 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
   the one cello the workspace can download; no vibrato, close-miked, names an octave low).
   After changing the attack, the bow's noise, the cello's spectrum or its pitch, run
   `tools/attack_sustain.py` before and after; after changing the swell, the output chain or
-  the onsets, `tools/onset_level.py` too (EVALUATION.md "Attacks and sustains by register"). VSCO-2-CE has only a cello section
+  the onsets, `tools/onset_level.py` too; after changing the friction's noise or the held tone,
+  `tools/bow_noise.py` (EVALUATION.md "Attacks and sustains by register"). VSCO-2-CE has only a cello section
   (its library-mic curve, replaced in 8.5, is kept in `data/cello/` for
   reference). `pip install librosa` for instrument-research's
   `body_response.py`. A fresh session: ask the

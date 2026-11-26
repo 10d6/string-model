@@ -8,6 +8,7 @@
 
 #include "BowedString.h"
 #include "Bridge.h"
+#include "BowNoise.h"
 #include "Onsets.h"
 #include "Radiation.h"
 
@@ -119,6 +120,11 @@ struct InstrumentDef {
   // hears it and places the finger a little higher: bowed stopped notes are
   // raised by this much (none plucked) [T]. Default none.
   float stoppedTuneCents[4]{};
+  // The held tone's bow noise (BowNoise.h): the missing part, per string,
+  // dynamic and octave band (none: the friction's own noise alone), and a
+  // trim fitted with tools/bow_noise.py (gating to the slips lowers it) [T].
+  const BowNoiseTable* bowNoise = nullptr;
+  float bowNoiseTrimDb = 0.f;
   // The body's size and radiation patterns, and where the body controls act.
   RadiationShape shape{};
   HandDef hand{};

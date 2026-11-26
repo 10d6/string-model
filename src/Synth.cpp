@@ -72,6 +72,7 @@ struct StringModel : Synth {
   Param bendRange, a4;
   Param wolf;
   Param bowCatch;
+  Param bowNoise;
 
   void defineParams(ParamBuilder& b) override {
     instrument = b.add("instrument").name("Instrument").choices({"Violin", "Cello"}).group("Instrument");
@@ -135,6 +136,8 @@ struct StringModel : Synth {
     wolf = b.add("body.wolf").name("Wolf Eliminator").range(0, 1).def(0).smoothing(0).group("Instrument");
     // The recorded onsets (cello): a real bow's catch and scratch at each stroke.
     bowCatch = b.add("bow.catch").name("Bow Catch").range(0, 2).def(1).smoothing(0).group("Bow");
+    // The held tone's bow noise (cello): the measured part the friction's own noise lacks.
+    bowNoise = b.add("bow.hairNoise").name("Bow Noise").range(0, 2).def(1).smoothing(0).group("Bow");
   }
 
   std::unique_ptr<Voice> makeVoice() override { return std::make_unique<SilentVoice>(); }
@@ -287,6 +290,7 @@ struct StringModel : Synth {
     ic_.slideNoise = ctx.get(slideNoise);
     ic_.wolf = ctx.get(wolf);
     ic_.bowCatch = ctx.get(bowCatch);
+    ic_.bowNoise = ctx.get(bowNoise);
     // Bridge Hill is the violin's hill frequency; other instruments scale
     // it to their own (the cello's ~1.6 kHz at the default).
     const float hillScale = body_[cur_].inst.def().hill.hz / 2600.f;

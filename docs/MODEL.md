@@ -213,6 +213,23 @@ radiation; 8.6 attacks and the hand):
   most likely, a refit of its own. Moving the radiation's low cut (80 → 105 Hz) does
   nothing: the modal fit compensates it. `radiation_target.py --iowa`: within the same
   scatter as before from 125 Hz up.
+- **The held tone's noise** (after 8.6; `model/BowNoise.h`, `tools/bow_noise.py`, Bow Noise):
+  measured by octave band (125 Hz-8 kHz) as what is left of a held note once its harmonics
+  are taken out (tracked and heterodyned as for the onsets, 0.4-1.4 s after the onset), re
+  the harmonics, the synth's held tone was 10-25 dB too clean between 125 Hz and 2 kHz
+  against the Iowa arco and bigcat (which agree within ~5 dB), and about right at 4-8 kHz,
+  where the friction's own noise (Rosin Noise) lies. Added to the bridge force with the
+  onsets: white noise in seven octave bands (0 dB-peak band-passes, Q √2), each band at the
+  missing level per string and dynamic (`data/CelloBowNoise.h`: the recordings' ratio less
+  the synth's, times the band's share of the bridge force's harmonics from the Pickup
+  output) re the note's bridge force (RMS over 20 ms), and gated by the bowed strings'
+  slipping (0.2 ms smoothing): a burst at each slip, as real bow noise (KB §7: Chafe,
+  Demoucron). Trim +22 dB (`InstrumentDef::bowNoiseTrimDb`), fitted in the loop: the gate
+  passes only the slips (~a tenth of a period), and the measure's window folds much of a
+  broadband noise into the harmonics on both sides [T]. Re-measured: synth − recordings
+  median −0.1 dB over every string, dynamic and band (was −10.3), most cells within ±4 dB;
+  C and D at 1-2 kHz still 4-6 dB under, the A string ~2 over. The violin: none
+  (bit-identical).
 - **Recorded onsets** (after 8.6; `model/Onsets.h`, `tools/make_onsets.py`, Bow Catch):
   measured against the Philharmonia cello and bigcat (EVALUATION.md "Attacks and sustains
   by register"), the model's attack opened like a filter and was too clean: its treble
