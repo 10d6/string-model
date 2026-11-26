@@ -27,6 +27,10 @@ groups and the noise level do, so read them against the recordings' own spread.
 References (never committed: measured only):
   --phil DIR     the Philharmonia samples decoded to WAV (cello_<note>_<len>_<dyn>_arco-normal.wav,
                  or violin_… with --instrument violin). Vibrato from the onset, a studio room.
+  --iowa DIR     the University of Iowa MIS cello arco decoded to WAV (anechoic, one omni at
+                 5 ft, no vibrato; a run of notes per file, found by tools/iowa.py). The synth
+                 plays each note on the run's string (String), with no vibrato, at velocity
+                 45 / 80 / 110 for pp / mf / ff (as the swell was fitted).
   --bigcat DIR   the Karoryfer x bigcat cello (CC0; github.com/sfzinstruments/karoryfer-bigcat.cello):
                  Samples/sus/<name>_<p|mp|mf|f>_<d|g>.wav, names an octave low, no vibrato,
                  close-miked, cut mid-bow (no release). The synth plays it with no vibrato.
@@ -59,7 +63,7 @@ NAMES = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 PHIL_DYN = {"pianissimo": ("pp", 20), "piano": ("p", 40), "mezzo-piano": ("mp", 60),
             "mezzo-forte": ("mf", 80), "forte": ("f", 100), "fortissimo": ("ff", 120)}
 BIGCAT_DYN = {"p": 40, "mp": 60, "mf": 80, "f": 100}
-SOFT = {"pp", "p", "mp"}
+SOFT = {"pp", "p", "mp"}  # Iowa: pp soft, mf and ff loud
 HGROUPS = [("h1", 1, 1), ("h2-3", 2, 3), ("h4-7", 4, 7), ("h8-15", 8, 15), ("h16+", 16, 200)]
 REGISTERS = {
     "cello": [("C2-F#2 C string", 36, 42), ("G2-B2", 43, 47), ("C3-B3", 48, 59), ("C4-B4", 60, 71),
@@ -247,8 +251,30 @@ def bigcat_refs(root, notes, dyns):
     return out
 
 
+IOWA_VEL = {"pp": 45, "mf": 80, "ff": 110}
+
+
+def iowa_refs(d, notes):
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import iowa
+    out = []
+    for f in sorted(os.listdir(d)):
+        info = iowa.parse(f)
+        if not info or info[1] != "arco":
+            continue
+        for n, st, dyn, on, end in iowa.iowa_notes(os.path.join(d, f)):
+            if notes and n not in notes:
+                continue
+            out.append(dict(src="iowa", id=f"iowa_{n}_{dyn}_s{st}", midi=n, dyn=dyn, vel=IOWA_VEL[dyn],
+                            path=os.path.join(d, f), seg=(max(on - 0.1, 0.0), end), string=st, vib=False))
+    return out
+
+
 def render(render_tool, instrument, params, ref, held, sr, tmp):
     p = {"instrument": INSTRUMENT[instrument], "room.mix": 20}
+    if "string" in ref:
+        p["string.select"] = ref["string"] + 1
+        p["room.mix"] = 0  # anechoic
     if not ref["vib"]:
         p["vib.depth"] = 0
     p.update(params)
@@ -264,6 +290,8 @@ def render(render_tool, instrument, params, ref, held, sr, tmp):
 def one(job):
     ref, render_tool, instrument, params, sr, tmp, clips = job
     x = load(ref["path"])
+    if "seg" in ref:
+        x = x[int(ref["seg"][0] * SR):int(ref["seg"][1] * SR)]
     f0 = mtof(ref["midi"])
     mr = measure(x, f0)
     if mr is None:
@@ -377,6 +405,7 @@ def main():
     ap.add_argument("--instrument", default="cello", choices=list(INSTRUMENT))
     ap.add_argument("--phil", default="")
     ap.add_argument("--bigcat", default="")
+    ap.add_argument("--iowa", default="")
     ap.add_argument("--render", default="build/stringmodel_render")
     ap.add_argument("--notes", default="", help="Philharmonia note names (C2,As3,...)")
     ap.add_argument("--dyn", default="", help="Philharmonia dynamics (pianissimo,forte,...) / bigcat p,mp,mf,f")
@@ -404,8 +433,10 @@ def main():
         if a.instrument != "cello":
             sys.exit("bigcat is a cello")
         refs += bigcat_refs(a.bigcat, {midi(n) for n in notes}, dyns)
+    if a.iowa:
+        refs += iowa_refs(a.iowa, {midi(n) for n in notes})
     if not refs:
-        sys.exit("no recordings: give --phil and/or --bigcat")
+        sys.exit("no recordings: give --phil, --bigcat and/or --iowa")
     print(f"{len(refs)} recordings; rendering at {a.sr} Hz, params {params}", file=sys.stderr)
     with tempfile.TemporaryDirectory() as tmp:
         jobs = [(r, a.render, a.instrument, params, a.sr, tmp, bool(a.clips)) for r in refs]
@@ -418,7 +449,7 @@ def main():
                 if (k + 1) % 25 == 0:
                     print(f"  {k + 1}/{len(jobs)}", file=sys.stderr)
         rows.sort(key=lambda r: r["id"])
-        for src in ("phil", "bigcat"):
+        for src in ("phil", "bigcat", "iowa"):
             if any(r["src"] == src for r in rows):
                 table(rows, a.instrument, src)
         if a.clips:

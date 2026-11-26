@@ -97,7 +97,7 @@ LAB_HF=1 tools/bow_change_gap.sh 69                # automatic bow change gap
 python3 tools/perceptual.py --data ~/data/phil/wav [--json out.json]   # perceptual distance to the Philharmonia recordings (2.5 min)
 python3 tools/perceptual.py --compare a.json b.json [--by-note] # two builds: note by note, per dynamic
 python3 tools/perceptual.py --yardstick             # recording vs recording
-python3 tools/attack_sustain.py --phil ~/data/phil-cello/wav --bigcat ~/data/bigcat --json a.json   # cello attacks and sustains by register (1.5 min)
+python3 tools/attack_sustain.py --phil ~/data/phil-cello/wav --bigcat ~/data/bigcat --iowa ~/data/iowa/cello/wav/arco --json a.json   # cello attacks and sustains by register (3.5 min)
 python3 tools/attack_sustain.py --compare a.json b.json        # two builds: what moved, per register and dynamic
 python3 -I tools/make_onsets.py ~/data/bigcat model/data/CelloOnsets.h   # the cello's recorded onsets (bigcat, CC0)
 python3 -I tools/onset_level.py ~/data/bigcat      # the onsets' noise-to-tone ratio vs the recordings (fits InstrumentDef::onsetGain)
@@ -189,7 +189,9 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
   (its library-mic curve, replaced in 8.5, is kept in `data/cello/` for
   reference). `pip install librosa` for instrument-research's
   `body_response.py`. A fresh session: ask the
-  owner for the zips again (the workspace can't download them).
+  owner for the Philharmonia zips again (the workspace can't download them). The Iowa
+  cello is in 10d6/instrument-research `audio/iowa_mis/cello/{arco,pizz}` (FLAC; its
+  `audio/README.md` has the decode command).
 
 ## Working with the owner
 

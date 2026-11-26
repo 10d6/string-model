@@ -14,6 +14,32 @@
 
 namespace sm {
 
+// The radiation target, lowered on the C string's fundamentals (MODEL.md
+// "The cello": the low fundamentals). Measured against the Iowa arco
+// (anechoic; tools/attack_sustain.py --iowa), the C string's notes had their
+// fundamental 5-6.5 dB too strong re their harmonics, the notes above within
+// ~1 dB: the target is lowered by kLowTrimDb below kLowTrimHz, easing to none
+// an octave-third above (raised cosine in log frequency) [T: fitted].
+constexpr float kLowTrimDb = -6.f, kLowTrimHz = 85.f, kLowTrimTo = 100.f;
+inline const float* celloRadiationDb() {
+  static float db[data::kCelloRadiationCount];
+  static const bool init = [] {
+    for (int i = 0; i < data::kCelloRadiationCount; ++i) {
+      const float f = data::kCelloRadiationHz[i];
+      float w = 1.f;
+      if (f >= kLowTrimTo) w = 0.f;
+      else if (f > kLowTrimHz) {
+        const float u = std::log(f / kLowTrimHz) / std::log(kLowTrimTo / kLowTrimHz);
+        w = 0.5f * (1.f + std::cos(3.14159265f * u));
+      }
+      db[i] = data::kCelloRadiationDb[i] + kLowTrimDb * w;
+    }
+    return true;
+  }();
+  (void)init;
+  return db;
+}
+
 // The Karoryfer x bigcat cello's onsets (CC0; tools/make_onsets.py).
 inline const OnsetBank& celloOnsets() {
   static const OnsetBank b = [] {
@@ -109,7 +135,7 @@ inline const InstrumentDef& cello() {
         // The bow's flattening of the open strings, corrected at p-mf
         // (tools/open_strings.py --instrument cello: within ~4 cents p..ff).
         {13.f, 16.f, 12.f, 11.f},
-        data::kCelloRadiationHz, data::kCelloRadiationDb, data::kCelloRadiationCount,
+        data::kCelloRadiationHz, celloRadiationDb(), data::kCelloRadiationCount,
         80.f,   // below A0 (~100 Hz) the cello radiates little: the open C's fundamental is weak [T]
         1.21f,  // Modelled vs Library Mic (Smooth), 300 Hz-5 kHz: the same +1.5 dB as the violin's [T]
         0.69f,  // KB §2.1
@@ -120,6 +146,17 @@ inline const InstrumentDef& cello() {
     // the treble beam to the front and a little below horizontal (at 1250 Hz,
     // -11 degrees). Air Resonance at A0; Nasality where the violin's region
     // lands on a body this much bigger (its hill is ~0.6x) [T].
+    // The bow's flattening of stopped notes (with stoppedTuneCents 0, Intonation
+    // Style 0, no vibrato, held 0.5-1.2 s, vel 45/80/110): C -6..-12 cents
+    // (-16 at F#2 ff), G -2..-4, D ~-1, A 0, the heavier strings most; the
+    // recordings' C string sits within a few cents (EVALUATION.md "Attacks
+    // and sustains by register") [T]. Not the G string: its 2-4 cents are
+    // within the recordings' spread, and +3 moved F#3 off the wolf mode the
+    // wolf was tuned and tested around (tools/wolf_check.py's test 5 failed).
+    {
+      const float t[4] = {8.5f, 0.f, 1.f, 0.f};
+      for (int i = 0; i < 4; ++i) c.stoppedTuneCents[i] = t[i];
+    }
     c.shape.lowestHz = 60.f;
     c.shape.monopoleHz = 300.f;
     c.shape.radius = 0.4f;
