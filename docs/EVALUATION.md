@@ -136,6 +136,9 @@ sustain's, the sustain's aperiodicity, its spectrum by harmonic number, its pitc
 references (measured only, never committed):
 - the Philharmonia cello, 1 and 1.5 s arco-normal, pp–ff (373 notes), at
   `~/data/phil-cello/wav` (vibrato from the onset, a studio)
+- the Iowa arco (`--iowa ~/data/iowa/cello/wav/arco`, from 10d6/instrument-research
+  `audio/iowa_mis/cello`), added after the onsets: anechoic, the best reference below
+  ~150 Hz
 - the Karoryfer × bigcat cello (CC0, `github.com/sfzinstruments/karoryfer-bigcat.cello`, at
   `~/data/bigcat`), down-bow sustains p–f every minor third (68 notes), played by the synth
   without vibrato (the samples have none). Close-miked and cut mid-bow.
@@ -250,11 +253,17 @@ over the recordings, most on loud notes on the C string and at the top (+13 dB o
 Philharmonia) and on G2–B2 against bigcat: the model's own attack is rougher when it starts
 nearer its level (Attack Swell 0 overshot by 20-30 dB). `onset_level.py`: median −1.0 dB.
 
-**Stopped notes in tune** (MODEL.md "Stopped notes in tune"). Held pitch, synth −
-recording by register (cents), before → after: Philharmonia C2–F#2 −7.9 → −1.1, G2–B2 −3.6 →
-+2.0, C3 up unchanged; bigcat C2–F#2 −5.7 → −4.3 (its F#2 is wolf-pulled), G2–B2 +0.7 → +4.0.
-Against equal temperament (no vibrato, Intonation Style 0, vel 45/80/110) every stopped note
-on every string is within ±2.6 cents, but F#2 from mf up (the wolf).
+**Stopped notes in tune, the C string's fundamentals** (MODEL.md). `attack_sustain.py` now
+takes the Iowa arco too (`--iowa`; anechoic, no vibrato, each note on its run's string,
+Room 0). Main → this change, synth − recording by register:
+- held pitch (cents): Philharmonia C2–F#2 −7.9 → −1.0 (G2 up within ±1 of before);
+  bigcat C2–F#2 −5.7 → −4.3 (its F#2 wolf-pulled). Iowa's pitch sits 10-20 cents off on
+  every register (its tuning), so not read. Against equal temperament (no vibrato,
+  Intonation Style 0) the C string's stopped notes are within ±2.5 cents but F#2 from mf.
+- the fundamental re all harmonics (dB): Iowa C2–F#2 +5.6 → +2.9, G2 up +0.2 to +1.7
+  (unchanged); bigcat +4.7 → +4.1 (its three C-string notes, two in the 78-92 Hz band
+  that doesn't follow); Philharmonia +15.4 → +13.4.
+- the wolf: `wolf_check.py` (all six) and `--simple` on both strings unchanged.
 
 Lesson: scaling a recorded onset by the held level (the first version) put the scratch
 20-40 ms before the synth's note, which starts ~20 dB under its level where bigcat's starts

@@ -194,17 +194,25 @@ radiation; 8.6 attacks and the hand):
   flattens stopped notes as it does open strings, the heavier strings most. Measured held
   (Intonation Style 0, no vibrato, vel 45/80/110), stopped notes sat C −6 to −12 cents
   (−16 at F#2 ff), G −2 to −4, D ~−1, A 0, while the recordings' C string is within a few
-  cents. A player hears it and places the finger a little higher: bowed stopped notes are
-  raised C +8.5, G +3, D +1, A 0 cents (harmonics about half, pizzicato none) [T]. Now
-  within ±2.6 cents on every string and dynamic but F#2 from mf up (−8 to −11): its second
-  harmonic locks to the wolf mode (185 Hz) and pulls it flat, as a real wolf does; the
-  Wolf Eliminator puts it in tune (+1 to +5). The violin: none (bit-identical).
-  - The low fundamentals (EVALUATION.md "Attacks and sustains by register", finding 4),
-    tried and left: a −5 dB shelf below 160 Hz in the radiation target moved the
-    fundamentals re the note by only 1-2 dB (below ~200 Hz the body's explicit low modes,
-    A0 and the 185 Hz mode, dominate), and the two references disagree there by 8-20 dB
-    (the Philharmonia's lowest notes very thin). Refit the low modes against the anechoic
-    Iowa arco when it is in the workspace.
+  cents. A player hears it and places the finger a little higher: bowed stopped notes on
+  the C string are raised 8.5 cents, on the D 1 (harmonics about half, pizzicato none) [T].
+  The C string's stopped notes are now within ±2.5 cents but F#2 from mf up (−8 to −11):
+  its second harmonic locks to the wolf mode (185 Hz) and pulls it flat, as a real wolf
+  does; the Wolf Eliminator puts it in tune. Not the G string: its 2-4 cents are within
+  the recordings' spread, and +3 moved F#3 off the wolf mode the wolf was tuned and tested
+  around (`wolf_check.py`'s test 5 failed; moving the mode with it to 185.4 Hz didn't
+  restore it). The violin: none (bit-identical).
+- **The C string's fundamentals** (after 8.6; `celloRadiationDb()` in `model/defs/Cello.h`):
+  against the Iowa arco (anechoic, `attack_sustain.py --iowa`), the C string's notes had
+  their fundamental 5.6 dB too strong re their harmonics, every note above within ~1 dB
+  (the Philharmonia's lowest notes read 15 dB, its mic and room; bigcat 4-5). The
+  radiation target is lowered 6 dB below 85 Hz, easing to none at 100 Hz (raised cosine
+  in log frequency) [T: fitted]: the C string 5.6 → 2.9 dB, above unchanged. C2 and C#2
+  follow (+9.8 → +2.7, +6.5 → −7.1); D#2-F#2 (78-92 Hz) stay +5 to +7: there the
+  radiation stays 9 dB over its target (`radiation_lab`: band 79), the A0 mode's skirt
+  most likely, a refit of its own. Moving the radiation's low cut (80 → 105 Hz) does
+  nothing: the modal fit compensates it. `radiation_target.py --iowa`: within the same
+  scatter as before from 125 Hz up.
 - **Recorded onsets** (after 8.6; `model/Onsets.h`, `tools/make_onsets.py`, Bow Catch):
   measured against the Philharmonia cello and bigcat (EVALUATION.md "Attacks and sustains
   by register"), the model's attack opened like a filter and was too clean: its treble
