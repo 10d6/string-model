@@ -8,6 +8,7 @@
 
 #include "BowedString.h"
 #include "Bridge.h"
+#include "Onsets.h"
 #include "Radiation.h"
 
 namespace sm {
@@ -103,6 +104,17 @@ struct InstrumentDef {
   // Philharmonia violinist's rise times.
   float swellDb[6]{18.5f, 20.f, 23.f, 12.f, 6.6f, 5.9f};
   float swellT[6]{0.36f, 0.36f, 0.356f, 0.2f, 0.268f, 0.26f};
+  // Recorded onsets (Onsets.h): the bow's catch and scratch at a stroke's
+  // start, added to the bridge force (none: the model's attack alone).
+  // onsetGain scales a clip into bridge force: N per unit of the held note's
+  // RMS at Z0 (v_b / beta)^0.886 = 1 (the performer's level law), fitted with
+  // tools/attack_sustain.py [T].
+  // Per string: the law's exponent (the C string's dynamic range is far
+  // narrower than the law's) and a trim (dB).
+  const OnsetBank* onsets = nullptr;
+  float onsetGain = 0.f;
+  float onsetExp[4]{0.886f, 0.886f, 0.886f, 0.886f};
+  float onsetTrimDb[4]{};
   // The body's size and radiation patterns, and where the body controls act.
   RadiationShape shape{};
   HandDef hand{};

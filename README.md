@@ -95,3 +95,9 @@ The browser page and the plugins are built the same way as in synthkit: see
 The library-mic responses in `data/` are CC0, derived from
 [VSCO-2-CE](https://github.com/sgossner/VSCO-2-CE) (Versilian Studios) by
 10d6/instrument-research.
+
+The cello's recorded onsets (`model/data/CelloOnsets.h`: the bow's catch and
+scratch, with the notes taken out) are derived from the
+[Karoryfer x bigcat cello](https://github.com/sfzinstruments/karoryfer-bigcat.cello)
+(CC0 1.0; Karoryfer Lecolds and bigcat instruments, cellist Kamila Borowiak)
+by `tools/make_onsets.py`.

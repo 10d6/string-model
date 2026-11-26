@@ -95,6 +95,7 @@ struct InstrumentControls {
   float slideNoise = 0.4f;   // 0..1: winding noise under a sliding finger
   float bowWidth = 0.006f;   // m: hair in contact (two contact points this far apart; 0 = one point) [T]
   float wolf = 0.f;          // 0..1: the wolf eliminator (instruments with a wolfMode)
+  float bowCatch = 1.f;      // 0..2: the recorded onsets' level (instruments with onsets; 1 = as recorded)
 };
 
 class Instrument {
@@ -116,6 +117,8 @@ class Instrument {
       vert_[s].setDef(def_->strings[s], lv);
     }
     perf_.prepare(host_, *def_);
+    onsets_.prepare(host_);
+    levelA_ = 1.f - std::exp(-1.f / (0.0025f * host_));
     {
       float z[4];
       for (int s = 0; s < 4; ++s) z[s] = def_->strings[s].z0;
@@ -132,6 +135,9 @@ class Instrument {
     for (auto& s : vert_) s.reset();
     for (float& p : pluckV_) p = 0.f;
     perf_.reset();
+    onsets_.reset();
+    onsetSeen_ = perf_.onset().id;
+    level2_ = 0.f;
     dec_.reset();
     for (int s = 0; s < 4; ++s) {
       corr_[s] = 0.f;
@@ -163,6 +169,12 @@ class Instrument {
     float x[4];
     for (int k = 0; k < os_; ++k) x[k] = internalSample(vb, ic);
     float y = tilt_[1].process(tilt_[0].process(dec_.process(x)));
+    if (def_->onsets) {
+      // The note's envelope for the onsets (Onsets.h): RMS over ~2.5 ms
+      // (tools/make_onsets.py follows the recordings' tone the same way).
+      level2_ += (y * y - level2_) * levelA_;
+      y += onsets_.process(std::sqrt(level2_));
+    }
     harmMix_ += (harmMixTarget_ - harmMix_) * harmGlide_;
     const float yh = harmLP_.process(y);
     y += harmMix_ * (yh - y);
@@ -307,6 +319,7 @@ class Instrument {
     bridge_.setHill(ic.hillHz * (1.f - 0.35f * ic.mute), 1.f - 0.4f * ic.mute);
     perf_.controlTick(pc, kControl / host_);
     perf_.strings(target_, pc);
+    startOnset(ic);
     // Force-dependent brightness (KB §2 "corner rounding", §11.5: log centroid
     // rises linearly with log bow force). With the loss shelves the string
     // gives about half of the recordings' p -> f brightening by itself (VSCO
@@ -361,6 +374,35 @@ class Instrument {
     dcR_ = std::exp(-2.f * 3.14159265f * 5.f / host_);
   }
 
+  // Recorded onsets (Onsets.h, MODEL.md "Recorded onsets"): a new stroke
+  // starts the nearest clip, at the note's level by the performer's level law
+  // (L = 7.7 ln(v_b / beta) dB, so amplitude ~ (v_b / beta)^0.886, x Z0).
+  // From the air the clip follows the note's own build-up, capped at
+  // kAirHeadroom x that level; bow changes on the string catch less than a
+  // bow landing (kRebowCatch) and use the level alone;
+  // short strokes (spiccato, sautille) are cut to kShortCatch; harmonics and
+  // pizzicato have none [T].
+  static constexpr float kRebowCatch = 0.5f;
+  static constexpr float kAirHeadroom = 2.f;
+  static constexpr float kShortCatch = 0.08f;  // s
+  void startOnset(const InstrumentControls& ic) {
+    const OnsetEvent& ev = perf_.onset();
+    if (ev.id == onsetSeen_) return;
+    onsetSeen_ = ev.id;
+    if (!def_->onsets || ic.bowCatch <= 0.f || ev.art == kHarmonics || ev.art == kPizzicato) return;
+    const int s = std::clamp(ev.string, 0, 3);
+    // The fitted scale (InstrumentDef::onsetGain, per-string trims) applies to
+    // both: the clips' sawtooth convention against this model's bridge force.
+    const float k = def_->onsetGain * std::pow(10.f, def_->onsetTrimDb[s] / 20.f);
+    float cap = def_->strings[s].z0 * std::pow(std::max(ev.levelRatio, 1e-3f), def_->onsetExp[s]);
+    if (!ev.rebow) cap *= kAirHeadroom;
+    const float amount = ic.bowCatch * k * (ev.rebow ? kRebowCatch : 1.f);
+    const float fadeEnd = ev.art == kSpiccato || ev.art == kSautille ? kShortCatch : 0.f;
+    const float hz = target_[s].noteHz;
+    const int midi = static_cast<int>(std::lround(69.f + 12.f * std::log2(std::max(hz, 20.f) / 440.f)));
+    onsets_.trigger(*def_->onsets, midi, hz, ev.vel, ev.down, cap, !ev.rebow, amount, fadeEnd);
+  }
+
   void onPeriod(int s, float period, const InstrumentControls& ic) {
     if (!target_[s].stopped || ic.intonation <= 0.f || target_[s].force <= 0.f) return;
     // A touched (harmonic) string slips k times per fundamental period: the
@@ -383,6 +425,9 @@ class Instrument {
     return true;
   }
   Performer perf_;
+  OnsetPlayer onsets_;
+  int onsetSeen_ = 0;
+  float level2_ = 0.f, levelA_ = 0.f;  // the note's envelope (squared), its one-pole
   Decimator dec_;
   Bridge bridge_;
   bool active_[4]{};

@@ -71,6 +71,7 @@ struct StringModel : Synth {
   Param avoidOpen;
   Param bendRange, a4;
   Param wolf;
+  Param bowCatch;
 
   void defineParams(ParamBuilder& b) override {
     instrument = b.add("instrument").name("Instrument").choices({"Violin", "Cello"}).group("Instrument");
@@ -132,6 +133,8 @@ struct StringModel : Synth {
     avoidOpen = b.add("finger.avoidOpen").name("Avoid Open Strings").choices({"Off", "On"}).def(1).group("Left Hand");
     // Phase 8.2: a wolf eliminator on the cello's main body mode (KB §5.4).
     wolf = b.add("body.wolf").name("Wolf Eliminator").range(0, 1).def(0).smoothing(0).group("Instrument");
+    // The recorded onsets (cello): a real bow's catch and scratch at each stroke.
+    bowCatch = b.add("bow.catch").name("Bow Catch").range(0, 2).def(1).smoothing(0).group("Bow");
   }
 
   std::unique_ptr<Voice> makeVoice() override { return std::make_unique<SilentVoice>(); }
@@ -283,6 +286,7 @@ struct StringModel : Synth {
     ic_.coupling = ctx.get(coupling);
     ic_.slideNoise = ctx.get(slideNoise);
     ic_.wolf = ctx.get(wolf);
+    ic_.bowCatch = ctx.get(bowCatch);
     // Bridge Hill is the violin's hill frequency; other instruments scale
     // it to their own (the cello's ~1.6 kHz at the default).
     const float hillScale = body_[cur_].inst.def().hill.hz / 2600.f;
