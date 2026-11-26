@@ -96,6 +96,7 @@ struct InstrumentControls {
   float bowWidth = 0.006f;   // m: hair in contact (two contact points this far apart; 0 = one point) [T]
   float wolf = 0.f;          // 0..1: the wolf eliminator (instruments with a wolfMode)
   float bowCatch = 1.f;      // 0..2: the recorded onsets' level (instruments with onsets; 1 = as recorded)
+  float bowNoise = 1.f;      // 0..2: the held tone's added bow noise (instruments with a table; 1 = as measured)
 };
 
 class Instrument {
@@ -118,6 +119,8 @@ class Instrument {
     }
     perf_.prepare(host_, *def_);
     onsets_.prepare(host_);
+    if (def_->bowNoise) bowNoise_.prepare(host_, *def_->bowNoise);
+    noiseLevelA_ = 1.f - std::exp(-1.f / (0.02f * host_));
     levelA_ = 1.f - std::exp(-1.f / (0.0025f * host_));
     {
       float z[4];
@@ -138,6 +141,8 @@ class Instrument {
     onsets_.reset();
     onsetSeen_ = perf_.onset().id;
     level2_ = 0.f;
+    noiseLevel2_ = 0.f;
+    bowNoise_.reset();
     dec_.reset();
     for (int s = 0; s < 4; ++s) {
       corr_[s] = 0.f;
@@ -167,13 +172,23 @@ class Instrument {
       pluckV_[s] = perf_.pluckForceVertical(s);
     }
     float x[4];
+    slipSteps_ = 0;
     for (int k = 0; k < os_; ++k) x[k] = internalSample(vb, ic);
     float y = tilt_[1].process(tilt_[0].process(dec_.process(x)));
     if (def_->onsets) {
       // The note's envelope for the onsets (Onsets.h): RMS over ~2.5 ms
       // (tools/make_onsets.py follows the recordings' tone the same way).
       level2_ += (y * y - level2_) * levelA_;
+      const float y0 = y;
       y += onsets_.process(std::sqrt(level2_));
+      if (def_->bowNoise) {
+        // The held tone's bow noise (BowNoise.h): re the note's level over
+        // ~20 ms, in bursts while a bowed string slips.
+        noiseLevel2_ += (y0 * y0 - noiseLevel2_) * noiseLevelA_;
+        rngN_ = rngN_ * 1664525u + 1013904223u;
+        const float white = static_cast<float>(rngN_ >> 8) * (2.f / 16777216.f) - 1.f;
+        y += bowNoise_.process(std::sqrt(noiseLevel2_), static_cast<float>(slipSteps_) / static_cast<float>(os_), white);
+      }
     }
     harmMix_ += (harmMixTarget_ - harmMix_) * harmGlide_;
     const float yh = harmLP_.process(y);
@@ -235,6 +250,7 @@ class Instrument {
     float S = 0.f, zs = 0.f, direct = 0.f;
     float Sv[4] = {0.f, 0.f, 0.f, 0.f};  // per string, for the weighted solve
     bool any = false;
+    bool slipNow = false;  // a bowed string slipping this step (BowNoise.h)
     const bool coupled = bridge_.coupling() > 0.f;
     const bool bridgeMoving = coupled && std::fabs(uPrev_) > 1e-7f;
     for (int s = 0; s < 4; ++s) {
@@ -261,6 +277,7 @@ class Instrument {
       S += Sv[s];
       // Intonation: slip onsets mark periods in Helmholtz motion.
       const bool sl = st.slipping();
+      if (sl && fb > 0.f) slipNow = true;
       ++sinceSlip_[s];
       if (sl && !prevSlip_[s]) {
         onPeriod(s, static_cast<float>(sinceSlip_[s]), ic);
@@ -268,6 +285,7 @@ class Instrument {
       }
       prevSlip_[s] = sl;
     }
+    if (slipNow) ++slipSteps_;
     if (!any && (!coupled || bridge_.activity() < 1e-12f) && vertAsleep()) {
       uPrev_ = 0.f;
       return 0.f;
@@ -320,6 +338,10 @@ class Instrument {
     perf_.controlTick(pc, kControl / host_);
     perf_.strings(target_, pc);
     startOnset(ic);
+    if (def_->bowNoise) {
+      const OnsetEvent& ev = perf_.onset();
+      bowNoise_.setTarget(std::clamp(ev.string, 0, 3), ev.vel, ic.bowNoise, def_->bowNoiseTrimDb);
+    }
     // Force-dependent brightness (KB §2 "corner rounding", §11.5: log centroid
     // rises linearly with log bow force). With the loss shelves the string
     // gives about half of the recordings' p -> f brightening by itself (VSCO
@@ -428,6 +450,10 @@ class Instrument {
   OnsetPlayer onsets_;
   int onsetSeen_ = 0;
   float level2_ = 0.f, levelA_ = 0.f;  // the note's envelope (squared), its one-pole
+  BowNoise bowNoise_;
+  float noiseLevel2_ = 0.f, noiseLevelA_ = 0.f;  // the note's level for the bow noise (~20 ms)
+  uint32_t rngN_ = 0x2545f491u;                  // the bow noise's own generator
+  int slipSteps_ = 0;                            // internal steps this host sample with a bowed string slipping
   Decimator dec_;
   Bridge bridge_;
   bool active_[4]{};

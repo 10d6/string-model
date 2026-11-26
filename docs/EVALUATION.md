@@ -265,6 +265,15 @@ Room 0). Main → this change, synth − recording by register:
   that doesn't follow); Philharmonia +15.4 → +13.4.
 - the wolf: `wolf_check.py` (all six) and `--simple` on both strings unchanged.
 
+**The held tone's noise** (MODEL.md; `python3 -I tools/bow_noise.py --iowa <Iowa arco>
+--bigcat <bigcat>`, ~7 min): the noise left once a held note's harmonics are taken out, re
+the harmonics, per string, dynamic and octave band, synth − recordings (mean of the Iowa and
+bigcat medians): median −10.3 → −0.1 dB (C and D at 1-2 kHz −4 to −6, the A string up to
++2). `attack_sustain.py`'s held-tone aperiodicity (it also counts cycle-to-cycle jitter,
+which isn't modelled), synth − recording soft notes, main → this: Iowa C string −24 → −14,
+G2–B2 −27 → −18, C3–B3 −21 → −12; bigcat −18 → −10, −15 → −6, −14 → −6; Philharmonia
+−11 → −3, −14 → −5, −10 → −2. The harmonic spectra and the attacks unchanged.
+
 Lesson: scaling a recorded onset by the held level (the first version) put the scratch
 20-40 ms before the synth's note, which starts ~20 dB under its level where bigcat's starts
 near it, and the aperiodicity read 7-18 dB over both recordings. Transplant the ratio of

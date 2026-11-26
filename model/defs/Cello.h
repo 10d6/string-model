@@ -9,6 +9,7 @@
 #pragma once
 
 #include "../InstrumentDef.h"
+#include "../data/CelloBowNoise.h"
 #include "../data/CelloOnsets.h"
 #include "../data/CelloRadiation.h"
 
@@ -61,6 +62,13 @@ inline const OnsetBank& celloOnsets() {
     return o;
   }();
   return b;
+}
+
+// The held tone's missing bow noise (tools/bow_noise.py: the Iowa arco and
+// bigcat against this synth).
+inline const BowNoiseTable& celloBowNoise() {
+  static const BowNoiseTable t{data::kBowNoiseHz, data::kBowNoiseVel, &data::kBowNoiseDb[0][0][0], data::kBowNoiseBands};
+  return t;
 }
 
 inline const InstrumentDef& cello() {
@@ -285,6 +293,9 @@ inline const InstrumentDef& cello() {
     // Recorded onsets (MODEL.md "Recorded onsets"): bigcat's, at a level
     // fitted with tools/attack_sustain.py [T].
     c.onsets = &celloOnsets();
+    // The held tone's bow noise (MODEL.md "The held tone's noise") [T: the trim].
+    c.bowNoise = &celloBowNoise();
+    c.bowNoiseTrimDb = 22.f;
     c.onsetGain = 0.19f;
     {
       const float trim[4] = {0.f, 0.f, 0.f, 0.f};
