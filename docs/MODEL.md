@@ -225,6 +225,10 @@ radiation; 8.6 attacks and the hand):
     quietest, and what's left is the model's own harmonics darkening through the swell, the
     string's speed and contact point: a change of its own). The violin has no onsets (none
     recorded yet): bit-identical.
+  - Then the cello's swell depths ×0.35/0.75 (the owner, by ear: the onsets alone were
+    masked by a first 80 ms 15-20 dB under the note): the treble's lag is gone on every
+    string, the first 60 ms between the two cellists; the attacks' aperiodicity now runs
+    over the recordings on loud notes (EVALUATION.md).
 - The hand (8.6): thumb position from the octave up (the thumb across the
   strings; thumb to third finger a fourth, a semitone back; shifts down land
   three above the new place). `instrument_lab hand 3 24` (a two-octave

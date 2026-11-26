@@ -235,9 +235,15 @@ inline const InstrumentDef& cello() {
     // notes much softer than the violinist the violin's table came from (the
     // Philharmonia cellist, measured only: f 195 ms and 19 dB, ff 75 ms and
     // 11 dB).
+    // After the recorded onsets the owner heard the attacks as still soft:
+    // the depths are scaled by 0.35 / 0.75 (Attack Swell 0.35 of the old
+    // table at the default 0.75), which puts the first 60 ms between the two
+    // cellists (6-7 dB over the Philharmonia's, 2-3 under bigcat's) and takes
+    // away the treble's lag (EVALUATION.md "Attacks and sustains by
+    // register") [T: by ear].
     {
       const float db[6] = {18.5f, 18.f, 22.f, 28.f, 20.f, 14.f}, t[6] = {0.36f, 0.3f, 0.34f, 0.4f, 0.18f, 0.1f};
-      for (int i = 0; i < 6; ++i) c.swellDb[i] = db[i], c.swellT[i] = t[i];
+      for (int i = 0; i < 6; ++i) c.swellDb[i] = db[i] * (0.35f / 0.75f), c.swellT[i] = t[i];
     }
     // Recorded onsets (MODEL.md "Recorded onsets"): bigcat's, at a level
     // fitted with tools/attack_sustain.py [T].

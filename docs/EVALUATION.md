@@ -230,6 +230,26 @@ rather than preceding it. `python3 -I tools/onset_level.py ~/data/bigcat`: the o
 the note 40-120 ms after it starts, synth − recording, median −0.1 dB (per string and
 dynamic within ±5 dB but the D string's f, −10). The violin: bit-identical.
 
+**Then a shallower swell** (the owner, on the onsets alone: "very subtle"). The onset at Bow
+Catch 2 was as loud as the tone over the first 80 ms, but those 80 ms sat 15-20 dB under the
+note (the Iowa-fitted swell), so the following note masked it. The cello's swell depths are
+now scaled by 0.35 / 0.75 (the owner preferred Attack Swell 0.35 of the old table by ear).
+Median synth − recording, main → onsets and this swell, soft / loud:
+
+| Register | treble rise (ms), Phil | first 60 ms (dB), Phil | first 60 ms, bigcat | attack aperiodicity (dB), Phil | aperiodicity, bigcat |
+|---|---|---|---|---|---|
+| C2–F#2 | +141 → −17 / +26 → −2 | 0 → +4 / −1 → +2 | −6 → −6 / −5 → −4 | −7 → +4 / +1 → +13 | −6 → +11 / −7 → +6 |
+| G2–B2 | +150 → +16 / +20 → 0 | 0 → +7 / +4 → +7 | −6 → −2 / −9 → −5 | −10 → −2 / −3 → −1 | +11 → +19 / +9 → +20 |
+| C3–B3 | +58 → −50 / −36 → −42 | +1 → +6 / +5 → +9 | −7 → −1 / −7 → −5 | −9 → −2 / −6 → −1 | 0 → +4 / −8 → +2 |
+| C4–B4 | −8 → −54 / −64 → −72 | +3 → +8 / +5 → +8 | −7 → −3 / −6 → −2 | −8 → −1 / −7 → +2 | −4 → +5 / −1 → +4 |
+| C5–C6 | +85 → +26 / −12 → −27 | 0 → +7 / +4 → +9 | −8 → −1 / −9 → −2 | −2 → +4 / +3 → +13 | −3 → +5 / +2 → +9 |
+
+The treble no longer lags on any string (G2–B2 too, which the onsets alone didn't reach);
+the first 60 ms sit between the two cellists. The cost: the attacks' aperiodicity now runs
+over the recordings, most on loud notes on the C string and at the top (+13 dB over the
+Philharmonia) and on G2–B2 against bigcat: the model's own attack is rougher when it starts
+nearer its level (Attack Swell 0 overshot by 20-30 dB). `onset_level.py`: median −1.0 dB.
+
 Lesson: scaling a recorded onset by the held level (the first version) put the scratch
 20-40 ms before the synth's note, which starts ~20 dB under its level where bigcat's starts
 near it, and the aperiodicity read 7-18 dB over both recordings. Transplant the ratio of
