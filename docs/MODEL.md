@@ -102,11 +102,16 @@ rules hold however the keys are played, and are checked:
 `key_tests` and `performer_fuzz` check the performer's rules every
 millisecond, and `key_tests`' router fuzz checks all but the last on random
 MIDI through Keys. The synth checks all of them once per control block
-while you play (`checkKeys`): a new break is posted to the page
-(`keys.check`), where the Key Check panel (`ui/custom.js`) shows what broke
-and a toast says so once, with the details in the browser's console; where
-it's safe it's repaired (a stray key is let go, a bow left on with no key is
-lifted). The tests never trip it, so a report means a path no test reaches. The
+while you play (`checkKeys`): where it's safe a break is repaired (a stray
+key is let go, a bow left on with no key is lifted; a re-press, above, ends
+the earlier press), always, and a new break is posted to the page
+(`keys.check`). Reporting is quiet: a status line in the collapsed Model
+panel (`ui/custom.js`), the details in the browser's console, and a toast
+only if "Alert me" is ticked there. The checks cost nothing measurable (30 s
+of playing, check on vs compiled out: within run-to-run noise, ±5%).
+Logging, and a capture on Stop all sound, are to come from synthkit (PLAN.md
+"Waiting on synthkit"). A build with `-DSM_KEYCHECK_STRICT=ON` aborts on
+any break but a re-press, for the stress test (CI runs it). The tests never trip it, so a report means a path no test reaches. The
 re-press report is the exception: it's about the MIDI coming in, a release
 lost before the synth (the page's lit key stays on too), and says which key.
 A stuck note can't be caught before then: until its key is pressed again,

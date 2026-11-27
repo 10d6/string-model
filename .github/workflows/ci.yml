@@ -53,6 +53,18 @@ jobs:
         run: |
           ./build/performer_fuzz 5 && ./build/performer_fuzz 5 doubled
           SM_INSTRUMENT=cello ./build/performer_fuzz 5 && SM_INSTRUMENT=cello ./build/performer_fuzz 5 doubled
+      # The whole synth played at random (synthkit's stress test) in a build
+      # where any break of the key check aborts the render (-DSM_KEYCHECK_STRICT,
+      # CMakeLists.txt): every note must stop, and no rule may break on the
+      # way. The cello gets 8 s: its open strings ring longer (EVALUATION.md).
+      - name: Key check under random playing (strict build, violin and cello)
+        run: |
+          cmake -S . -B build-strict -G Ninja -DCMAKE_BUILD_TYPE=Release -DSM_KEYCHECK_STRICT=ON
+          cmake --build build-strict --target stringmodel_render
+          python3 synthkit/tools/stress.py build-strict/stringmodel_render 40 --tail 5
+          python3 synthkit/tools/stress.py build-strict/stringmodel_render 30 --tail 5 --mode overlap
+          python3 synthkit/tools/stress.py build-strict/stringmodel_render 30 --tail 8 instrument=1
+          python3 synthkit/tools/stress.py build-strict/stringmodel_render 30 --tail 8 --mode overlap instrument=1
       - name: Upload renders
         if: always()
         uses: actions/upload-artifact@v6

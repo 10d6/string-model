@@ -146,14 +146,6 @@
       ]
     },
     {
-      "title": "Key Check",
-      "controls": [
-        {
-          "type": "keyCheck"
-        }
-      ]
-    },
-    {
       "title": "Left Hand",
       "controls": [
         {
@@ -213,6 +205,9 @@
       "controls": [
         {
           "param": "bow.friction"
+        },
+        {
+          "type": "keyCheck"
         }
       ]
     },

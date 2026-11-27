@@ -8,6 +8,13 @@ add_subdirectory(synthkit)
 include(CTest)
 
 synthkit_add_synth(stringmodel SOURCES src/Synth.cpp)
+# Test builds only: -DSM_KEYCHECK_STRICT=ON makes any break of the key check
+# (src/Synth.cpp checkKeys) stop the render, so the stress test fails on it
+# (CI runs it so). Never for a build anyone plays: it aborts.
+option(SM_KEYCHECK_STRICT "Abort the render when the key check trips (test builds)" OFF)
+if(SM_KEYCHECK_STRICT)
+  target_compile_definitions(stringmodel_synth PRIVATE SM_KEYCHECK_STRICT=1)
+endif()
 # The browser build: WebAssembly SIMD (every current browser has it) lets the
 # radiation's 120 modes and other plain loops run four at a time.
 if(SYNTHKIT_WASM)
