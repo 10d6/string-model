@@ -35,6 +35,93 @@ Per-note voices render separately in 32-sample blocks and couldn't do that.
 The strings run at 2× the host rate below 70 kHz (96 kHz at 48 kHz). A
 49-tap Blackman–Harris FIR decimates them back to the host rate.
 
+### Keys: how a note starts and stops
+
+Every key event takes one path (`src/Synth.cpp` `processEvents`,
+`model/Keys.h`), so the instrument and the kit's silent voices (the page's
+lit keys and voice count) always agree on which keys are down. A note sticks
+when one of them hears a key go down and never hears it come up; it stops
+early when it hears a key come up that another press still holds.
+
+| Event | Instrument (Performer) | Silent voices |
+|---|---|---|
+| Note-on | `noteOn` | a voice starts |
+| Note-off, the key's last press | `noteOff` | its voice is released |
+| Note-on of a key already down, within 30 ms of its press, on any channel (one key arriving twice: a keyboard the browser sees as two MIDI inputs, a doubled route, a keyboard layering two channels) | nothing | nothing |
+| Note-off matching such a doubled note-on | nothing | nothing |
+| Note-on of a key already down, later than that (its release never arrived, as when the page's lit key stays on; or two sources overlap the same note, a sequencer) | `noteOn` again: a restrike. Reported by the key check | the earlier press's voice is released (a note-off on its channel), then the new one starts: one voice per key |
+| Note-off of the press a re-press ended | nothing | nothing |
+| Note-on / note-off in C1–B1 with `Keyswitches` on (a key not already down as a note) | nothing: sets `String` or `Articulation` | nothing |
+| The release of a key pressed as a keyswitch | nothing, even if `Keyswitches` was turned off meanwhile | nothing |
+| The release of a key pressed as a note | `noteOff`, even if `Keyswitches` was turned on meanwhile | released |
+| Note-on with velocity 0 | a note-off (key-up velocity 64) | |
+| Sustain (CC64), sostenuto (CC66) | ignored: a violin has no pedal | kept from them too, so a voice is held exactly while its key is down |
+| All notes off (CC123) | `allNotesOff`: the bow lifts, the strings ring out | released; every key forgotten, so their late releases go nowhere |
+| Stop all sound (CC120) | `allNotesOff`, the strings fade over 5 ms, then the instrument is reset; the body and room ring out their short tails. A note in those 5 ms plays | as CC123 |
+| The `Instrument` switch | the old instrument's `allNotesOff`; it fades and rings out (below). Keys still down don't sound on the new one; their releases are ignored | unchanged |
+
+A key is down or up, whatever the channel: a real key can't go down twice,
+so a second press of a key that is down ends the first (a stuck note clears
+when its key is pressed again, as on any keyboard instrument). The voices
+are paired per channel, as the kit pairs them, so Keys remembers the
+channel of the press holding each key. (A first version counted a second
+press as a second, overlapping one, for sequencers: then a lost release
+needed two releases, and pressing the stuck key again didn't clear it. The
+owner found it; `keys_lost_release_then_pressed_again`, `keys-repeats.json`.)
+The instrument's events
+wait on a queue and apply at their own sample in `processGlobal`; if the
+queue (512 per host block) ever fills, a note-off takes the place of the
+latest event that isn't one, so no key is left down.
+
+Inside the performer (the gesture layer, below) the keys are a list,
+newest last, of up to 16: one more forgets the oldest. Letting go of the
+key of the note sounding hands over to the newest key down; letting go of
+any other key changes nothing; the last key up ends the note. (Until the
+key check below, the hand-over followed "the newest key", which isn't
+always the note sounding: a chord drops the keys that don't fit, the newest
+among them, and a chord let go down to one note plays that note. Its key
+going up while the newest was down left the note bowed with no key: in
+fast tremolo, sautillé and overlapping chords.) A note-off for a key it
+doesn't hold is ignored.
+
+**The key check.** The notes sounding needn't match the keys down: a slur
+(two keys, one note), a rolled chord (four keys, two strings bowed), a chord
+too wide for the hand (its top note), a keyswitch (a key, no note), a
+ringing string (no key) all differ, so counting them would cry wolf. These
+rules hold however the keys are played, and are checked:
+
+| Rule | Checked by |
+|---|---|
+| The bow is on at most two strings, and on as many as the note or chord being bowed | `Performer::audit` |
+| The bow is never on with no key down (a "stop" release rests on the string up to ~0.2 s, never more than 2 s) | `Performer::audit` |
+| The note, or every chord note, being bowed is a key down; no key is held twice | `Performer::audit` |
+| Every key the instrument holds is really down (once the queue has caught up: Keys hears an event at the start of a host block, the performer at its sample) | `Keys::strayHeld` |
+| The page shows no more voices than presses routed to it (for longer than 0.25 s) | `checkKeys` (`ctx.activeVoices()`) |
+| A key isn't pressed while it's down: if it is, its release never arrived (reported; handled by the re-press above) | `Keys` (`Repress`), `checkKeys` |
+
+`key_tests` and `performer_fuzz` check the performer's rules every
+millisecond, and `key_tests`' router fuzz checks all but the last on random
+MIDI through Keys. The synth checks all of them once per control block
+while you play (`checkKeys`): a new break is posted to the page
+(`keys.check`), where the Key Check panel (`ui/custom.js`) shows what broke
+and a toast says so once, with the details in the browser's console; where
+it's safe it's repaired (a stray key is let go, a bow left on with no key is
+lifted). The tests never trip it, so a report means a path no test reaches. The
+re-press report is the exception: it's about the MIDI coming in, a release
+lost before the synth (the page's lit key stays on too), and says which key.
+A stuck note can't be caught before then: until its key is pressed again,
+the synth has no way to know the key isn't still held.
+Found with it at once: the hand-over above (stress seed 46; `performer_fuzz`
+tremolo seed 19, sautillé seed 24).
+
+Tested by `tests/key_tests.cpp` (every row above that the model owns, on
+both instruments, chords and their roll included; each bug found gets a
+case), `performer_fuzz` (random playing: all keys up must lift the bow,
+then one key bows one string), the
+scenarios `tests/keys-*.json` (the synth's routing, rendered) and
+`synthkit/tools/stress.py` (random playing through the whole synth: the
+output must go silent).
+
 ## Instruments (Phase 8)
 
 Each instrument is an `InstrumentDef` (`model/InstrumentDef.h`; the data in
@@ -614,9 +701,9 @@ What this shows:
 **Keys.** Last-note priority, plus double stops and chords:
 - Overlapping keys **slur**: the same bow, and the left hand changes the note
   (below). Keys further apart than `Slur Range` (1–24 semitones, default
-  12) take a new bow instead, so only close notes slur. Letting go of the top
-  key goes back to a key still held, by the same rule; in pizzicato it
-  re-sounds nothing.
+  12) take a new bow instead, so only close notes slur. Letting go of the
+  key of the note sounding goes back to the newest key still held, by the
+  same rule; in pizzicato it re-sounds nothing.
 - A key played after all keys are up starts a **new stroke** in the other
   bow direction.
 - With `Legato Slurs` off, every key is a bow change.
@@ -627,8 +714,10 @@ What this shows:
   (sautillé, spiccato, martelé) the repeat restarted the stroke, a doubled
   attack, and its zero gap read as a very fast passage; in arco it slurred
   inaudibly. A fast sautillé passage with every event doubled 2 ms later now
-  renders bit-identical to the single one. The kit's voice count still
-  shows 2 per key (its silent voices follow the raw keys).
+  renders bit-identical to the single one. The synth now drops the second
+  arrival before either listener hears it (Keys, above), so the voice count
+  shows one voice per key too; the performer's own check stays for the
+  labs, which drive it directly.
 - The string is chosen per note: the highest string whose open note is at or
   below it. Through a slur, the current string is kept if the note is within
   a fifth above its open note.
@@ -1470,7 +1559,8 @@ python3 tools/portamento_glide.py [render]                            # glide ti
 python3 tools/brightness_spread.py --vsco <Arco Vib> [render ...]     # f - p colour, recordings vs synth
 python3 tools/force_brightness.py [enhanced classic thermal]          # the string alone: brightness vs force
 python3 tools/fundamental_strength.py --data <phil wav> [render]      # 1st partial re 2-4, recordings vs synth
-./build/performer_fuzz [n] [doubled]                                  # key handling: one key -> one note
+./build/key_tests                                                     # every way a note starts and stops (Keys, Performer)
+./build/performer_fuzz [n] [doubled]                                  # key handling: keys up -> bow lifts; one key -> one note (SM_INSTRUMENT=cello)
 ```
 
 What each check should show, and the latest numbers: [EVALUATION.md](EVALUATION.md).

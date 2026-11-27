@@ -146,6 +146,14 @@
       ]
     },
     {
+      "title": "Key Check",
+      "controls": [
+        {
+          "type": "keyCheck"
+        }
+      ]
+    },
+    {
       "title": "Left Hand",
       "controls": [
         {

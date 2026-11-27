@@ -2,6 +2,10 @@ name: CI
 
 # Generated from synthkit/template. The heavy lifting is in synthkit/tools/ci,
 # pinned with the synthkit submodule.
+#
+# Actions are on their Node 24 majors (checkout v5, upload-artifact v6,
+# download-artifact v7: GitHub retired Node 20 for actions). Every job has a
+# timeout, so a hang fails in minutes instead of GitHub's 6 hours.
 
 on:
   push:
@@ -33,8 +37,9 @@ jobs:
   native:
     name: Native build + checks
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
       - run: synthkit/tools/ci/deps.sh native
@@ -42,11 +47,15 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
       - name: Checks (scenarios, presets, sample rates, block sizes, random patches)
         run: ./build/${SYNTH}_render --check . --out renders
-      - name: Key handling (random fast playing, then one key -> one note; single and doubled MIDI input)
-        run: ./build/performer_fuzz 5 && ./build/performer_fuzz 5 doubled
+      - name: Key handling (every way a note starts and stops, tests/key_tests.cpp)
+        run: ./build/key_tests
+      - name: Key handling, random playing (all keys up -> the bow lifts; one key -> one note; single and doubled MIDI input; violin and cello)
+        run: |
+          ./build/performer_fuzz 5 && ./build/performer_fuzz 5 doubled
+          SM_INSTRUMENT=cello ./build/performer_fuzz 5 && SM_INSTRUMENT=cello ./build/performer_fuzz 5 doubled
       - name: Upload renders
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: renders
           path: |
@@ -59,8 +68,9 @@ jobs:
   web:
     name: Browser build
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
       - run: synthkit/tools/ci/deps.sh web
@@ -84,7 +94,7 @@ jobs:
           python3 synthkit/web/test/compare.py web-test/web-render.f32 web-test/native.wav
       - name: Upload the page
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: web
           path: |
@@ -93,14 +103,17 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-  # Plugins are slow and only needed at milestones: they build for version
-  # tags (releases) and when the workflow is run by hand with "plugins" ticked,
-  # not on every PR or push.
+  # Plugins (Windows, macOS, Linux; ~15 min) build on every PR, so the owner
+  # can play each change in a DAW, for version tags (releases), and when the
+  # workflow is run by hand with "plugins" ticked. Not for pushes to main.
   plugin:
-    name: Plugin (${{ matrix.name }})
+    # No matrix value in the name: a skipped matrix job (pushes to main) would
+    # show the expression itself. GitHub adds the OS to each one that runs.
+    name: Plugin
     needs: web
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.plugins)
+    if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.plugins)
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -109,10 +122,10 @@ jobs:
           - { name: macOS, os: macos-15, slug: macos }
           - { name: Linux, os: ubuntu-24.04, slug: linux }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: web
           path: page
@@ -123,7 +136,7 @@ jobs:
         shell: bash
         run: synthkit/tools/ci/plugin.sh . "$SYNTH" . page/build-web/web plugin.zip
       - name: Upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: plugin-${{ matrix.slug }}
           path: plugin.zip
@@ -134,11 +147,12 @@ jobs:
     needs: plugin
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v7
         with:
           pattern: plugin-*
       - name: Publish
@@ -159,12 +173,17 @@ jobs:
     needs: web
     if: ${{ !github.event.repository.private && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       contents: write
       pull-requests: write
-    concurrency: pages-branch
+    # No concurrency group: with one, a third run waiting on it cancels the
+    # second's preview (GitHub keeps one pending job per group), leaving a
+    # cancelled run and a stale preview. Each run writes its own directory,
+    # so pushes only race on the branch tip: the push below retries on top
+    # of whatever landed first.
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: web
           path: page
@@ -176,18 +195,24 @@ jobs:
           set -e
           dest="."
           [ -n "$PR" ] && dest="pr/$PR"
+          what="main"; [ -n "$PR" ] && what="PR #$PR"
+          page="$PWD/page/build-web/web/${SYNTH}.html"
           git init -q site && cd site
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
-          if git fetch -q --depth 1 origin gh-pages; then git checkout -q gh-pages; else git checkout -q --orphan gh-pages; fi
-          mkdir -p "$dest"
-          cp "../page/build-web/web/${SYNTH}.html" "$dest/index.html"
-          touch .nojekyll
-          git add -A
-          what="main"; [ -n "$PR" ] && what="PR #$PR"
-          git commit -q -m "Preview for $what (${{ github.sha }})" || exit 0
-          git push -q origin gh-pages
+          for attempt in 1 2 3 4 5; do
+            if git fetch -q --depth 1 origin gh-pages; then git checkout -q -B gh-pages FETCH_HEAD; else git checkout -q --orphan gh-pages; fi
+            mkdir -p "$dest"
+            cp "$page" "$dest/index.html"
+            touch .nojekyll
+            git add -A
+            git commit -q -m "Preview for $what (${{ github.sha }})" || exit 0   # unchanged
+            if git push -q origin gh-pages; then exit 0; fi
+            echo "gh-pages moved (another preview landed first): retrying ($attempt)"
+            sleep $((attempt * 3))
+          done
+          exit 1
       - name: Link the preview on the PR
         if: github.event_name == 'pull_request'
         env:

@@ -10,7 +10,8 @@ from the repo root after `cmake --build build` (Release). Python tools take
 | What | Command | Last result |
 |---|---|---|
 | Render checks | `./build/stringmodel_render --check . --out build/renders` | all pass (includes block-size independence, 25 random patches) |
-| Stress | `python3 synthkit/tools/stress.py build/stringmodel_render 300 --tail 5` | 0 of 300 ring on. With the default 3 s tail, passages that hit the pizzicato keyswitch can fail on open strings still decaying at −78 dBFS: natural, not stuck |
+| Stress | `python3 synthkit/tools/stress.py build/stringmodel_render 300 --tail 5` (and `--mode overlap`) | 0 of 300 ring on. With the default 3 s tail, passages that hit the pizzicato keyswitch can fail on open strings still decaying at −78 dBFS: natural, not stuck. Keys PR: 0 of 150 balanced, 0 of 100 overlap |
+| Stress, cello | `python3 synthkit/tools/stress.py build/stringmodel_render 60 --tail 5 instrument=1` | 4 of 60 above −80 dBFS 5 s after the last key (main the same): open strings ringing in sympathy after the open C was played, their 2nd partials strongest (C 130.5, G 196, D 147, A 220 Hz), −42 to −56 dB 1 s after the last key, falling 7–9 dB/s. Not stuck (the key logic is clean: key_tests, performer_fuzz on the cello); slower than the real cello's late pizzicato decay (−15 dB/s, Cello pizzicato decay row), a question for the strings' losses |
 | Schelleng map | `./build/string_lab sweep 1 62 0.13 enhanced` (add `LAB_WIDTH=3` for the bow width) | wedge holds Demoucron's pp/mf/ff points, all inside (ff was at the flattened edge); low-force edge higher, less flattening (map in MODEL.md) |
 | Attacks (Guettler plane) | `./build/string_lab guettler 1 62 0.1 enhanced` and the grids `1 62 0.06`, `0 55 0.1`, `2 69 0.08`, `3 76 0.1` | over the five grids (210 attacks): 31 perfect, 103 within 50 ms (before the loss shelves 29 / 112; thermal 2003: 0 / 50; classic: 23 / 71) |
 | Force window | `python3 tools/calibrate_force.py` (~25 min) | every row straddles 0 (margin ≥ 0.2; B3 ff −0.4..+1.0; the open G at d0 measured with the G pp trim) |
@@ -55,7 +56,11 @@ from the repo root after `cmake --build build` (Release). Python tools take
 | Brightness spread | `python3 tools/brightness_spread.py --vsco <Arco Vib> [render …]` | f − p at 2–4 / 4–8 / 8–16 kHz re 0.5–2 kHz, G3–E5: synth +3.4 / +5.9 / +8.4, VSCO +2.5 / +6.4 / +8.0 (same as the Brightness vs dynamics row; this is its tool) |
 | String brightness vs force | `python3 tools/force_brightness.py [enhanced classic thermal]` | ×4 force at fixed v_b, β (Helmholtz throughout): G3 +3.0 / +8.8 / +7.7 dB, A4 +0.9 / +2.9 / +9.2 (enhanced, no bow width) |
 | Fundamental strength | `python3 tools/fundamental_strength.py --data <phil wav>` | 1st partial re 2–4, synth − real: G3 −2.7, D4 −3.2, A4 −29 (mf/f takes; −15 with mp), E5 −1.3 dB (PLAN Ideas) |
-| Key handling | `./build/performer_fuzz [n] [doubled]` | 0 of 140 passages bad, single and doubled input (every articulation) |
+| Key handling | `./build/key_tests` (~45 s) | 571,338 checks pass (the performer's rules audited every millisecond): every way a note starts and stops (MODEL.md "Keys"), chords (window 0 / 20 / 80 ms, the roll's timing on both instruments, letting go mid-roll, too-wide chords, the pizzicato strum, harmonics chords), a router fuzz (random MIDI through Keys and the performer, lost releases cleared by pressing the key again, 15 passages per instrument), and one voice per key in the Keys fuzz; ASan/UBSan clean |
+| Key check, while playing | `checkKeys` in a build that fails on any trip, through `synthkit/tools/stress.py` | After the re-press change: 0 trips in 520 balanced passages (violin, cello, tremolo, sautillé, legato off), and none but the expected re-press reports in 230 overlap passages; the tripwire fires on a lost release. Before: 0 trips in 1,310 passages: 300 balanced, 200 overlap, 150 + 100 on the cello, 100 each legato off / martelé / tremolo / sautillé, 80 each Stop release / 80 ms chord window; none in `--check` (presets at 3 rates, 4 block sizes, 25 random patches) or nine live phrases in Chromium (plain, doubled, with main-thread stalls). Before the hand-over fix: stress seed 46 tripped "a note bowed with its key up" |
+| Key handling, random | `./build/performer_fuzz [n] [doubled]` (and `SM_INSTRUMENT=cello`) | 0 of 350 passages bad, single and doubled input, violin; the same on the cello. Since the Keys PR it also checks that all keys up lifts the bow (before pressing the next key, which used to hide a stuck bow), with quick and gentle key-ups and the release mode and articulation changing mid-phrase, and the performer's rules every millisecond (`Performer::audit`: before the hand-over fix, tremolo seed 19 and sautillé seed 24 bowed a note with its key up) |
+| Key routing, rendered | `tests/keys-repeats.json`, `keys-pedals.json`, `keys-panic.json` (in `--check`) | pass. `keys-repeats`: a release lost, then the key pressed again and let go (silent); a sequencer's overlapping presses (the first release ends the note); the same key on two channels; a note-on with velocity 0. The Keys PR's first version (counting presses) failed it: the lost release left C4 at −13.8 dB to the end. `keys-panic`: on main, Stop all sound left plucked strings at −39 dB |
+| Browser, played live | a 40-note legato arco phrase over Web MIDI in headless Chromium (main-thread stalls of 40–200 ms; every message doubled) | no voice or sound left after the last key, either way; doubled input showed 2× voices on main, 1 per key now; bunched presses become double stops only with ≥ 100 ms stalls (8 in 2,217 notes at 200 ms) |
 | Slurs | `./build/stringmodel_render tests/slurs.json` + a 1 ms-hop pitch track (12 ms windows) | finger changes 2–4 ms (was 10–14), shifts 5–11 ms in a fast scale; onsets 1–2 dB above `main`'s, no clicks |
 | Bowing to the meter | `./build/bowing_lab 0.5 92 3 4 < events` (see the file's header) | pickups up-bow from mid-bow, downbeats down-bow, alternation, no mid-note rebows in phrases |
 | Browser speed | `node synthkit/web/test/bench-web.cjs build-web/web/stringmodel.html tests/chord.json` (Release build!) | ~7× realtime with the room, ~12× without |
@@ -451,4 +456,31 @@ noise to tone moment by moment, not the level.
 - **Robust to MIDI quirks.** A keyboard the browser saw as two inputs sent
   every key twice; the synth restarted sautillé strokes on the repeat. A
   real key can't go down twice, so the performer ignores a held key's
-  repeat within 30 ms; `performer_fuzz doubled` keeps it so.
+  repeat within 30 ms; `performer_fuzz doubled` keeps it so. The synth's
+  own routing (model/Keys.h) now does the same before the kit's voices see
+  it, so the page shows one voice per key.
+- **A stuck-note test must check before the next key.** performer_fuzz
+  pressed a key after letting everything go and checked one string was
+  bowed: a new key resets most stuck state, so a stuck bow would have
+  passed. Check the silence first (`key_tests`, `performer_fuzz`).
+- **The instrument and the voices must hear the same keys.** Two listeners
+  that disagree make stuck notes (one hears a press but not its release) or
+  early stops (one hears a release another press still holds). Route every
+  key event once, in one place (Keys), and test the routing on its own.
+- **Check rules, not counts.** "Notes sounding = keys down" is false all
+  the time (slurs, rolled chords, ringing strings), so a check built on it
+  would cry wolf. Rules that hold however the keys are played (Performer::
+  audit, Keys::strayHeld) can be checked constantly: in the tests every
+  millisecond, in the synth while the owner plays. Checked constantly, the
+  existing fuzz found a stuck note it had been passing.
+- **Two listeners have two clocks.** Keys hears an event at the start of a
+  host block, the performer at the event's sample: comparing them mid-block
+  tripped on every release. Compare once the queue has caught up; and test
+  a safety net for false alarms (a build that fails on any trip, through
+  --check and the stress test) before it repairs anything.
+- **A rule can't catch what the synth can't know.** A lost note-off leaves a
+  key that, to the synth, is simply held: no rule breaks. What breaks is
+  physics, later: the same key pressed again while "down". Make that case
+  recover (the re-press ends the old press) and report it, rather than
+  modelling it as something valid (a second, overlapping press), which
+  made the stuck note survive the player's natural fix.

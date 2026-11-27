@@ -4,7 +4,13 @@
 // - Monophonic, last-note priority. Overlapping keys slur (same bow, finger
 //   change) when the interval is within the slur range; a new key after all
 //   keys are up is a new stroke in the other bow direction. With legato off
-//   every key is a bow change (détaché).
+//   every key is a bow change (détaché). Letting go of the sounding key
+//   returns to the newest key still down (up to kMaxHeld are remembered).
+//   The synth feeds it through Keys.h, which merges channels and doubled
+//   inputs: one noteOn per press of a key, one noteOff when it's really up.
+//   On its own it still ignores a held key pressed again within kDoubleOn,
+//   restrikes one pressed again later, and ignores a noteOff for a key it
+//   doesn't hold (tests/key_tests.cpp).
 // - The left hand has a position (KB §11.2, player doc §3.3): a slurred note
 //   within its reach is a finger change (hammer-on / lift-off: the finger
 //   meets the string as a light touch that firms up over 20-25 ms, with a
@@ -197,12 +203,13 @@ class Performer {
     // subdivisions (+15% / -4% velocity at the default) [T].
     if (meter_ >= 0.f) vel = std::clamp(vel * (1.f + 0.5f * c.metric * (meter_ - 0.4f)), 0.f, 1.f);
     removeHeld(note);
-    if (nHeld_ < kMaxHeld) {
-      held_[nHeld_] = note;
-      vel_[nHeld_] = vel;
-      press_[nHeld_] = now_;
-      ++nHeld_;
-    }
+    // Full: forget the oldest key, so the newest (the one that sounds) is
+    // always held and its release is heard.
+    if (nHeld_ == kMaxHeld) removeHeldAt(0);
+    held_[nHeld_] = note;
+    vel_[nHeld_] = vel;
+    press_[nHeld_] = now_;
+    ++nHeld_;
     // A note after a "stop" release is a new stroke from rest.
     const bool wasStopping = stopping_;
     stopping_ = false;
@@ -229,7 +236,8 @@ class Performer {
 
   // relVel: key-up velocity 0..1 (keyboards without it send 64/127).
   void noteOff(int note, float relVel, const PerformerControls& c) {
-    const bool wasTop = nHeld_ > 0 && held_[nHeld_ - 1] == note;
+    bool wasHeld = false;
+    for (int i = 0; i < nHeld_; ++i) wasHeld |= held_[i] == note;
     removeHeld(note);
     if (chordN_ > 0) {
       int k = -1;
@@ -258,17 +266,23 @@ class Performer {
       }
       return;
     }
-    if (!wasTop) return;
-    if (nHeld_ > 0) {
-      // Back to the previous held key, slurred.
-      // Back to the previous held key: slurred if close enough, else a new
-      // bow. A plucked note isn't re-sounded (the string just rings).
-      if (art_ == kPizzicato) return;
-      const int back = held_[nHeld_ - 1];
-      play(back, vel_[nHeld_ - 1], c.legato && std::abs(back - note_) <= static_cast<int>(std::lround(c.slurRange)), c);
-    } else {
-      release(relVel, c);
+    if (!wasHeld) return;  // a key it doesn't hold: nothing to do
+    if (nHeld_ == 0) {
+      release(relVel, c);  // the last key up ends the note, however it was reached
+      return;
     }
+    // Another key goes up: the note being played goes on. Only the key of
+    // the note sounding hands over. (Not "the newest key": a chord can drop
+    // the newest key, and a chord let go down to one note plays that note,
+    // so the two can differ; when the sounding note's key went up while the
+    // newest was down, the note played on with no key: stress seed 46,
+    // tests/key_tests.cpp performer_released_key_stops_under_a_dropped_key.)
+    if (note != note_) return;
+    // Back to the newest key still down: slurred if close enough, else a
+    // new bow. A plucked note isn't re-sounded (the string just rings).
+    if (art_ == kPizzicato) return;
+    const int back = held_[nHeld_ - 1];
+    play(back, vel_[nHeld_ - 1], c.legato && std::abs(back - note_) <= static_cast<int>(std::lround(c.slurRange)), c);
   }
 
   void allNotesOff() {
@@ -510,6 +524,52 @@ class Performer {
   float bowVelocity() const { return vb_; }
   int currentString() const { return str_; }
   int chordSize() const { return chordN_; }
+  int heldCount() const { return nHeld_; }  // keys down (tests)
+  int heldNote(int i) const { return held_[i]; }  // i < heldCount(), oldest first
+
+  // Rules about the keys and the bow that always hold, however the keys
+  // were played (the notes sounding needn't match the keys down: a slur, a
+  // rolled chord, a too-wide chord, a ringing string all differ). Returns
+  // the broken rules (0: none) and a note involved. Cheap (no allocation):
+  // the tests check it constantly and the synth once per control block.
+  enum Audit : int {
+    kAuditTooManyBowed = 1,     // the bow on more than two strings
+    kAuditBowedCount = 2,       // bowed strings don't match the note or chord being bowed
+    kAuditBowWithoutKey = 4,    // the bow on a string with no key down (and not a "stop" release)
+    kAuditStopTooLong = 8,      // a "stop" release still on the string after kAuditStopMax
+    kAuditNotHeld = 16,         // the note (or a chord note) being bowed is not a key down
+    kAuditHeldTwice = 32,       // a key in the held list twice
+  };
+  static constexpr float kAuditStopMax = 2.f;  // s: a stop takes ~0.2 s (tremolo up to ~0.5)
+  int audit(int& note) const {
+    int bad = 0;
+    note = -1;
+    int bowed = 0;
+    for (int s = 0; s < 4; ++s) bowed += bowed_[s];
+    if (bowed > 2) bad |= kAuditTooManyBowed;
+    if (!bowing_ && bowed != 0) bad |= kAuditBowedCount;
+    if (bowing_ && bowed != (chordN_ >= 2 ? 2 : 1)) bad |= kAuditBowedCount;
+    if (bowing_ && nHeld_ == 0 && !stopping_) bad |= kAuditBowWithoutKey, note = note_;
+    if (stopping_ && now_ - stopStart_ > kAuditStopMax) bad |= kAuditStopTooLong, note = note_;
+    auto held = [&](int n) {
+      for (int i = 0; i < nHeld_; ++i)
+        if (held_[i] == n) return true;
+      return false;
+    };
+    if (bowing_ && !stopping_ && nHeld_ > 0) {
+      if (chordN_ >= 2) {
+        for (int i = 0; i < chordN_; ++i)
+          if (!held(chordNote_[i])) bad |= kAuditNotHeld, note = chordNote_[i];
+      } else if (!held(note_)) {
+        bad |= kAuditNotHeld, note = note_;
+      }
+    }
+    for (int i = 0; i < nHeld_; ++i)
+      for (int j = i + 1; j < nHeld_; ++j)
+        if (held_[i] == held_[j]) bad |= kAuditHeldTwice, note = held_[i];
+    return bad;
+  }
+  int sounding() const { return note_; }    // the note last played (the top of a chord), -1 before any
   bool bowing() const { return bowing_; }
   bool bowedString(int s) const { return bowed_[s]; }
   float bowPosition() const { return bowPos_; }
@@ -578,15 +638,16 @@ class Performer {
   }
 
   void removeHeld(int note) {
-    int j = 0;
-    for (int i = 0; i < nHeld_; ++i)
-      if (held_[i] != note) {
-        held_[j] = held_[i];
-        vel_[j] = vel_[i];
-        press_[j] = press_[i];
-        ++j;
-      }
-    nHeld_ = j;
+    for (int i = nHeld_ - 1; i >= 0; --i)
+      if (held_[i] == note) removeHeldAt(i);
+  }
+  void removeHeldAt(int i) {
+    for (int j = i; j + 1 < nHeld_; ++j) {
+      held_[j] = held_[j + 1];
+      vel_[j] = vel_[j + 1];
+      press_[j] = press_[j + 1];
+    }
+    --nHeld_;
   }
 
   // The last key went up: end the note the chosen way.
