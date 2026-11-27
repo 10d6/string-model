@@ -219,12 +219,13 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
   - CI status: `gh api "repos/10d6/string-model/actions/runs?branch=BRANCH&per_page=1"`
   - a job's log: `gh api repos/10d6/string-model/actions/jobs/ID/logs`
   - re-run failed jobs: `gh api -X POST repos/10d6/string-model/actions/runs/ID/rerun-failed-jobs`
-  - milestone plugin build: `gh api -X POST repos/10d6/string-model/actions/workflows/ci.yml/dispatches -f ref=BRANCH -F 'inputs[plugins]=true'` (zips in the run's Artifacts)
+  - plugin build by hand (PRs build them anyway): `gh api -X POST repos/10d6/string-model/actions/workflows/ci.yml/dispatches -f ref=BRANCH -F 'inputs[plugins]=true'` (zips in the run's Artifacts)
 - The owner merges PRs, plays the Pages preview
   (`https://10d6.github.io/string-model/pr/N/`), and listens to before/after
   clips sent with each change. Describe changes in plain terms: what to
   listen for, what was measured.
-- The owner's standing choices: plugin builds off for PRs; player habits on
+- The owner's standing choices: plugin builds on for PRs (since #39; they
+  were off before); player habits on
   at moderate defaults; Auto Bow Change off by default; mic placement is Phase 7 and the cello Phase 8
   (docs/PLAN.md "Next").
 - New parameters go at the end of `defineParams` (API.md doesn't say whether
@@ -234,7 +235,8 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
 
 Every PR: native checks (`--check`, `key_tests`, and `performer_fuzz` single and doubled on both instruments), the browser page (Chromium test + browser-vs-native
 comparison on `tests/chord.json`; chaotic passages diverge between the two
-builds, see `ci.yml`) and a Pages preview linked on the PR. Plugin builds for Windows,
-macOS and Linux (plugin check, pluginval, auval; a zip per OS) are off for
-PRs at the owner's request: they run for `v*` tags (which publish a release)
-and when CI is run by hand (Actions → CI → Run workflow, "plugins" ticked). The steps live in `synthkit/tools/ci/`.
+builds, see `ci.yml`), a Pages preview linked on the PR, and plugin builds for Windows,
+macOS and Linux (plugin check, pluginval, auval; a zip per OS in the run's
+Artifacts, ~15 min). Plugins also build for `v*` tags (which publish a release)
+and when CI is run by hand (Actions → CI → Run workflow, "plugins" ticked), not
+for pushes to `main`. The steps live in `synthkit/tools/ci/`.

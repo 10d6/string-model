@@ -103,15 +103,15 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-  # Plugins are slow and only needed at milestones: they build for version
-  # tags (releases) and when the workflow is run by hand with "plugins" ticked,
-  # not on every PR or push.
+  # Plugins (Windows, macOS, Linux; ~15 min) build on every PR, so the owner
+  # can play each change in a DAW, for version tags (releases), and when the
+  # workflow is run by hand with "plugins" ticked. Not for pushes to main.
   plugin:
-    # No matrix value in the name: a skipped matrix job (every PR) would show
-    # the expression itself. GitHub adds the OS to each one that runs.
+    # No matrix value in the name: a skipped matrix job (pushes to main) would
+    # show the expression itself. GitHub adds the OS to each one that runs.
     name: Plugin
     needs: web
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.plugins)
+    if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.plugins)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     strategy:
