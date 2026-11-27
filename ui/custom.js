@@ -1,11 +1,15 @@
-// The key check: the engine (src/Synth.cpp checkKeys) posts "keys.check"
-// when a rule about the keys breaks: rules that hold however the keys are
-// played, which the tests run constantly without a break. So a report means
-// a path no test reaches: the panel says what broke, a toast says so once,
-// and the browser's console (F12) keeps the details to send to Claude.
-// One report is about the MIDI coming in rather than the synth: a key
-// pressed again while it's still down means its release never arrived (a
-// stuck note; pressing it again now clears it).
+// The key check, quiet by default. The engine (src/Synth.cpp checkKeys)
+// always repairs what it safely can (a key pressed again while down ends the
+// earlier press; a stray key is let go; a bow left on with no key is lifted)
+// and posts "keys.check" when one of its rules breaks: rules that hold
+// however the keys are played, which the tests run constantly without a
+// break, so a report means a path no test reaches.
+//
+// This widget sits in the collapsed Model panel: a status line, the
+// details in the browser's console (F12) for Claude, and a toast only if
+// "Alert me" is ticked (remembered in this browser). Logging and a report
+// on Stop all sound are to come from synthkit (docs/PLAN.md "Waiting on
+// synthkit").
 
 const RULES = [
   [1, "the bow on more than two strings"],
@@ -20,23 +24,47 @@ const RULES = [
 ];
 const NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const noteName = (n) => `${NAMES[n % 12]}${Math.floor(n / 12) - 1}`;
+const ALERT_KEY = "stringmodel.keyCheckAlerts";
+
+function loadAlerts() {
+  try {
+    return localStorage.getItem(ALERT_KEY) === "1";
+  } catch (e) {
+    return false;  // no storage here (some plugin hosts): alerts start off
+  }
+}
+function saveAlerts(on) {
+  try {
+    localStorage.setItem(ALERT_KEY, on ? "1" : "0");
+  } catch (e) {}
+}
 
 export function register(sk) {
   sk.widget("keyCheck", (el, ctx) => {
     let count = 0;
     el.classList.add("key-check");
-    el.textContent = "All clear";
-    el.title = "Checks the keys against the notes while you play. It stays clear unless something goes wrong.";
+    const status = document.createElement("div");
+    status.className = "key-check-status";
+    status.textContent = "Key check: all clear";
+    status.title = "Checks the keys against the notes while you play. It stays clear unless something goes wrong.";
+    const label = document.createElement("label");
+    label.className = "key-check-alerts";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = loadAlerts();
+    box.addEventListener("change", () => saveAlerts(box.checked));
+    label.append(box, " Alert me");
+    el.append(status, label);
     ctx.onMessage("keys.check", (code, note, keysDown, voicesShown) => {
       count += 1;
       const what = RULES.filter(([bit]) => code & bit).map(([, text]) => text).join("; ");
       const at = note >= 0 ? ` (${noteName(note)})` : "";
-      el.classList.add("is-bad");
-      el.textContent = `${count} ${count === 1 ? "problem" : "problems"}. Last: ${what}${at}`;
+      status.classList.add("is-bad");
+      status.textContent = `Key check: ${count} ${count === 1 ? "report" : "reports"}. Last: ${what}${at}`;
       const details = { time: new Date().toISOString(), code, note, keysDown, voicesShown, what };
-      el.title = JSON.stringify(details);
+      status.title = JSON.stringify(details);
       console.warn("[key check]", details);
-      if (count === 1) ctx.toast(`Key check: ${what}${at}. Please tell Claude what you were playing (details in the console, F12).`, "error");
+      if (box.checked) ctx.toast(`Key check: ${what}${at}. Details in the console (F12) for Claude.`, "error");
     });
   });
 }

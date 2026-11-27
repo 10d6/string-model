@@ -51,6 +51,8 @@ cmake -S . -B build -G Ninja && cmake --build build
 ./build/stringmodel_render tests/chord.json --out x.wav
 ./build/stringmodel_render --params
 python3 synthkit/tools/stress.py build/stringmodel_render 300 --tail 5   # random playing: every note must stop (API.md §10); plucked open strings ring > 3 s
+cmake -S . -B build-strict -G Ninja -DSM_KEYCHECK_STRICT=ON && cmake --build build-strict --target stringmodel_render   # the key check aborts on any break (test builds only)
+python3 synthkit/tools/stress.py build-strict/stringmodel_render 40 --tail 5   # stress with the key check as a tripwire (CI; the cello: --tail 8 instrument=1)
 
 # the model, offline (docs/MODEL.md)
 ./build/string_lab sweep 1 62 0.13                 # Schelleng map, open D
@@ -147,9 +149,11 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
   event is routed once, in `Keys`: the instrument and the kit's voices must
   hear the same keys. The key check (`Performer::audit`, `checkKeys`,
   docs/MODEL.md "The key check") runs in the tests every millisecond and
-  in the synth while the owner plays: a report on the page's Key Check
-  panel (the owner sends the console details) is a path no test reaches:
-  reproduce it, fix it, add the case.
+  in the synth while the owner plays, quietly (a status line in the Model
+  panel, the console, a toast only if "Alert me" is ticked): a report (the
+  owner sends the console details) is a path no test reaches: reproduce it,
+  fix it, add the case. Kit-side diagnostics and logging wait for the owner's
+  synthkit sync (docs/PLAN.md "Waiting on synthkit").
 - After changing friction, string, bridge or the open-string allowance, also
   run `tools/open_strings.py` and `tools/harmonics_tuning.py`; after changing
   the performer's bowing rules, `bowing_lab` (no mid-note rebows); after
@@ -233,7 +237,7 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
 
 ## CI
 
-Every PR: native checks (`--check`, `key_tests`, and `performer_fuzz` single and doubled on both instruments), the browser page (Chromium test + browser-vs-native
+Every PR: native checks (`--check`, `key_tests`, `performer_fuzz` single and doubled on both instruments, and the stress test on a strict build where the key check aborts on any break), the browser page (Chromium test + browser-vs-native
 comparison on `tests/chord.json`; chaotic passages diverge between the two
 builds, see `ci.yml`), a Pages preview linked on the PR, and plugin builds for Windows,
 macOS and Linux (plugin check, pluginval, auval; a zip per OS in the run's

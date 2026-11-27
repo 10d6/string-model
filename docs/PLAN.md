@@ -81,6 +81,43 @@ details: [MODEL.md](MODEL.md).
 2. Phase 7c (close mics: near field, bow-noise source, mic types and
    proximity, presets) when the owner asks for it.
 
+## Waiting on synthkit
+
+The owner is finishing larger synthkit changes before String Model moves
+its submodule. Kit work that came out of the stuck-note hunt (#39) waits for
+that sync, by the owner's choice; String Model's own fix (model/Keys.h, the
+key check) doesn't depend on any of it.
+
+1. **Diagnostics and logging, as a kit feature.** The question #39 couldn't
+   answer was whether a lost note-off ever reached the page. Proposed:
+   - the page keeps the last ~2,000 incoming MIDI messages with their
+     timestamps (~50 KB), and the engine the last few hundred key events,
+     each a fixed buffer, set up at startup (a few writes per event, nothing
+     when idle);
+   - **Stop all sound is the trigger:** pressing it means something went
+     wrong, so the moment is captured (recent MIDI, keys down, what the
+     instrument plays); a "copy diagnostics" option beside it, copying to
+     the clipboard (a download may not work in the plugin's window);
+   - off by default, a page setting rather than a parameter (a parameter
+     would be saved in presets and projects, and automated).
+   When it lands: send the key check's reports (`keys.check`) into it and
+   retire `ui/custom.js`'s widget.
+2. **The kit's voices and a lost note-off.** API.md §4: a note-off ends the
+   oldest held voice of its note and channel. So in any kit synth, when a
+   note-off is lost, pressing the key again ends the stuck voice and leaves
+   the new one stuck. Fix in the kit: a note-on of a note+channel already
+   held lets the old voice go first (String Model's Keys does this for its
+   own instrument and voices).
+3. **The page's lit keys.** A stuck note cleared by pressing its key on the
+   on-screen keyboard stays lit until a MIDI release for that key arrives
+   (the page's own record of incoming MIDI). Cosmetic.
+4. **The workflow template.** String Model's `ci.yml` has the Node 24
+   actions, job timeouts and a preview push that can't be cancelled (#39):
+   the template in synthkit needs the same.
+
+After the sync: `key_tests`, the strict stress test (CI's "Key check under
+random playing"), and `--check` renders' hashes against the pre-sync build.
+
 ## Phase 8: the cello
 
 ### The recordings

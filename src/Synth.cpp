@@ -13,6 +13,10 @@
 #include <cmath>
 #include <vector>
 
+#ifdef SM_KEYCHECK_STRICT
+#include <cstdio>
+#include <cstdlib>
+#endif
 #include "../model/Instrument.h"
 #include "../model/Keys.h"
 #include "../model/Meter.h"
@@ -343,6 +347,15 @@ struct StringModel : Synth {
       sinceReport_ = 0;
       repressed_ = -1;  // reported (a repress waits for the next report otherwise)
     }
+#ifdef SM_KEYCHECK_STRICT
+    // Test builds only (CMakeLists.txt): a break stops the render, so the
+    // stress test fails on it. A re-press is about the input (a sequencer's
+    // overlapping notes make them), not a bug, so it doesn't count.
+    if ((bad & ~kCheckRepress) != 0) {
+      std::fprintf(stderr, "key check: rules 0x%x broken (note %d)\n", bad, note);
+      std::abort();
+    }
+#endif
     checkBad_ = bad;
     if (stray >= 0) p.noteOff(stray, 64.f / 127.f, pc_);
     if (bad & (sm::Performer::kAuditBowWithoutKey | sm::Performer::kAuditStopTooLong)) p.allNotesOff();
