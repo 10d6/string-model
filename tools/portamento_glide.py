@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Portamento: the pitch glide (10-90% of the interval, ms) on slow slurred
-leaps (keys 1 s apart, overlapping), at Portamento 0, 0.3 and 1. Leaps that
+leaps (keys 1 s apart, overlapping; Legato on), at Portamento 0, 0.3 and 1. Leaps that
 cross strings or start from an open string don't slide.
 
     python3 tools/portamento_glide.py [render]"""
@@ -16,7 +16,7 @@ def run(port):
                {"t": round(t + 1.05, 3), "off": a}, {"t": round(t + 1.9, 3), "off": b}]
         t += 2.4
     with tempfile.TemporaryDirectory() as tmp:
-        json.dump({"patch": "init", "length": t + 0.5, "params": {"room.mix": 0, "vib.depth": 0, "finger.portamento": port},
+        json.dump({"patch": "init", "length": t + 0.5, "params": {"room.mix": 0, "vib.depth": 0, "finger.portamento": port, "bow.legato": 1},
                    "events": ev}, open(tmp + "/s.json", "w"))
         subprocess.run([R, tmp + "/s.json", "--out", tmp + "/s.wav"], check=True, capture_output=True)
         sr, x = read(tmp + "/s.wav")

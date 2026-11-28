@@ -12,8 +12,8 @@
 // synthkit").
 
 const RULES = [
-  [1, "the bow on more than two strings"],
-  [2, "the bowed strings don't match the note"],
+  [1, "more notes bowed than keys down"],
+  [2, "two voices playing one key"],
   [4, "the bow left on with no key down (lifted)"],
   [8, "a Stop release that didn't end (lifted)"],
   [16, "a note bowed with its key up"],

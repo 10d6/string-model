@@ -3,7 +3,8 @@
  "length": 6,
  "params": {
   "finger.shift": 0.25,
-  "finger.noise": 0.6
+  "finger.noise": 0.6,
+  "bow.legato": 1
  },
  "events": [
   {

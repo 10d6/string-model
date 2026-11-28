@@ -52,7 +52,7 @@ cmake -S . -B build -G Ninja && cmake --build build
 ./build/stringmodel_render --params
 python3 synthkit/tools/stress.py build/stringmodel_render 300 --tail 5   # random playing: every note must stop (API.md §10); plucked open strings ring > 3 s
 cmake -S . -B build-strict -G Ninja -DSM_KEYCHECK_STRICT=ON && cmake --build build-strict --target stringmodel_render   # the key check aborts on any break (test builds only)
-python3 synthkit/tools/stress.py build-strict/stringmodel_render 40 --tail 5   # stress with the key check as a tripwire (CI; the cello: --tail 8 instrument=1)
+python3 synthkit/tools/stress.py build-strict/stringmodel_render 40 --tail 5   # stress with the key check as a tripwire (CI; the cello: --tail 8 instrument=1; legato: bow.legato=1)
 
 # the model, offline (docs/MODEL.md)
 ./build/string_lab sweep 1 62 0.13                 # Schelleng map, open D
@@ -61,7 +61,7 @@ python3 synthkit/tools/stress.py build-strict/stringmodel_render 40 --tail 5   #
 ./build/instrument_lab attacks 5                   # attacks as played: periods from the first slip to Helmholtz
 ./build/instrument_lab hand 3 24                   # the left hand: a two-octave scale on one string, its shifts
 LAB_SLIPS=1 ./build/instrument_lab slurs 3         # same-string slurs: slips per period once the finger is down
-./build/instrument_lab chord 62 69                 # double stop: force and slip rate per string
+./build/instrument_lab chord 62 69 76              # notes held together: force and slip rate per voice
 ./build/instrument_lab sympathy 67                 # each string's level: sympathetic ringing
 python3 tools/calibrate_force.py [--instrument cello]   # Helmholtz window (stick test) vs the playability assistant
 ./build/radiation_lab                              # radiation vs its target, stereo difference per band
@@ -80,7 +80,6 @@ python3 tools/wolf_check.py --simple --string 1     # the wolf as played: beat, 
 python3 tools/partial_q.py --instrument cello --iowa ~/data/iowa/cello/wav/pizz --dyn pp,mf,ff   # cello losses vs Iowa
 python3 tools/open_strings.py --instrument cello    # cello open strings under the bow
 python3 tools/pizz_decay.py --iowa ~/data/iowa/cello/wav/pizz   # cello pizzicato's two-stage decay vs Iowa
-printf '2.5 69 1 .6\n2.95 69 0 .5\n3 74 1 .6\n4 74 0 .5\n' | ./build/bowing_lab 0.5 92 3 4   # bow direction, rebows
 
 # evaluation scripts (docs/EVALUATION.md has the reference numbers)
 python3 tools/open_strings.py                      # open strings in tune under the bow
@@ -91,12 +90,11 @@ python3 tools/brightness_spread.py --vsco "<VSCO>/Strings/Solo Violin/Arco Vib" 
 python3 tools/force_brightness.py                  # the string alone (string_lab): brightness vs bow force
 python3 tools/fundamental_strength.py --data ~/data/phil/wav   # 1st partial re 2-4 per note vs the recordings
 ./build/key_tests                                  # every way a note starts and stops (model/Keys.h, the performer; docs/MODEL.md "Keys")
-./build/performer_fuzz 50 && ./build/performer_fuzz 50 doubled  # key handling: random fast playing; all keys up -> the bow lifts; one key -> one note (SM_INSTRUMENT=cello too)
-python3 tools/intonation_check.py                  # Intonation Style: scale, double stops
+./build/performer_fuzz 5 && ./build/performer_fuzz 5 doubled  # key handling, polyphonic and legato: random fast playing; all keys up -> every bow lifts; one key -> one note (SM_INSTRUMENT=cello too; ~3.6 s a passage)
+python3 tools/intonation_check.py                  # Intonation Style: a scale
 python3 tools/vibrato_extent.py                    # Vibrato Shaping
 python3 tools/pizz_decay.py "<VSCO>/Strings/Solo Violin/Pizz"   # two-stage decay vs recordings
 python3 tools/note_pitch.py tests/spiccato.json    # pitch per note of any scenario
-LAB_HF=1 tools/bow_change_gap.sh 69                # automatic bow change gap
 python3 tools/perceptual.py --data ~/data/phil/wav [--json out.json]   # perceptual distance to the Philharmonia recordings (2.5 min)
 python3 tools/perceptual.py --compare a.json b.json [--by-note] # two builds: note by note, per dynamic
 python3 tools/perceptual.py --yardstick             # recording vs recording
@@ -121,7 +119,13 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
   phases. Physics claims come from 10d6/instrument-research's KB (cite §).
 - `model/` stays free of synthkit (plain C++20) so the labs can test it.
 - The instrument runs in `processGlobal`; the kit's voices are silent key
-  trackers. Don't move sound into voices: the strings will share a bridge.
+  trackers. Don't move sound into the kit's voices: the strings share a
+  bridge. The instrument is polyphonic with voices of its own (`Player` +
+  its string, `Performer::kVoices`; docs/MODEL.md "Voices: polyphony");
+  Legato (Mono) is the one-player mode. A change to the player must hold in
+  both: run the key tests and fuzz in both (they do), and compare every
+  `--check` scenario's level with `main` window by window, not just the
+  held note (EVALUATION.md "Lessons").
 - Parameters the instrument reads use `smoothing(0)` and are smoothed in the
   performer on its own clock: bowing is chaotic, so kit smoothing (per
   control block) makes renders depend on the host block size.
@@ -155,8 +159,7 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
   fix it, add the case. Kit-side diagnostics and logging wait for the owner's
   synthkit sync (docs/PLAN.md "Waiting on synthkit").
 - After changing friction, string, bridge or the open-string allowance, also
-  run `tools/open_strings.py` and `tools/harmonics_tuning.py`; after changing
-  the performer's bowing rules, `bowing_lab` (no mid-note rebows); after
+  run `tools/open_strings.py` and `tools/harmonics_tuning.py`; after
   pizzicato or string changes, `tools/pizz_decay.py`. Compare with the
   reference numbers in `docs/EVALUATION.md` and update them.
 - The Philharmonia violin samples (the owner supplies the zip) are free to
@@ -164,8 +167,8 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
   outside the repo; `tools/perceptual.py` (docs/EVALUATION.md) measures
   against them. Run it before and after an audible change and compare
   (`--compare`); mind its blind spot (the body's fine structure).
-- The performer's player habits (Intonation Style, Vibrato Shaping, Metric
-  Emphasis, Portamento) follow instrument-research's
+- The performer's player habits (Intonation Style, Vibrato Shaping,
+  Portamento) follow instrument-research's
   `player_technique_and_responsiveness.md` (cite §). Model what players
   measurably do, not what they say (docs/EVALUATION.md "Lessons").
 - Bowing is chaotic: judge changes over several notes/strings/dynamics,
@@ -229,15 +232,17 @@ cmake -S . -B build-plugin -G Ninja -DSYNTHKIT_PLUGIN=ON -DSYNTHKIT_WEB_UI_DIR=$
   clips sent with each change. Describe changes in plain terms: what to
   listen for, what was measured.
 - The owner's standing choices: plugin builds on for PRs (since #39; they
-  were off before); player habits on
-  at moderate defaults; Auto Bow Change off by default; mic placement is Phase 7 and the cello Phase 8
+  were off before); player habits on at moderate defaults; normal polyphony,
+  no chord or one-bow limits (Nov 2026: chords, the meter, automatic bow
+  changes and several controls removed; keep it pared back, and ask before
+  adding features); mic placement is Phase 7 and the cello Phase 8
   (docs/PLAN.md "Next").
 - New parameters go at the end of `defineParams` (API.md doesn't say whether
   hosts key parameters by position); `ui/layout.json` places them on screen.
 
 ## CI
 
-Every PR: native checks (`--check`, `key_tests`, `performer_fuzz` single and doubled on both instruments, and the stress test on a strict build where the key check aborts on any break), the browser page (Chromium test + browser-vs-native
+Every PR: native checks (`--check`, `key_tests`, `performer_fuzz` single and doubled on both instruments, polyphonic and legato, and the stress test on a strict build where the key check aborts on any break, legato included), the browser page (Chromium test + browser-vs-native
 comparison on `tests/chord.json`; chaotic passages diverge between the two
 builds, see `ci.yml`), a Pages preview linked on the PR, and plugin builds for Windows,
 macOS and Linux (plugin check, pluginval, auval; a zip per OS in the run's

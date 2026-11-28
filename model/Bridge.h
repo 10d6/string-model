@@ -119,6 +119,17 @@ class Bridge {
   void setStringImpedances(const float z[4]) {
     for (int s = 0; s < 4; ++s) z_[s] = z[s];
   }
+  // The impedance standing at each string's notch now (the sum over the
+  // strings there: several voices can share a notch, and a notch can be
+  // empty). Re-solves the weighted path when it changes; the scalar path
+  // takes the total each sample. Real-time safe.
+  void setSlotImpedances(const float z[4]) {
+    bool same = true;
+    for (int s = 0; s < 4; ++s) same = same && z[s] == z_[s];
+    if (same) return;
+    for (int s = 0; s < 4; ++s) z_[s] = z[s];
+    if (weighted_) invertWeighted();
+  }
   // Any mode with per-string weights: the strings need solveWeighted().
   bool weighted() const { return weighted_; }
   // Bridge velocity at each string from S_s = 2 Z_s a_s (weighted solve).
@@ -240,10 +251,15 @@ class Bridge {
 
   // Y0_st = Σ_k w_ks w_kt b0_k; M = (I + Y0 Z)^-1; A = M Y0.
   void updateWeighted() {
-    double Y0[4][4] = {};
+    for (auto& row : Y0_)
+      for (double& v : row) v = 0.0;
     for (const auto& m : modes_)
       for (int s = 0; s < 4; ++s)
-        for (int t = 0; t < 4; ++t) Y0[s][t] += double(m.w[s]) * m.w[t] * m.b0;
+        for (int t = 0; t < 4; ++t) Y0_[s][t] += double(m.w[s]) * m.w[t] * m.b0;
+    invertWeighted();
+  }
+  void invertWeighted() {
+    const auto& Y0 = Y0_;
     double a[4][8] = {};
     for (int s = 0; s < 4; ++s) {
       for (int t = 0; t < 4; ++t) a[s][t] = (s == t ? 1.0 : 0.0) + Y0[s][t] * z_[t];
@@ -276,6 +292,7 @@ class Bridge {
   bool weighted_ = false;
   float z_[4] = {1.f, 1.f, 1.f, 1.f};
   float M_[4][4] = {}, A_[4][4] = {}, histW_[4] = {};
+  double Y0_[4][4] = {};
   float fs_ = 96000.f, y0_ = 0.f, coupling_ = 1.f, hist_ = 0.f, hillHz_ = 0.f, hillLevel_ = 1.f;
   BridgeMode hill_{2600.f, 3.f, 0.15f};
 };

@@ -22,7 +22,6 @@ struct HandDef {
   float reachAbove = 5.f;  // semitones above it (an extended fourth finger)
   float upFinger = 3.f;    // a shift up lands the note this far above the new hand place
   float downFinger = 2.f;  // a shift down, this far above
-  int chordSpan = 7;       // the widest chord across adjacent strings (semitones between its lowest and highest stop)
   int vibRefNote = 69;     // vibrato is wider above this note and narrower below (player doc §3.1)
   // Thumb position (the cello): with the hand's place this far above the
   // open string or higher, the thumb lies across the strings as a finger and
