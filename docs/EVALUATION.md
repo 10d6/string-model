@@ -284,6 +284,35 @@ Lesson: scaling a recorded onset by the held level (the first version) put the s
 near it, and the aperiodicity read 7-18 dB over both recordings. Transplant the ratio of
 noise to tone moment by moment, not the level.
 
+## Sul ponticello (`tools/ponticello.py`)
+
+Held notes at Contact Point 0 / 0.5 / 0.85 (the preset) / 1, no vibrato, no
+room, at dynamics 0.25 / 0.55 / 0.85. Since the ponticello force law
+(docs/MODEL.md "Playability assistant"):
+
+- **Violin, contact 0.85:** multiple slipping on G3–B5 at p (1st partial
+  −16 to −32 dB re the tone, the 2nd–3rd strongest), and on G3, D4 and E5 at
+  mf–f (−5 to −41 dB); A4 slips unevenly with the 4th on top, B5 stays in
+  Helmholtz at mf–f. Harmonic-to-noise ratio 25–44 dB (ordinario: 25–37).
+  Held level −1 to +6 dB re ordinario; short notes come out ~5 dB under it
+  (the lighter bow's attack builds up over ~150–300 ms). Open strings within
+  ±3 cents.
+- **Violin, contact 1:** multiple slipping but B5 at mf–f; HNR ≥ 17.7 dB
+  (D4 f; 26–43 elsewhere).
+- **Violin, contact 0.5:** Helmholtz, +4 dB, brighter; HNR 27–40 but G3 f
+  (14.8; 12.6 before).
+- **Before** (force on the players' line): Helmholtz at +5 to +10 dB, the
+  1st or 2nd partial strongest; B5 at mf–f and contact ≥ 0.5 raucous (HNR
+  ~2 dB, +30 cents); open strings up to +10 cents.
+- **Cello, contact 0.85:** multiple slipping on most notes (1st partial
+  −7 to −50 dB, the 2nd–9th strongest; D3 mf and A3 f stay in Helmholtz),
+  HNR 22–36 dB, +3 to −13 dB re ordinario, pitch within ±4.5 cents. Before:
+  Helmholtz at +5 to +10 dB, open strings up to 15 cents sharp, the G at mf
+  HNR 21. At 0.5, mf, the C and G strings already slip twice per period (the
+  cello's window near the bridge is narrower, `tools/window_map.py`).
+- Every contact ≤ 0 renders bit-identical to before (all `--check` renders
+  but `presets/sul-ponticello`).
+
 ## Techniques
 
 - **Measure through the synth, not only the labs.** The harmonics were in
