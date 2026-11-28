@@ -1,12 +1,13 @@
-// String Model: a physically modelled bowed string instrument: violin and
-// cello behind the Instrument switch (viola and bass planned).
+// String Model: a physically modelled bowed string instrument, polyphonic:
+// violin and cello behind the Instrument switch (viola and bass planned).
 //
-// The whole instrument (strings, bow, gesture layer) is one object in the
-// synth, run in processGlobal: the strings will share a bridge (sympathetic
-// ringing, wolf notes), which per-note voices can't do sample by sample.
-// processEvents hands the notes and controllers to the instrument; the kit's
-// voices are silent placeholders that only track the keys. See docs/MODEL.md
-// and, for how a key event is routed, model/Keys.h and docs/MODEL.md "Keys".
+// The whole instrument (every note's string and bow, the sympathetic strings,
+// the gesture layer) is one object in the synth, run in processGlobal: the
+// strings share a bridge (sympathetic ringing, wolf notes), which the kit's
+// per-note voices can't do sample by sample. processEvents hands the notes
+// and controllers to the instrument; the kit's voices are silent placeholders
+// that only track the keys. See docs/MODEL.md and, for how a key event is
+// routed, model/Keys.h and docs/MODEL.md "Keys".
 #include <synthkit/synth.h>
 
 #include <algorithm>
@@ -19,7 +20,6 @@
 #endif
 #include "../model/Instrument.h"
 #include "../model/Keys.h"
-#include "../model/Meter.h"
 #include "../model/Radiation.h"
 #include "ir/CelloIR.h"
 #include "ir/ViolinIR.h"
@@ -71,8 +71,8 @@ std::vector<float> resampleIr(const float* x, int n, double from, double to) {
 }  // namespace
 
 struct StringModel : Synth {
-  Param autoChange, sustainSpeed, coupling, chordWindow, rollTime, hill, mute, resonance, a0, nasal, brilliance, softness, voice, width, releaseMode, slideNoise, stringSel, keyswitches, artic, tremRate, intonStyle, vibShape, metric, portamento;
-  Param instrument, dynamics, velSens, pressure, atPressure, contact, bite, legato, bowChange, noise, friction;
+  Param hill, mute, resonance, a0, nasal, brilliance, softness, voice, width, releaseMode, slideNoise, stringSel, keyswitches, artic, tremRate, intonStyle, vibShape, portamento;
+  Param instrument, dynamics, velSens, pressure, atPressure, contact, legato, friction;
   Param vibDepth, vibRate, vibDelay, shiftTime, intonation, output, roomMix, roomSpace;
   Param slurRange;
   Param micAngle, micElevation, micDistance;
@@ -92,16 +92,10 @@ struct StringModel : Synth {
     pressure = b.add("bow.pressure").name("Pressure").range(-1, 1).def(0).smoothing(0).group("Bow");
     atPressure = b.add("bow.atPressure").name("Aftertouch → Pressure").range(0, 1).def(0.5).smoothing(0).group("Bow");
     contact = b.add("bow.contact").name("Contact Point").range(-1, 1).def(0).smoothing(0).group("Bow").cc(74);
-    bite = b.add("bow.bite").name("Attack Bite").range(0, 1).def(0.3).smoothing(0).group("Bow");
-    legato = b.add("bow.legato").name("Legato Slurs").toggle().def(1).group("Bow");
-    bowChange = b.add("bow.change").name("Bow Change").range(0.008, 0.2).def(0.02).unit("s").smoothing(0).group("Bow");
-    autoChange = b.add("bow.auto").name("Auto Bow Change").toggle().def(0).group("Bow");
-    sustainSpeed = b.add("bow.sustain").name("Long-Note Bow Speed").range(0.25, 1).def(1).smoothing(0).group("Bow");
+    // Off: polyphonic. On: one player who slurs (the old mono instrument).
+    legato = b.add("bow.legato").name("Legato (Mono)").toggle().def(0).group("Bow");
     releaseMode = b.add("bow.release").name("Release").choices({"Auto (Key-Up Speed)", "Lift", "Stop on String", "Finger Off"}).def(0).group("Bow");
-    noise = b.add("bow.noise").name("Rosin Noise").range(0, 0.5).def(0.12).smoothing(0).group("Bow");
     friction = b.add("bow.friction").name("Friction Model").choices({"Thermal", "Classic", "Enhanced Thermal"}).def(2).group("Bow");
-    chordWindow = b.add("chord.window").name("Chord Window").range(0, 0.08).def(0.035).unit("s").smoothing(0).group("Bow");
-    rollTime = b.add("chord.roll").name("Chord Roll").range(0.02, 0.2).def(0.06).unit("s").smoothing(0).group("Bow");
     vibDepth = b.add("vib.depth").name("Vibrato Depth").range(0, 60).def(26).unit("ct").smoothing(0).group("Left Hand");
     vibRate = b.add("vib.rate").name("Vibrato Rate").range(3, 9).def(5.5).unit("Hz").smoothing(0).group("Left Hand");
     vibDelay = b.add("vib.delay").name("Vibrato Delay").range(0, 1).def(0.1).unit("s").smoothing(0).group("Left Hand");
@@ -111,7 +105,6 @@ struct StringModel : Synth {
     keyswitches = b.add("string.keys").name("Keyswitches").toggle().def(1).group("Left Hand");
     slideNoise = b.add("finger.noise").name("Slide Noise").range(0, 1).def(0.4).smoothing(0).group("Left Hand");
     intonation = b.add("finger.intonation").name("Intonation").range(0, 1).def(0.8).smoothing(0).group("Left Hand");
-    coupling = b.add("body.coupling").name("Body Coupling").range(0, 2).def(1).smoothing(0).group("Instrument");
     hill = b.add("body.hill").name("Bridge Hill").range(1800, 3400).log().def(2600).unit("Hz").smoothing(0).group("Instrument");
     mute = b.add("body.mute").name("Mute").toggle().def(0).group("Instrument");
     resonance = b.add("body.resonance").name("Body Resonance").range(0, 1).def(1).smoothing(0).group("Instrument");
@@ -128,7 +121,6 @@ struct StringModel : Synth {
     // Player habits (instrument-research player_technique_and_responsiveness.md).
     intonStyle = b.add("finger.style").name("Intonation Style").range(0, 1).def(0.7).smoothing(0).group("Left Hand");
     vibShape = b.add("vib.shape").name("Vibrato Shaping").range(0, 1).def(0.7).smoothing(0).group("Left Hand");
-    metric = b.add("bow.metric").name("Metric Emphasis").range(0, 1).def(0.5).smoothing(0).group("Bow");
     portamento = b.add("finger.portamento").name("Portamento").range(0, 1).def(0.3).smoothing(0).group("Left Hand");
     slurRange = b.add("bow.slurRange").name("Slur Range").range(1, 24).integer().def(12).unit("st").group("Bow");
     // Phase 7a: where the mic pair is (Modelled output), in the player's frame.
@@ -218,7 +210,6 @@ struct StringModel : Synth {
     for (int i = 0; i < queued_; ++i) queue_[i].sample = 0;
     blockPos_ = 0;
     const bool keyswitchesOn = ctx.on(keyswitches);
-    transport_ = ctx.transport();
     for (auto& e : ctx.in()) {
       if (e.isNoteOn() || e.isNoteOff()) {
         const double t = static_cast<double>(clock_ + e.sample) / sr_;
@@ -283,9 +274,6 @@ struct StringModel : Synth {
     auto& p = body_[cur_].inst.performer();
     if (e.isNoteOn()) {
       if (cut_ >= 0) finishCut();  // a note straight after Stop all sound plays
-      // The meter only while a transport plays (the kit's clock always runs).
-      const auto& t = transport_;
-      p.setMeter(t.playing ? sm::metricStrength(e.beat - t.barStart, t.timeSigNum, t.timeSigDen) : -1.f);
       p.noteOn(e.note, e.vel, pc_);
     } else if (e.isNoteOff()) {
       p.noteOff(e.note, e.type == MidiEvent::Type::NoteOff && e.vel > 0.f ? e.vel : 64.f / 127.f, pc_);
@@ -310,10 +298,11 @@ struct StringModel : Synth {
   }
 
   // The key check, once per control block: rules that hold however the
-  // keys are played (the notes sounding needn't match the keys down: a
-  // slur, a rolled chord, a ringing string all differ).
-  // - the performer's own (Performer::audit): the bow on at most two
-  //   strings, never with no key down, on notes that are keys down;
+  // keys are played (the notes sounding needn't match the keys down: a slur,
+  // a released note, a ringing string all differ).
+  // - the performer's own (Performer::audit): no more bows than keys down
+  //   (in legato, one), never a bow with no key down, bows only on notes
+  //   that are keys down, one voice per key;
   // - the two listeners agree: every key the instrument holds is down
   //   (Keys::strayHeld, once every queued event has been played), and the
   //   page shows no more voices than presses
@@ -331,7 +320,7 @@ struct StringModel : Synth {
   void checkKeys(GlobalContext& ctx, int frames) {
     auto& p = body_[cur_].inst.performer();
     int note = -1;
-    int bad = p.audit(note);
+    int bad = p.audit(note, pc_.legato);
     // Keys hears an event at the start of the host block, the performer at
     // its own sample (queue_): compare them only once the queue has caught up.
     const int stray = queued_ == 0 ? keys_.strayHeld(p) : -1;
@@ -382,24 +371,17 @@ struct StringModel : Synth {
     pc_.velSens = ctx.get(velSens);
     pc_.pressure = std::clamp(ctx.get(pressure) + ctx.get(atPressure) * pressureAt_, -1.f, 1.f);
     pc_.contact = ctx.get(contact);
-    pc_.bite = ctx.get(bite);
     pc_.swell = ctx.get(attackSwell);
     pc_.avoidOpen = ctx.choice(avoidOpen) != 0;
     pc_.legato = ctx.on(legato);
     pc_.slurRange = ctx.get(slurRange);
-    pc_.bowChange = ctx.get(bowChange);
-    pc_.autoChange = ctx.on(autoChange);
     pc_.releaseMode = ctx.choice(releaseMode);
     pc_.forcedString = ctx.choice(stringSel) - 1;
     pc_.articulation = ctx.choice(artic);
     pc_.tremoloRate = ctx.get(tremRate);
     pc_.intonStyle = ctx.get(intonStyle);
     pc_.vibShape = ctx.get(vibShape);
-    pc_.metric = ctx.get(metric);
     pc_.portamento = ctx.get(portamento);
-    pc_.sustainSpeed = ctx.get(sustainSpeed);
-    pc_.chordWindow = ctx.get(chordWindow);
-    pc_.rollTime = ctx.get(rollTime);
     pc_.vibDepth = ctx.get(vibDepth);
     pc_.vibRate = ctx.get(vibRate);
     pc_.vibDelay = ctx.get(vibDelay);
@@ -407,9 +389,7 @@ struct StringModel : Synth {
     pc_.a4 = ctx.get(a4);
     static constexpr sm::FrictionModel kModels[3] = {sm::FrictionModel::Thermal, sm::FrictionModel::Classic, sm::FrictionModel::Enhanced};
     ic_.friction = kModels[std::clamp(ctx.choice(friction), 0, 2)];
-    ic_.noise = ctx.get(noise);
     ic_.intonation = ctx.get(intonation);
-    ic_.coupling = ctx.get(coupling);
     ic_.slideNoise = ctx.get(slideNoise);
     ic_.wolf = ctx.get(wolf);
     ic_.bowCatch = ctx.get(bowCatch);
@@ -436,7 +416,7 @@ struct StringModel : Synth {
     const int mode = ctx.choice(output);
     const float bendSt = ctx.get(bendRange);
     Body& cb = body_[cur_];
-    const float gain = cb.inst.def().outputGain;
+    const float gain = cb.inst.def().outputGain * kHeadroom;
     Body* ob = old_ >= 0 ? &body_[old_] : nullptr;
 
     int qi = 0;
@@ -468,7 +448,7 @@ struct StringModel : Synth {
         float of = 0.f;
         if (fade_ < fadeLen_) {
           const float g = 0.5f + 0.5f * std::cos(3.14159265f * static_cast<float>(fade_) / static_cast<float>(fadeLen_));
-          of = ob->inst.process(pc_, ic_) * ob->inst.def().outputGain * g;
+          of = ob->inst.process(pc_, ic_) * ob->inst.def().outputGain * kHeadroom * g;
         }
         float ol = 0.f, orr = 0.f, fa = 0.f, fb = 0.f;
         play(*ob, mode, of, ol, orr, fa, fb);
@@ -576,6 +556,11 @@ struct StringModel : Synth {
   static constexpr float kCutFade = 0.005f;   // s: Stop all sound's fade of the strings
   static constexpr float kExtraVoicesFor = 0.25f;  // s: more voices than presses this long is a report
   static constexpr float kWet = 0.12f;
+  // Room for chords: every note is a string of its own, so a chord is as loud
+  // as its notes together. The single-note level sits 3 dB under the old
+  // monophonic instrument's, so ordinary chords stay clear of the kit's
+  // safety limiter.
+  static constexpr float kHeadroom = 0.70795f;  // -3 dB
   // Each space's wet/direct power ratio at Room 100% (Modelled output, the
   // reference distance; tools/room_power.py).
   static constexpr float kRoomPower[sm::kInstrumentCount][5] = {
@@ -592,7 +577,6 @@ struct StringModel : Synth {
   int radTick_ = 0;
   dsp::Reverb reverb_;
   MidiEvent queue_[kQueue];
-  Transport transport_{};
   int queued_ = 0, blockPos_ = 0;
   float pitchBend_ = 0.f, bendSmooth_ = 0.f, pressureAt_ = 0.f;
   float dryL_[32]{}, dryR_[32]{}, wetL_[32]{}, wetR_[32]{};

@@ -156,5 +156,8 @@
     "above": -40
    }
   ]
+ },
+ "params": {
+  "bow.legato": 1
  }
 }

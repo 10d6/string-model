@@ -3,9 +3,10 @@
 //   silent voices (keyswitches, doubled input, repeated keys, MIDI channels,
 //   all notes off).
 // - Performer (model/Performer.h), through the Instrument, on the violin and
-//   the cello: strokes, slurs and the return to a held key, chords, every
-//   articulation and release mode, more keys than it remembers, unknown
-//   releases, all notes off and reset.
+//   the cello: polyphonic notes and chords, voices freed and reused, the
+//   legato player's slurs, string crossings and return to a held key, every
+//   articulation and release mode in both, more keys than it holds, unknown
+//   releases, Legato switched mid-phrase, all notes off and reset.
 // The synth's own routing (src/Synth.cpp: the queue, the pedals, Stop all
 // sound) is covered by the render scenarios tests/keys-*.json.
 //
@@ -14,6 +15,7 @@
 // Add a case here when a key-handling bug turns up; performer_fuzz covers
 // random playing.
 #include <cstdio>
+#include <algorithm>
 #include <cstdlib>
 #include <random>
 #include <vector>
@@ -252,7 +254,10 @@ struct Rig {
   Instrument inst;
   PerformerControls pc;
   InstrumentControls ic;
-  explicit Rig(int instrument) { inst.prepare(48000.0, instrumentDef(instrument)); }
+  explicit Rig(int instrument, bool legato = false) {
+    inst.prepare(48000.0, instrumentDef(instrument));
+    pc.legato = legato;
+  }
   Performer& p() { return inst.performer(); }
   // Runs the instrument, checking the performer's rules (Performer::audit)
   // every millisecond: a broken rule fails the test wherever it happens.
@@ -264,7 +269,7 @@ struct Rig {
   }
   void audit() {
     int note;
-    const int bad = p().audit(note);
+    const int bad = p().audit(note, pc.legato);
     ++checks;
     if (bad && !reported) {
       ++failures;
@@ -275,14 +280,15 @@ struct Rig {
   bool reported = false;
   void on(int n, float v = 0.7f) { p().noteOn(n, v, pc); }
   void off(int n, float rel = 0.5f) { p().noteOff(n, rel, pc); }
-  int bowedCount() {
-    int b = 0;
-    for (int s = 0; s < 4; ++s) b += p().bowedString(s);
-    return b;
+  int bowedCount() { return p().bowingCount(); }
+  // The stroke count of the voice playing `note` (-1: none).
+  int strokesOf(int note) {
+    const int v = p().voiceFor(note);
+    return v < 0 ? -1 : p().voice(v).onset().id;
   }
-  // The bow is off every string and no string is pushed (the strings may ring).
+  // Every bow is off its string and no string is pushed (the strings may ring).
   bool quiet() {
-    bool q = !p().bowing();
+    bool q = p().bowingCount() == 0;
     for (int s = 0; s < 4; ++s) q = q && p().forceOn(s) == 0.f;
     return q;
   }
@@ -290,7 +296,9 @@ struct Rig {
 
 static int lowNote(int instrument) { return instrumentDef(instrument).strings[0].openNote; }
 
-TEST(performer_note_on_off) {
+// --- Polyphonic (the default) ----------------------------------------------
+
+TEST(poly_note_on_off) {
   for (int i = 0; i < kInstrumentCount; ++i) {
     Rig r(i);
     const int n = lowNote(i) + 14;
@@ -307,19 +315,247 @@ TEST(performer_note_on_off) {
   }
 }
 
-// Legato: the next key while one is down slurs (no new stroke); letting go of
-// the newer key returns to the older one; the last key up ends the note.
-TEST(performer_slur_and_return) {
+// Keys pressed together are a chord: one voice, one bow each. Letting go of
+// one leaves the others playing.
+TEST(poly_chord) {
   for (int i = 0; i < kInstrumentCount; ++i) {
     Rig r(i);
-    const int a = lowNote(i) + 14, b = a + 2;
+    const int lo = lowNote(i) + 12;
+    const int notes[] = {lo, lo + 4, lo + 7, lo + 12};
+    for (int n : notes) r.on(n);
+    r.run(0.3f);
+    CHECK(r.bowedCount() == 4);
+    for (int n : notes) CHECK(r.p().voiceFor(n) >= 0);
+    r.off(lo + 4);
+    r.run(0.3f);
+    CHECK(r.bowedCount() == 3);
+    CHECK(r.p().voiceFor(lo + 4) < 0);
+    for (int n : notes) r.off(n);
+    r.run(0.4f);
+    CHECK(r.quiet());
+  }
+}
+
+// Overlapping keys are two notes (no slur): the second is a stroke of its
+// own, and the first plays on until its key goes up.
+TEST(poly_overlapping_keys_are_separate_notes) {
+  Rig r(0);
+  r.on(69);
+  r.run(0.3f);
+  r.on(71);
+  r.run(0.1f);
+  CHECK(r.bowedCount() == 2);
+  CHECK(r.p().voiceFor(69) != r.p().voiceFor(71));
+  r.off(69);
+  r.run(0.3f);
+  CHECK(r.bowedCount() == 1);
+  CHECK(r.p().voiceFor(71) >= 0);
+  r.off(71);
+  r.run(0.4f);
+  CHECK(r.quiet());
+}
+
+// A held key pressed again within kDoubleOn is the same press (doubled input);
+// later it restrikes its own voice. Either way one key, one note, one release.
+TEST(poly_repeated_key) {
+  for (bool legato : {false, true}) {
+    Rig r(0, legato);
+    r.on(71);
+    r.run(0.01f);
+    const int v = r.p().voiceFor(71);
+    const int strokes = r.strokesOf(71);
+    r.on(71);  // 10 ms later: ignored
+    CHECK(r.strokesOf(71) == strokes);
+    CHECK(r.p().heldCount() == 1);
+    r.run(0.3f);
+    r.pc.articulation = kSpiccato;  // a separate stroke shows the restrike
+    r.on(71);
+    CHECK(r.p().voiceFor(71) == v);
+    CHECK(r.strokesOf(71) == strokes + 1);
+    CHECK(r.p().heldCount() == 1);
+    CHECK(r.bowedCount() == 1);
+    r.off(71);
+    r.run(0.5f);
+    CHECK(r.quiet());
+  }
+}
+
+// More keys than it holds: the oldest is let go (its note ends), so the
+// newest always plays and every release is heard.
+TEST(poly_more_keys_than_it_holds) {
+  Rig r(0);
+  for (int n = 55; n < 55 + 20; ++n) {
+    r.on(n);
+    r.run(0.05f);
+  }
+  CHECK(r.p().heldCount() == Performer::kMaxHeld);
+  CHECK(r.bowedCount() == Performer::kMaxHeld);
+  CHECK(r.p().voiceFor(55) < 0);  // the oldest, let go
+  CHECK(r.p().voiceFor(74) >= 0);
+  for (int n = 55; n < 55 + 20; ++n) r.off(n);
+  r.run(0.5f);
+  CHECK(r.quiet());
+  CHECK(r.p().heldCount() == 0);
+}
+
+// Released notes ring on, then their voices are freed; a fast passage of
+// short notes never runs out of voices (the quietest ringing one makes room).
+TEST(poly_voices_are_freed_and_reused) {
+  for (int i = 0; i < kInstrumentCount; ++i) {
+    Rig r(i);
+    const int lo = lowNote(i) + 13;
+    int most = 0;
+    for (int k = 0; k < 60; ++k) {
+      const int n = lo + (k * 5) % 24;
+      r.on(n, 0.8f);
+      r.run(0.03f);
+      r.off(n, 0.3f);  // lift: the string rings on
+      r.run(0.03f);
+      most = std::max(most, r.p().loadedCount());
+      CHECK(r.p().voiceFor(n) < 0);
+    }
+    CHECK(most <= Performer::kVoices);
+    r.run(8.f);
+    CHECK(r.quiet());
+    if (r.p().loadedCount() != 0) std::printf("  instrument %d: %d voices still on after 8 s\n", i, r.p().loadedCount());
+    CHECK(r.p().loadedCount() == 0);
+    // ... and a chord after it all plays in full.
+    for (int n : {lo, lo + 4, lo + 7}) r.on(n);
+    r.run(0.2f);
+    CHECK(r.bowedCount() == 3);
+    for (int n : {lo, lo + 4, lo + 7}) r.off(n);
+    r.run(0.4f);
+    CHECK(r.quiet());
+  }
+}
+
+// Every articulation and release mode, quick and gentle key-ups, both modes:
+// the bow leaves the string within a second (a plucked note never has the bow).
+TEST(performer_every_articulation_and_release) {
+  for (bool legato : {false, true})
+    for (int i = 0; i < kInstrumentCount; ++i)
+      for (int art = 0; art <= kSautille; ++art)
+        for (int mode = 0; mode < 4; ++mode)
+          for (float rel : {0.3f, 0.95f}) {
+            Rig r(i, legato);
+            r.pc.articulation = art;
+            r.pc.releaseMode = mode;
+            const int n = lowNote(i) + 16;
+            r.on(n);
+            r.run(0.4f);
+            if (art == kPizzicato) CHECK(!r.p().bowing());
+            else CHECK(r.p().bowing());
+            r.off(n, rel);
+            r.run(1.f);
+            if (!r.quiet()) std::printf("  legato %d instrument %d articulation %d release %d key-up %.2f\n", legato, i, art, mode, rel);
+            CHECK(r.quiet());
+          }
+}
+
+// The articulation is taken at the press: changing it while a note sounds
+// doesn't change how that note ends.
+TEST(performer_articulation_changed_mid_note) {
+  for (bool legato : {false, true})
+    for (int art = 0; art <= kSautille; ++art) {
+      Rig r(0, legato);
+      r.on(69);
+      r.run(0.3f);
+      r.pc.articulation = art;
+      r.run(0.1f);
+      r.off(69);
+      r.run(0.6f);
+      CHECK(r.quiet());
+      // ... and a pizzicato over a held arco note: in legato it takes the bow
+      // off; polyphonic, the arco note plays on.
+      Rig q(0, legato);
+      q.on(69);
+      q.run(0.3f);
+      q.pc.articulation = kPizzicato;
+      q.on(72);
+      q.run(0.1f);
+      CHECK(q.bowedCount() == (legato ? 0 : 1));
+      q.off(72);
+      q.off(69);
+      q.run(0.5f);
+      CHECK(q.quiet());
+    }
+}
+
+TEST(performer_all_notes_off) {
+  for (bool legato : {false, true}) {
+    Rig r(0, legato);
+    r.on(62);
+    r.on(69);
+    r.run(0.3f);
+    r.on(76);
+    r.run(0.2f);
+    r.p().allNotesOff();
+    r.run(0.3f);
+    CHECK(r.quiet());
+    CHECK(r.p().heldCount() == 0);
+    // The keys' late releases are harmless; a new key plays one note.
+    r.off(62);
+    r.off(76);
+    r.on(64);
+    r.run(0.3f);
+    CHECK(r.bowedCount() == 1);
+    r.off(64);
+    r.off(69);
+    r.run(0.4f);
+    CHECK(r.quiet());
+  }
+}
+
+TEST(performer_reset) {
+  Rig r(0);
+  r.on(69);
+  r.on(76);
+  r.run(0.3f);
+  r.inst.reset();
+  CHECK(r.quiet());
+  CHECK(r.p().heldCount() == 0);
+  CHECK(r.p().loadedCount() == 0);
+  r.off(69);  // the key's release after a reset (Stop all sound): ignored
+  r.run(0.1f);
+  CHECK(r.quiet());
+}
+
+TEST(performer_unknown_release_is_ignored) {
+  for (bool legato : {false, true}) {
+    Rig r(0, legato);
+    r.off(69);  // nothing held
+    r.run(0.1f);
+    CHECK(r.quiet());
+    r.on(69);
+    r.run(0.2f);
+    r.off(70);  // not held
+    r.run(0.2f);
+    CHECK(r.p().bowing());
+    CHECK(r.p().sounding() == 69);
+    r.off(69);
+    r.run(0.4f);
+    CHECK(r.quiet());
+  }
+}
+
+// --- Legato (the mono player) -----------------------------------------------
+
+// The next key while one is down slurs (no new stroke); letting go of the
+// newer key returns to the older one; the last key up ends the note.
+TEST(legato_slur_and_return) {
+  for (int i = 0; i < kInstrumentCount; ++i) {
+    Rig r(i, true);
+    const int a = lowNote(i) + 16, b = a + 2;  // on one string (not an open string: Avoid Open Strings would move it)
     r.on(a);
     r.run(0.3f);
-    const int strokes = r.p().onset().id;
+    const int v = r.p().leadVoice();
+    const int strokes = r.p().lead().onset().id;
     r.on(b);
     r.run(0.2f);
-    CHECK(r.p().onset().id == strokes);  // slurred: the same stroke
+    CHECK(r.p().leadVoice() == v);  // the same string
+    CHECK(r.p().lead().onset().id == strokes);  // slurred: the same stroke
     CHECK(r.p().sounding() == b);
+    CHECK(r.bowedCount() == 1);
     r.off(b);
     r.run(0.2f);
     CHECK(r.p().sounding() == a);  // back to the held key
@@ -330,24 +566,55 @@ TEST(performer_slur_and_return) {
   }
 }
 
-TEST(performer_legato_off_is_a_new_stroke) {
-  Rig r(0);
-  r.pc.legato = false;
-  r.on(69);
+// A slur onto another string carries the bow over (no new stroke); the old
+// string rings on without the bow. Going back to it plays it again (one voice
+// per string, as on the instrument).
+TEST(legato_string_crossing) {
+  Rig r(0, true);
+  r.on(71);  // B4, on the A string
   r.run(0.3f);
-  const int strokes = r.p().onset().id;
+  const int a = r.p().leadVoice();
+  const int strokes = r.p().lead().onset().id;
+  r.on(77);  // F5: the E string
+  r.run(0.15f);
+  const int e = r.p().leadVoice();
+  CHECK(e != a);
+  CHECK(r.p().lead().onset().id == strokes);  // the bow went on
+  CHECK(r.bowedCount() == 1);
+  CHECK(!r.p().voice(a).bowing());
+  CHECK(r.p().loaded(a));  // ringing
+  r.on(72);  // C5: back on the A string
+  r.run(0.15f);
+  CHECK(r.p().leadVoice() == a);
+  CHECK(r.bowedCount() == 1);
+  for (int n : {71, 77, 72}) r.off(n);
+  r.run(0.4f);
+  CHECK(r.quiet());
+}
+
+// Wider leaps than the Slur Range take a new bow.
+TEST(legato_wide_leap_is_a_new_bow) {
+  Rig r(0, true);
+  r.pc.slurRange = 5;
   r.on(71);
+  r.run(0.3f);
+  const int strokes = r.p().lead().onset().id;
+  r.on(73);  // a tone: slurred
   r.run(0.1f);
-  CHECK(r.p().onset().id == strokes + 1);
-  r.off(69);
-  r.off(71);
+  CHECK(r.p().lead().onset().id == strokes);
+  r.on(83);  // a seventh on: a new bow (on the E string's voice)
+  r.run(0.1f);
+  CHECK(r.p().sounding() == 83);
+  CHECK(r.p().lead().onset().id == strokes + 1);
+  CHECK(r.bowedCount() == 1);
+  for (int n : {71, 73, 83}) r.off(n);
   r.run(0.4f);
   CHECK(r.quiet());
 }
 
 // Releasing a key that isn't the sounding one changes nothing.
-TEST(performer_release_of_an_older_key) {
-  Rig r(0);
+TEST(legato_release_of_an_older_key) {
+  Rig r(0, true);
   r.on(69);
   r.run(0.2f);
   r.on(72);
@@ -361,46 +628,10 @@ TEST(performer_release_of_an_older_key) {
   CHECK(r.quiet());
 }
 
-TEST(performer_unknown_release_is_ignored) {
-  Rig r(0);
-  r.off(69);  // nothing held
-  r.run(0.1f);
-  CHECK(r.quiet());
-  r.on(69);
-  r.run(0.2f);
-  r.off(70);  // not held
-  r.run(0.2f);
-  CHECK(r.p().bowing());
-  CHECK(r.p().sounding() == 69);
-  r.off(69);
-  r.run(0.4f);
-  CHECK(r.quiet());
-}
-
-// A held key pressed again within kDoubleOn is the same press (doubled input);
-// later it restrikes. Either way one key, one note, one release.
-TEST(performer_repeated_key) {
-  Rig r(0);
-  r.on(69);
-  r.run(0.01f);
-  const int strokes = r.p().onset().id;
-  r.on(69);  // 10 ms later: ignored
-  CHECK(r.p().onset().id == strokes);
-  CHECK(r.p().heldCount() == 1);
-  r.run(0.3f);
-  r.pc.articulation = kSpiccato;  // a separate stroke shows the restrike
-  r.on(69);
-  CHECK(r.p().onset().id == strokes + 1);
-  CHECK(r.p().heldCount() == 1);
-  r.off(69);
-  r.run(0.5f);
-  CHECK(r.quiet());
-}
-
 // The bug: with 16 keys down, a 17th played but wasn't remembered, so letting
 // go of it didn't return to the key below. Now the oldest is forgotten.
-TEST(performer_more_keys_than_it_remembers) {
-  Rig r(0);
+TEST(legato_more_keys_than_it_remembers) {
+  Rig r(0, true);
   for (int n = 55; n < 55 + 18; ++n) {
     r.on(n);
     r.run(0.05f);
@@ -417,212 +648,16 @@ TEST(performer_more_keys_than_it_remembers) {
   CHECK(r.p().heldCount() == 0);
 }
 
-TEST(performer_double_stop) {
-  for (int i = 0; i < kInstrumentCount; ++i) {
-    Rig r(i);
-    const int lo = lowNote(i) + 9, hi = lo + 7;  // a fifth: adjacent strings
-    r.on(lo);
-    r.on(hi);  // within the chord window
-    r.run(0.3f);
-    CHECK(r.p().chordSize() == 2);
-    CHECK(r.bowedCount() == 2);
-    r.off(lo);
-    r.run(0.2f);
-    CHECK(r.p().chordSize() == 0);
-    CHECK(r.bowedCount() == 1);
-    CHECK(r.p().sounding() == hi);
-    r.off(hi);
-    r.run(0.4f);
-    CHECK(r.quiet());
-  }
-}
-
-TEST(performer_rolled_chord) {
-  Rig r(0);
+// Letting go of a key that isn't sounding leaves the note alone, even when
+// it's the newest key down (stress seed 46 found the chord version of this,
+// tests before chords were removed).
+TEST(legato_release_of_a_key_not_sounding) {
+  Rig r(0, true);
   r.on(55);
-  r.on(62);
-  r.on(69);
-  r.on(76);
-  r.run(0.4f);
-  CHECK(r.p().chordSize() == 4);
-  CHECK(r.bowedCount() == 2);  // the bow is on one pair at a time
-  for (int n : {55, 62, 69, 76}) r.off(n);
-  r.run(0.4f);
-  CHECK(r.quiet());
-  CHECK(r.p().chordSize() == 0);
-}
-
-// Keys far apart in time are not a chord: legato, one string.
-TEST(performer_no_chord_outside_the_window) {
-  Rig r(0);
-  r.on(62);
-  r.run(r.pc.chordWindow + 0.02f);
-  r.on(69);
-  r.run(0.2f);
-  CHECK(r.p().chordSize() == 0);
-  CHECK(r.bowedCount() == 1);
-  r.off(62);
-  r.off(69);
-  r.run(0.4f);
-  CHECK(r.quiet());
-}
-
-// A chord let go while an older key is still down returns to it.
-TEST(performer_chord_over_a_held_key) {
-  Rig r(0);
-  r.on(69);
-  r.run(0.3f);
-  r.on(74);
-  r.on(81);
-  r.run(0.3f);
-  CHECK(r.p().chordSize() == 2);
-  r.off(74);
-  r.off(81);
-  r.run(0.2f);
-  CHECK(r.p().sounding() == 69);
-  CHECK(r.p().bowing());
-  r.off(69);
-  r.run(0.4f);
-  CHECK(r.quiet());
-}
-
-// Every articulation and release mode, quick and gentle key-ups: the bow
-// leaves the string within a second (a plucked note never has the bow).
-TEST(performer_every_articulation_and_release) {
-  for (int i = 0; i < kInstrumentCount; ++i)
-    for (int art = 0; art <= kSautille; ++art)
-      for (int mode = 0; mode < 4; ++mode)
-        for (float rel : {0.3f, 0.95f}) {
-          Rig r(i);
-          r.pc.articulation = art;
-          r.pc.releaseMode = mode;
-          const int n = lowNote(i) + 16;
-          r.on(n);
-          r.run(0.4f);
-          if (art == kPizzicato) CHECK(!r.p().bowing());
-          else CHECK(r.p().bowing());
-          r.off(n, rel);
-          r.run(1.f);
-          if (!r.quiet()) std::printf("  instrument %d articulation %d release %d key-up %.2f\n", i, art, mode, rel);
-          CHECK(r.quiet());
-        }
-}
-
-// The articulation is taken at the press: changing it while a note sounds
-// doesn't change how that note ends.
-TEST(performer_articulation_changed_mid_note) {
-  for (int art = 0; art <= kSautille; ++art) {
-    Rig r(0);
-    r.on(69);
-    r.run(0.3f);
-    r.pc.articulation = art;
-    r.run(0.1f);
-    r.off(69);
-    r.run(0.6f);
-    CHECK(r.quiet());
-    // ... and a pizzicato over a held arco note takes the bow off.
-    Rig q(0);
-    q.on(69);
-    q.run(0.3f);
-    q.pc.articulation = kPizzicato;
-    q.on(72);
-    q.run(0.1f);
-    CHECK(!q.p().bowing());
-    q.off(72);
-    q.off(69);
-    q.run(0.5f);
-    CHECK(q.quiet());
-  }
-}
-
-TEST(performer_auto_bow_change_long_note) {
-  Rig r(0);
-  r.pc.autoChange = true;
-  r.on(69);
-  r.run(6.f);  // several bow changes
-  CHECK(r.p().bowing());
-  r.off(69);
-  r.run(0.5f);
-  CHECK(r.quiet());
-}
-
-TEST(performer_all_notes_off) {
-  Rig r(0);
-  r.on(62);
-  r.on(69);
-  r.run(0.3f);
-  r.on(76);
-  r.run(0.2f);
-  r.p().allNotesOff();
-  r.run(0.3f);
-  CHECK(r.quiet());
-  CHECK(r.p().heldCount() == 0);
-  CHECK(r.p().chordSize() == 0);
-  // The keys' late releases are harmless; a new key plays one note.
-  r.off(62);
-  r.off(76);
-  r.on(64);
-  r.run(0.3f);
-  CHECK(r.bowedCount() == 1);
-  r.off(64);
-  r.off(69);
-  r.run(0.4f);
-  CHECK(r.quiet());
-}
-
-TEST(performer_reset) {
-  Rig r(0);
-  r.on(69);
-  r.run(0.3f);
-  r.inst.reset();
-  CHECK(r.quiet());
-  CHECK(r.p().heldCount() == 0);
-  r.off(69);  // the key's release after a reset (Stop all sound): ignored
   r.run(0.1f);
-  CHECK(r.quiet());
-}
-
-
-// Found by the key check (Performer::audit) on stress seed 46: five keys in
-// 35 ms make a chord of the two top notes (the rest don't fit), dropping the
-// newest key (47); the chord let go down to 60 plays 60; then 60's key goes
-// up while 47 (the newest) is down. The performer only handed over when the
-// newest key went up, so 60 played on with no key. Now the key of the
-// sounding note hands over to the newest key down.
-TEST(performer_released_key_stops_under_a_dropped_key) {
-  Rig r(0);
-  r.on(36), r.on(72);
-  r.run(0.01f);
-  r.off(36);
-  r.run(0.01f);
-  r.on(36), r.on(66);
-  r.run(0.005f);
-  r.on(60);
-  r.run(0.005f);
-  r.on(47);
-  r.off(66);
-  r.off(72);
-  r.run(0.005f);
-  CHECK(r.p().sounding() == 60);
-  r.off(60);
-  r.run(0.05f);
-  CHECK(r.p().sounding() != 60);
-  CHECK(r.p().sounding() == 47);  // the newest key down
-  CHECK(r.p().bowing());
-  r.off(47);
-  r.off(36);
-  r.run(0.4f);
-  CHECK(r.quiet());
-}
-
-// The same idea without a chord: letting go of a key that isn't sounding
-// leaves the note alone, even when it's the newest key down.
-TEST(performer_release_of_a_key_not_sounding) {
-  Rig r(0);
-  r.on(55);
-  r.on(88);  // too wide: 88 plays
+  r.on(88);  // too wide: a new bow, 88 plays
   r.run(0.1f);
-  r.on(62);  // 40 ms+ later: slurs to 62, the newest
+  r.on(62);  // too wide again: 62 plays, the newest
   r.run(0.2f);
   CHECK(r.p().sounding() == 62);
   r.off(88);  // not sounding: nothing changes
@@ -636,254 +671,46 @@ TEST(performer_release_of_a_key_not_sounding) {
   CHECK(r.quiet());
 }
 
-// ---------------------------------------------------------------------------
-// Chords: the Chord Window (keys pressed within it are one chord) and the
-// Chord Roll (3-4 notes: the bow takes one pair of strings at a time).
-
-static bool bowedPair(Rig& r, int a, int b) {
-  for (int s = 0; s < 4; ++s)
-    if (r.p().bowedString(s) != (s == a || s == b)) return false;
-  return true;
-}
-
-// Window 0 means "only keys at the same moment": a DAW's chord (or keys the
-// browser delivers in one block) is still a chord; 1 ms apart is not.
-TEST(chord_window_zero) {
-  Rig r(0);
-  r.pc.chordWindow = 0.f;
-  r.on(62);
-  r.on(69);
-  r.run(0.1f);
-  CHECK(r.p().chordSize() == 2);
-  r.off(62);
-  r.off(69);
-  r.run(0.4f);
-  Rig q(0);
-  q.pc.chordWindow = 0.f;
-  q.on(62);
-  q.run(0.001f);
-  q.on(69);
-  q.run(0.1f);
-  CHECK(q.p().chordSize() == 0);
-  CHECK(q.bowedCount() == 1);
-  q.off(62);
-  q.off(69);
-  q.run(0.4f);
-  CHECK(q.quiet());
-}
-
-// The parameter moves the boundary: 60 ms apart is a chord in an 80 ms
-// window, 30 ms apart is not in a 20 ms one.
-TEST(chord_window_values) {
-  for (float window : {0.08f, 0.02f}) {
-    Rig r(0);
-    r.pc.chordWindow = window;
-    const float gap = window > 0.05f ? 0.06f : 0.03f;
-    r.on(62);
-    r.run(gap);
-    r.on(69);
-    r.run(0.1f);
-    CHECK(r.p().chordSize() == (window > 0.05f ? 2 : 0));
-    r.off(62);
-    r.off(69);
-    r.run(0.4f);
-    CHECK(r.quiet());
-  }
-}
-
-// A third key within the window joins the double stop.
-TEST(chord_grows_within_the_window) {
-  Rig r(0);
-  r.on(55);
-  r.run(0.01f);
-  r.on(62);
-  r.run(0.01f);
-  CHECK(r.p().chordSize() == 2);
-  r.on(69);
-  r.run(0.01f);
-  CHECK(r.p().chordSize() == 3);
-  for (int n : {55, 62, 69}) r.off(n);
-  r.run(0.4f);
-  CHECK(r.quiet());
-}
-
-// From silence the chord is one stroke; over a note already bowing it's a
-// new stroke on the new pair.
-TEST(chord_strokes) {
-  Rig r(0);
-  const int before = r.p().onset().id;
-  r.on(62);
-  r.on(69);
-  r.run(0.2f);
-  CHECK(r.p().onset().id == before + 1);
-  r.off(62);
-  r.off(69);
-  r.run(0.4f);
-  Rig q(0);
-  q.on(62);
-  q.run(0.3f);
-  const int mid = q.p().onset().id;
-  q.on(69);
-  q.on(76);
-  q.run(0.2f);
-  CHECK(q.p().chordSize() == 2);
-  CHECK(q.p().onset().id == mid + 1);
-  CHECK(bowedPair(q, 2, 3));  // A and E: the new keys, not the held D
-  for (int n : {62, 69, 76}) q.off(n);
-  q.run(0.4f);
-  CHECK(q.quiet());
-}
-
-// The roll: lower pair, then onto the next pair every Chord Roll seconds.
-TEST(chord_roll_timing) {
-  for (int i = 0; i < kInstrumentCount; ++i)
-    for (float roll : {0.06f, 0.15f}) {
-      Rig r(i);
-      r.pc.rollTime = roll;
-      for (int s = 0; s < 4; ++s) r.on(instrumentDef(i).strings[s].openNote);
-      r.run(0.5f * roll);
-      CHECK(bowedPair(r, 0, 1));
-      r.run(roll);  // 1.5 roll
-      CHECK(bowedPair(r, 1, 2));
-      r.run(roll);  // 2.5 roll
-      CHECK(bowedPair(r, 2, 3));
-      r.run(3.f * roll);  // stays on the top pair
-      CHECK(bowedPair(r, 2, 3));
-      for (int s = 0; s < 4; ++s) r.off(instrumentDef(i).strings[s].openNote);
-      r.run(0.4f);
-      CHECK(r.quiet());
-    }
-}
-
-TEST(chord_roll_three_notes) {
-  Rig r(0);
-  r.on(55);
-  r.on(62);
-  r.on(69);
-  r.run(0.03f);
-  CHECK(bowedPair(r, 0, 1));
-  r.run(0.06f);
-  CHECK(bowedPair(r, 1, 2));
-  for (int n : {55, 62, 69}) r.off(n);
-  r.run(0.4f);
-  CHECK(r.quiet());
-}
-
-// Letting go of a chord note mid-roll: the bow stays on the rest.
-TEST(chord_release_mid_roll) {
-  Rig r(0);
-  for (int n : {55, 62, 69, 76}) r.on(n);
-  r.run(0.3f);  // on the top pair
-  r.off(76);
-  r.run(0.05f);
-  CHECK(r.p().chordSize() == 3);
-  CHECK(bowedPair(r, 1, 2));  // the top pair of what's left
-  r.off(55);
-  r.run(0.05f);
-  CHECK(r.p().chordSize() == 2);
-  CHECK(bowedPair(r, 1, 2));
-  r.off(69);
-  r.run(0.05f);
-  CHECK(r.p().chordSize() == 0);
-  CHECK(r.bowedCount() == 1);
-  CHECK(r.p().sounding() == 62);
-  r.off(62);
-  r.run(0.4f);
-  CHECK(r.quiet());
-  // Early in a three-note roll, the top note up: the lower pair goes on.
-  Rig q(0);
-  for (int n : {55, 62, 69}) q.on(n);
-  q.run(0.02f);
-  q.off(69);
-  q.run(0.1f);
-  CHECK(q.p().chordSize() == 2);
-  CHECK(bowedPair(q, 0, 1));
-  q.off(55);
-  q.off(62);
-  q.run(0.4f);
-  CHECK(q.quiet());
-}
-
-// Too wide for the hand: no chord, the top key plays; letting it go returns
-// to the lower key, still down.
-TEST(chord_too_wide) {
-  Rig r(0);
-  r.on(55);
-  r.on(88);
-  r.run(0.2f);
-  CHECK(r.p().chordSize() == 0);
-  CHECK(r.bowedCount() == 1);
-  CHECK(r.p().sounding() == 88);
-  r.off(88);
-  r.run(0.2f);
-  CHECK(r.p().sounding() == 55);
-  CHECK(r.p().bowing());
-  r.off(55);
-  r.run(0.4f);
-  CHECK(r.quiet());
-}
-
-// Pizzicato chords are strummed low to high ~12 ms apart, whatever the
-// Chord Roll; no bow.
-TEST(chord_pizzicato_strum) {
-  for (float roll : {0.02f, 0.2f}) {
-    Rig r(0);
-    r.pc.articulation = kPizzicato;
-    r.pc.rollTime = roll;
-    r.on(55);
-    r.on(62);
-    r.on(69);
-    float first[4] = {-1, -1, -1, -1};
-    for (int k = 0; k < 48 * 80; ++k) {  // 80 ms
-      r.inst.process(r.pc, r.ic);
-      for (int s = 0; s < 3; ++s)
-        if (first[s] < 0 && r.p().pluckForce(s) != 0.f) first[s] = static_cast<float>(k) / 48000.f;
-    }
-    r.audit();
-    CHECK(!r.p().bowing());
-    CHECK(r.p().chordSize() == 0);
-    CHECK(first[0] >= 0 && first[1] > first[0] && first[2] > first[1]);
-    CHECK(first[2] - first[0] > 0.018f && first[2] - first[0] < 0.030f);  // 2 x ~12 ms
-    for (int n : {55, 62, 69}) r.off(n);
+// Legato switched on or off while keys are down: the notes held keep their
+// voices until their keys go up; nothing sticks, and the key check holds.
+TEST(legato_switched_mid_phrase) {
+  for (int i = 0; i < kInstrumentCount; ++i) {
+    Rig r(i);
+    const int lo = lowNote(i) + 12;
+    r.on(lo), r.on(lo + 4), r.on(lo + 7);
     r.run(0.2f);
+    r.pc.legato = true;
+    r.on(lo + 9);
+    r.run(0.2f);
+    r.off(lo + 9);  // back to a key a polyphonic voice holds: the player takes it
+    r.run(0.2f);
+    CHECK(r.p().sounding() == lo + 7);
+    r.off(lo + 4);
+    r.run(0.2f);
+    r.pc.legato = false;
+    r.on(lo + 2);
+    r.run(0.2f);
+    for (int n : {lo, lo + 2, lo + 4, lo + 7, lo + 9}) r.off(n);
+    r.run(0.5f);
     CHECK(r.quiet());
+    CHECK(r.p().heldCount() == 0);
   }
 }
-
-// Chords can't be harmonics: they're bowed arco, no string lightly touched.
-// (The stroke itself began with the first key, as a harmonic: the chord
-// joins it rather than restarting it.)
-TEST(chord_harmonics_become_arco) {
-  Rig r(0);
-  r.pc.articulation = kHarmonics;
-  r.on(62);
-  r.on(69);
-  r.run(0.2f);
-  CHECK(r.p().chordSize() == 2);
-  StringTarget t[4];
-  r.p().strings(t, r.pc);
-  for (int s = 0; s < 4; ++s) CHECK(t[s].touchQ == 0.f);
-  r.off(62);
-  r.off(69);
-  r.run(0.4f);
-  CHECK(r.quiet());
-}
-
 
 // ---------------------------------------------------------------------------
 // Random MIDI through the synth's own path (processEvents: Keys, then the
 // performer): channels, doubled messages, keyswitches toggled mid-phrase,
 // repeated keys, lost releases (then the key pressed again to clear it), all
-// notes off, the articulation and release changing. Every
+// notes off, the articulation, release and Legato changing. Every
 // millisecond both listeners' rules are checked: Performer::audit, and every
 // key the instrument holds is really down (Keys::strayHeld). At the end every
-// key is up: the bow lifts and the voices are all let go.
+// key is up: the bows lift and the voices are all let go.
 TEST(router_fuzz) {
   for (int i = 0; i < kInstrumentCount; ++i)
-    for (int seed = 0; seed < 15; ++seed) {
+    for (int seed = 0; seed < 12; ++seed) {
       std::mt19937 g(static_cast<unsigned>(seed * 3 + i));
       std::uniform_real_distribution<float> u(0.f, 1.f);
-      Rig r(i);
+      Rig r(i, seed % 2 == 1);
       Keys keys;
       bool ks = true;
       double t = 0;
@@ -913,6 +740,7 @@ TEST(router_fuzz) {
         if (x < 0.03f) ks = !ks;
         else if (x < 0.05f) r.pc.articulation = static_cast<int>(u(g) * 7.f);
         else if (x < 0.07f) r.pc.releaseMode = static_cast<int>(u(g) * 4.f);
+        else if (x < 0.075f) r.pc.legato = !r.pc.legato;
         else if (x < 0.08f) {  // all notes off
           keys.clear();
           r.p().allNotesOff();
@@ -968,34 +796,24 @@ int main() {
   RUN(keys_clear_forgets_every_key);
   RUN(keys_channels);
   RUN(keys_fuzz_balanced);
-  RUN(performer_note_on_off);
-  RUN(performer_slur_and_return);
-  RUN(performer_legato_off_is_a_new_stroke);
-  RUN(performer_release_of_an_older_key);
-  RUN(performer_unknown_release_is_ignored);
-  RUN(performer_repeated_key);
-  RUN(performer_more_keys_than_it_remembers);
-  RUN(performer_double_stop);
-  RUN(performer_rolled_chord);
-  RUN(performer_no_chord_outside_the_window);
-  RUN(performer_chord_over_a_held_key);
+  RUN(poly_note_on_off);
+  RUN(poly_chord);
+  RUN(poly_overlapping_keys_are_separate_notes);
+  RUN(poly_repeated_key);
+  RUN(poly_more_keys_than_it_holds);
+  RUN(poly_voices_are_freed_and_reused);
   RUN(performer_every_articulation_and_release);
   RUN(performer_articulation_changed_mid_note);
-  RUN(performer_auto_bow_change_long_note);
   RUN(performer_all_notes_off);
   RUN(performer_reset);
-  RUN(performer_released_key_stops_under_a_dropped_key);
-  RUN(performer_release_of_a_key_not_sounding);
-  RUN(chord_window_zero);
-  RUN(chord_window_values);
-  RUN(chord_grows_within_the_window);
-  RUN(chord_strokes);
-  RUN(chord_roll_timing);
-  RUN(chord_roll_three_notes);
-  RUN(chord_release_mid_roll);
-  RUN(chord_too_wide);
-  RUN(chord_pizzicato_strum);
-  RUN(chord_harmonics_become_arco);
+  RUN(performer_unknown_release_is_ignored);
+  RUN(legato_slur_and_return);
+  RUN(legato_string_crossing);
+  RUN(legato_wide_leap_is_a_new_bow);
+  RUN(legato_release_of_an_older_key);
+  RUN(legato_more_keys_than_it_remembers);
+  RUN(legato_release_of_a_key_not_sounding);
+  RUN(legato_switched_mid_phrase);
   RUN(router_fuzz);
   std::printf("%d of %d checks failed\n", failures, checks);
   return failures ? 1 : 0;

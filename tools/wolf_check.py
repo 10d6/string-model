@@ -33,7 +33,7 @@ LAB = "build/instrument_lab"
 def hold(note, string, cents, vb, force, beta, wolf=0.0, z0=1.0):
     """Held note through instrument_lab: (beat dB, rate Hz, regime, odd/even beat dB)."""
     with tempfile.TemporaryDirectory() as t:
-        env = dict(os.environ, SM_INSTRUMENT="cello", LAB_STRING=str(string), LAB_VIB="0", LAB_AUTO="0",
+        env = dict(os.environ, SM_INSTRUMENT="cello", LAB_STRING=str(string), LAB_VIB="0",
                    LAB_A4=f"{440 * 2 ** (cents / 1200):.4f}", LAB_VB=str(vb), LAB_FORCE=str(force), LAB_BETA=str(beta),
                    LAB_WOLF=str(wolf), LAB_Z0=str(z0), LAB_PIN_AFTER="0.3")
         out = subprocess.run([LAB, "hold", str(note), "3", "0.7", t + "/h.wav"], env=env, capture_output=True, text=True).stdout
@@ -81,7 +81,7 @@ def simple(a):
     def one(job):
         n, d = job
         with tempfile.TemporaryDirectory() as t:
-            env = dict(os.environ, SM_INSTRUMENT="cello", LAB_STRING=str(a.string), LAB_VIB="0", LAB_AUTO="0", LAB_DYN=str(d),
+            env = dict(os.environ, SM_INSTRUMENT="cello", LAB_STRING=str(a.string), LAB_VIB="0", LAB_DYN=str(d),
                        LAB_WOLF=over.get("body.wolf", "0"))
             out = subprocess.run([LAB, "hold", str(n), "3", "0.7", t + "/h.wav"], env=env, capture_output=True, text=True).stdout
             m = re.search(r"from 0.6 s: .*: (\w+)", out)

@@ -2,7 +2,8 @@
  "patch": "init",
  "length": 10.6,
  "params": {
-  "string.select": 3
+  "string.select": 3,
+  "bow.legato": 1
  },
  "events": [
   {

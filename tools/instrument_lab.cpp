@@ -3,7 +3,9 @@
 //   instrument_lab detache [legato 0/1]        nine short notes, level per note
 //   instrument_lab hold <note> <seconds> [vel] [out.wav]
 //                                              one held note: level every 50 ms,
-//                                              bow changes marked, deepest dips
+//                                              the regime, deepest dips
+//   instrument_lab chord <note> <note> ...     notes held together (one voice
+//                                              each): force and slip rate per voice
 //   instrument_lab slurs [runs]                same-string slurs as played: periods
 //                                              until Helmholtz motion after the
 //                                              change (LAB_SLIPS=1: slips per
@@ -52,30 +54,25 @@ int main(int argc, char** argv) {
   if (const char* e = std::getenv("LAB_FRICTION")) ic.friction = static_cast<FrictionModel>(std::atoi(e));  // 0 thermal, 1 classic, 2 enhanced
   if (const char* e = std::getenv("LAB_BOWWIDTH")) ic.bowWidth = static_cast<float>(std::atof(e));
   if (std::getenv("LAB_COUPLING")) ic.coupling = static_cast<float>(std::atof(std::getenv("LAB_COUPLING")));
-  // The labs measure automatic bow changes (the synth's default is off).
-  pc.autoChange = !std::getenv("LAB_AUTO") || std::atoi(std::getenv("LAB_AUTO")) != 0;
   pc.avoidOpen = std::getenv("LAB_AVOIDOPEN") && std::atoi(std::getenv("LAB_AVOIDOPEN")) != 0;  // the labs play the string asked for
   if (std::getenv("LAB_STRING")) pc.forcedString = std::atoi(std::getenv("LAB_STRING"));
   if (std::getenv("LAB_MUTE")) ic.mute = static_cast<float>(std::atof(std::getenv("LAB_MUTE")));
-  if (std::getenv("LAB_AVARY")) pc.autoChangeVary = static_cast<float>(std::atof(std::getenv("LAB_AVARY")));
   if (std::getenv("LAB_FLOOR")) pc.changeFloor = static_cast<float>(std::atof(std::getenv("LAB_FLOOR")));
   if (std::getenv("LAB_MINACC")) pc.minAccel = static_cast<float>(std::atof(std::getenv("LAB_MINACC")));
   if (std::getenv("LAB_PRESSURE")) pc.pressure = static_cast<float>(std::atof(std::getenv("LAB_PRESSURE")));
   if (std::getenv("LAB_DYN")) pc.dynamics = static_cast<float>(std::atof(std::getenv("LAB_DYN")));
   if (std::getenv("LAB_CONTACT")) pc.contact = static_cast<float>(std::atof(std::getenv("LAB_CONTACT")));
-  if (std::getenv("LAB_BETA")) inst.performer().labBeta = static_cast<float>(std::atof(std::getenv("LAB_BETA")));
-  if (std::getenv("LAB_VB")) inst.performer().labVb = static_cast<float>(std::atof(std::getenv("LAB_VB")));
-  if (std::getenv("LAB_FORCE")) inst.performer().labForce = static_cast<float>(std::atof(std::getenv("LAB_FORCE")));
-  if (std::getenv("LAB_ALIFT")) inst.performer().labAttackLift = static_cast<float>(std::atof(std::getenv("LAB_ALIFT")));
-  if (std::getenv("LAB_ATAU")) inst.performer().labAttackTau = static_cast<float>(std::atof(std::getenv("LAB_ATAU")));
-  if (std::getenv("LAB_AVARYN")) inst.performer().labAttackVary = static_cast<float>(std::atof(std::getenv("LAB_AVARYN")));
-  if (std::getenv("LAB_PIN_AFTER")) inst.performer().labPinAfter = static_cast<float>(std::atof(std::getenv("LAB_PIN_AFTER")));
+  if (std::getenv("LAB_BETA")) inst.performer().lab().beta = static_cast<float>(std::atof(std::getenv("LAB_BETA")));
+  if (std::getenv("LAB_VB")) inst.performer().lab().vb = static_cast<float>(std::atof(std::getenv("LAB_VB")));
+  if (std::getenv("LAB_FORCE")) inst.performer().lab().force = static_cast<float>(std::atof(std::getenv("LAB_FORCE")));
+  if (std::getenv("LAB_ALIFT")) inst.performer().lab().attackLift = static_cast<float>(std::atof(std::getenv("LAB_ALIFT")));
+  if (std::getenv("LAB_ATAU")) inst.performer().lab().attackTau = static_cast<float>(std::atof(std::getenv("LAB_ATAU")));
+  if (std::getenv("LAB_AVARYN")) inst.performer().lab().attackVary = static_cast<float>(std::atof(std::getenv("LAB_AVARYN")));
+  if (std::getenv("LAB_PIN_AFTER")) inst.performer().lab().pinAfter = static_cast<float>(std::atof(std::getenv("LAB_PIN_AFTER")));
   if (std::getenv("LAB_A4")) pc.a4 = static_cast<float>(std::atof(std::getenv("LAB_A4")));
   if (std::getenv("LAB_VIB")) pc.vibDepth = static_cast<float>(std::atof(std::getenv("LAB_VIB")));
   if (std::getenv("LAB_WOLF")) ic.wolf = static_cast<float>(std::atof(std::getenv("LAB_WOLF")));
-  if (std::getenv("LAB_SUSTAIN")) pc.sustainSpeed = static_cast<float>(std::atof(std::getenv("LAB_SUSTAIN")));
   if (std::getenv("LAB_WIDTH")) pc.changeWidth = static_cast<float>(std::atof(std::getenv("LAB_WIDTH")));
-  if (std::getenv("LAB_CHANGE")) pc.bowChange = static_cast<float>(std::atof(std::getenv("LAB_CHANGE")));
   if (!std::strcmp(mode, "release")) {
     // instrument_lab release <note> <mode 1 lift, 2 stop, 3 finger off> [relVel]:
     // hold 1 s, let go; how fast the level falls, and the pitch that rings on.
@@ -128,50 +125,53 @@ int main(int argc, char** argv) {
     return 0;
   }
   if (!std::strcmp(mode, "chord")) {
-    // Press the notes 5 ms apart, hold 2 s. Per string between 1.0 and 1.5 s:
-    // bowed or not, force, slips per period (1 = Helmholtz motion), pitch
-    // from slip intervals.
-    int notes[4], n = 0;
-    for (int i = 2; i < argc && n < 4; ++i) notes[n++] = std::atoi(argv[i]);
-    int slips[4] = {}, since[4] = {}, gaps[4] = {}, stuck[4] = {}, samples = 0;
-    double gapSum[4] = {}, gapSq[4] = {};
-    bool prev[4] = {};
+    // Notes held together, pressed 5 ms apart, held 1.5 s: each a voice of
+    // its own on the shared bridge. Per voice between 1.0 and 1.5 s: force,
+    // slips per period (1 = Helmholtz motion), pitch from slip intervals.
+    constexpr int kV = Instrument::kVoices;
+    int notes[8], n = 0;
+    for (int i = 2; i < argc && n < 8; ++i) notes[n++] = std::atoi(argv[i]);
+    int slips[kV] = {}, since[kV] = {}, gaps[kV] = {}, stuck[kV] = {}, samples = 0;
+    double gapSum[kV] = {}, gapSq[kV] = {};
+    bool prev[kV] = {};
+    Performer& pf = inst.performer();
     for (int i = 0; i < static_cast<int>(sr * 1.5f); ++i) {
       for (int k = 0; k < n; ++k)
-        if (i == static_cast<int>(0.005f * sr * k)) inst.performer().noteOn(notes[k], 0.7f, pc);
+        if (i == static_cast<int>(0.005f * sr * k)) pf.noteOn(notes[k], 0.7f, pc);
       inst.process(pc, ic);
       if (i < static_cast<int>(sr * 1.0f)) continue;
       ++samples;
-      for (int s = 0; s < 4; ++s) {
-        const bool sl = inst.string(s).slipping();
-        ++since[s];
-        if (!sl) ++stuck[s];
-        if (sl && !prev[s]) {
-          ++slips[s];
-          if (since[s] < static_cast<int>(sr)) { gapSum[s] += since[s]; gapSq[s] += double(since[s]) * since[s]; ++gaps[s]; }
-          since[s] = 0;
+      for (int v = 0; v < kV; ++v) {
+        if (!pf.loaded(v)) continue;
+        const bool sl = inst.voiceString(v).slipping();
+        ++since[v];
+        if (!sl) ++stuck[v];
+        if (sl && !prev[v]) {
+          ++slips[v];
+          if (since[v] < static_cast<int>(sr)) { gapSum[v] += since[v]; gapSq[v] += double(since[v]) * since[v]; ++gaps[v]; }
+          since[v] = 0;
         }
-        prev[s] = sl;
+        prev[v] = sl;
       }
     }
-    std::printf("chord of %d, %d on the bow:\n", n, inst.performer().chordSize());
-    for (int s = 0; s < 4; ++s) {
-      if (!inst.performer().bowedString(s)) continue;
-      const double hz = gaps[s] ? sr / (gapSum[s] / gaps[s]) : 0;
+    std::printf("%d notes, %d bowed:\n", n, pf.bowingCount());
+    for (int v = 0; v < kV; ++v) {
+      if (!pf.loaded(v) || !pf.voice(v).bowing()) continue;
+      const Player& p = pf.voice(v);
+      const double hz = gaps[v] ? sr / (gapSum[v] / gaps[v]) : 0;
       // The regime from the stick test (KB §7.3, after Beigi & Conneely):
       // stick fraction (ideal Helmholtz ~ 1 - beta), slips per period of the
       // note's frequency (the finger's place: lab notes are in tune), the
       // slip intervals' jitter (sd / mean).
-      const double eta = double(stuck[s]) / samples;
-      const double f0 = 440.0 * std::pow(2.0, (inst.performer().fingerNote(s) - 69) / 12.0);
-      const double perPeriod = slips[s] / (0.5 * f0);
-      const double mean = gaps[s] ? gapSum[s] / gaps[s] : 0;
-      const double jitter = gaps[s] > 1 ? std::sqrt(std::max(0.0, gapSq[s] / gaps[s] - mean * mean)) / mean : 1.0;
+      const double eta = double(stuck[v]) / samples;
+      const double f0 = 440.0 * std::pow(2.0, (p.fingerNote() - 69) / 12.0);
+      const double perPeriod = slips[v] / (0.5 * f0);
+      const double mean = gaps[v] ? gapSum[v] / gaps[v] : 0;
+      const double jitter = gaps[v] > 1 ? std::sqrt(std::max(0.0, gapSq[v] / gaps[v] - mean * mean)) / mean : 1.0;
       const char* regime = eta > 0.98 ? "stick" : eta < 0.05 ? "slip" : perPeriod > 1.5 ? "multiple" : perPeriod < 0.6 ? "subharmonic"
                            : (jitter > 0.25 || eta < 0.35) ? "raucous" : "helmholtz";
-      std::printf("  %s: force %.2f N, %d slips in 0.5 s, slip rate %.1f Hz, stick %.3f (1-beta %.3f), %.2f slips/period, jitter %.3f: %s\n",
-                  inst.def().strings[s].name, inst.performer().forceOn(s), slips[s], hz, eta, 1.0 - inst.performer().beta(),
-                  perPeriod, jitter, regime);
+      std::printf("  note %d on %s: force %.2f N, %d slips in 0.5 s, slip rate %.1f Hz, stick %.3f (1-beta %.3f), %.2f slips/period, jitter %.3f: %s\n",
+                  p.note(), inst.def().strings[p.string()].name, p.force(), slips[v], hz, eta, 1.0 - p.beta(), perPeriod, jitter, regime);
     }
     return 0;
   }
@@ -224,6 +224,7 @@ int main(int argc, char** argv) {
             in.prepare(sr, def);
             PerformerControls p = pc;
             p.forcedString = s;
+            p.legato = true;
             const int a = def.strings[s].openNote + 4 + (st < 0 ? 3 : 0) + r, b = a + st;
             in.performer().noteOn(a, v, p);
             for (int i = 0; i < static_cast<int>(0.6f * sr); ++i) in.process(p, ic);
@@ -294,7 +295,7 @@ int main(int argc, char** argv) {
     const int top = argc > 3 ? std::atoi(argv[3]) : 24;
     PerformerControls p = pc;
     p.forcedString = s;
-    p.legato = 1;
+    p.legato = true;
     const int steps[] = {2, 2, 1, 2, 2, 2, 1};
     std::vector<int> ks{0};
     for (int i = 0; ks.back() < top; ++i) ks.push_back(ks.back() + steps[i % 7]);
@@ -338,9 +339,9 @@ int main(int argc, char** argv) {
           for (int r = 0; r < runs; ++r) {
             Instrument in;
             in.prepare(sr, def);
-            in.performer().labAttackLift = inst.performer().labAttackLift;
-            in.performer().labAttackTau = inst.performer().labAttackTau;
-            in.performer().labAttackVary = inst.performer().labAttackVary;
+            in.performer().lab().attackLift = inst.performer().lab().attackLift;
+            in.performer().lab().attackTau = inst.performer().lab().attackTau;
+            in.performer().lab().attackVary = inst.performer().lab().attackVary;
             PerformerControls p = pc;
             p.forcedString = s;
             for (int k = 0; k < r; ++k) in.performer().noteOn(def.strings[s].openNote, 0.5f, p), in.performer().noteOff(def.strings[s].openNote, 0.5f, p);
@@ -444,7 +445,7 @@ int main(int argc, char** argv) {
     }
     {
       const int cs = inst.performer().currentString();
-      const double f0 = 440.0 * std::pow(2.0, (inst.performer().fingerNote(cs) - 69) / 12.0) * pc.a4 / 440.0;
+      const double f0 = 440.0 * std::pow(2.0, (inst.performer().lead().fingerNote() - 69) / 12.0) * pc.a4 / 440.0;
       const double eta = hN ? double(hStuck) / hN : 0, per = hN ? hSlips / (hN / sr * f0) : 0;
       const double mean = hGaps ? hSum / hGaps : 0;
       const double jit = hGaps > 1 ? std::sqrt(std::max(0.0, hSq / hGaps - mean * mean)) / mean : 1.0;
@@ -486,7 +487,7 @@ int main(int argc, char** argv) {
     if (argc > 5) writeWav(argv[5], out, sr);
     return 0;
   }
-  pc.legato = argc > 2 ? std::atoi(argv[2]) : 1;
+  pc.legato = argc > 2 && std::atoi(argv[2]) != 0;  // 0: polyphonic, 1: legato
   int notes[] = {69, 71, 73, 74, 76, 74, 73, 71, 69};
   const float dur = 0.22f, step = 0.25f;
   int ni = 0; bool on = false;

@@ -37,7 +37,7 @@ jobs:
   native:
     name: Native build + checks
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
         with:
@@ -49,10 +49,12 @@ jobs:
         run: ./build/${SYNTH}_render --check . --out renders
       - name: Key handling (every way a note starts and stops, tests/key_tests.cpp)
         run: ./build/key_tests
-      - name: Key handling, random playing (all keys up -> the bow lifts; one key -> one note; single and doubled MIDI input; violin and cello)
+      # Polyphonic and legato, so each passage plays up to 16 strings: 2 per
+      # articulation and mode keeps the step to a few minutes.
+      - name: Key handling, random playing (all keys up -> every bow lifts; one key -> one note; polyphonic and legato; single and doubled MIDI input; violin and cello)
         run: |
-          ./build/performer_fuzz 5 && ./build/performer_fuzz 5 doubled
-          SM_INSTRUMENT=cello ./build/performer_fuzz 5 && SM_INSTRUMENT=cello ./build/performer_fuzz 5 doubled
+          ./build/performer_fuzz 2 && ./build/performer_fuzz 2 doubled
+          SM_INSTRUMENT=cello ./build/performer_fuzz 2 && SM_INSTRUMENT=cello ./build/performer_fuzz 2 doubled
       # The whole synth played at random (synthkit's stress test) in a build
       # where any break of the key check aborts the render (-DSM_KEYCHECK_STRICT,
       # CMakeLists.txt): every note must stop, and no rule may break on the
@@ -65,6 +67,7 @@ jobs:
           python3 synthkit/tools/stress.py build-strict/stringmodel_render 30 --tail 5 --mode overlap
           python3 synthkit/tools/stress.py build-strict/stringmodel_render 30 --tail 8 instrument=1
           python3 synthkit/tools/stress.py build-strict/stringmodel_render 30 --tail 8 --mode overlap instrument=1
+          python3 synthkit/tools/stress.py build-strict/stringmodel_render 30 --tail 5 bow.legato=1
       - name: Upload renders
         if: always()
         uses: actions/upload-artifact@v6

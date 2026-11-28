@@ -7,14 +7,14 @@ follows the knowledge base in
 Values marked **[T]** are tuning choices made here, not measurements.
 
 ```
-keys, CCs ─► Performer (gesture layer)            model/Performer.h
-              v_b, F_b per string, beta, finger pitch, vibrato, chords
+keys, CCs ─► Performer (keys, voices; polyphonic or legato)   model/Performer.h
+              └► Player per voice: v_b, F_b, beta, finger pitch, vibrato
                  │
                  ▼
-   ┌──── 4 × BowedString (waveguide, oversampled) ────┐   model/BowedString.h
-   │  nut/finger ◄─ dN ─► [bow junction] ◄─ dB ─► ─┐   │   model/Friction.h
-   └───────────────────────────────────────────────│───┘
-                       shared bridge: modal Y(z) ◄─┘        model/Bridge.h
+   ┌── a BowedString per voice (up to 20) + 4 open sympathetic strings ──┐
+   │  nut/finger ◄─ dN ─► [bow junction] ◄─ dB ─► ─┐  (oversampled)      │  model/BowedString.h
+   └───────────────────────────────────────────────│─────────────────────┘  model/Friction.h
+                       shared bridge: modal Y(z) ◄─┘ (each string at its notch)  model/Bridge.h
                  │ bridge force (N), decimated              model/Instrument.h
                  ▼
    body/output: modelled radiation (stereo modes)      model/Radiation.h
@@ -28,9 +28,65 @@ keys, CCs ─► Performer (gesture layer)            model/Performer.h
 The instrument is a single object owned by the synth, running in
 `processGlobal`. `processEvents` takes every note and controller for it. The
 kit's voices only track keys (for the meter and the lit keys) and make no
-sound. This is because the four strings share one bridge (sympathetic
-ringing, double stops; the cello's wolf note later), solved sample by sample.
-Per-note voices render separately in 32-sample blocks and couldn't do that.
+sound. This is because every string shares one bridge (sympathetic ringing,
+the cello's wolf note), solved sample by sample. Per-note voices render
+separately in 32-sample blocks and couldn't do that, so the instrument has
+voices of its own (below).
+
+### Voices: polyphony
+
+The instrument is polyphonic. The performer (`model/Performer.h`) has 20
+voices (`Performer::kVoices`); each is a `Player` (a bow, a left hand, a
+vibrato) with a string of its own (`Instrument`'s `Voice`: a `BowedString`
+and its vertical polarisation). Up to 16 keys are held at once
+(`kMaxHeld`): a 17th lets the oldest go. A voice's string stands at the
+notch of the string the performer chose for its note (Auto, the String
+control or a keyswitch, Avoid Open Strings, a harmonic's string): it has that
+string's impedance, losses and per-string body coupling (the cello's mode
+strengths, §Bridge), and drives the bridge there. Several voices can share a
+notch: notes on "the same string" sound together, each a string of its own.
+
+- **A new note** takes, in order: the voice already holding its key (a
+  restrike); a voice ringing on its string with no key holding it (on the
+  instrument that is the same string: a fast passage re-bows a moving
+  string, as before polyphony; without it, spiccato came out 5 dB weaker);
+  a free voice; the quietest released voice (cut short); the oldest held.
+  After it, if fewer than two voices are free, the quietest released voice
+  is let go: damped over 10 ms and freed, so the next note finds a free one.
+- **A released voice** rings on (its finger stays) until its string is
+  quiet (waves under 2×10⁻⁵ m/s for ~40 ms), then it is freed and leaves
+  the bridge.
+- **The sympathetic strings.** Four undamped open strings stay on the
+  bridge at true pitch (in pure fifths around A with Intonation Style), and
+  ring in sympathy as the old instrument's unbowed strings did. While a
+  voice stands at a notch, that notch's open string is damped (15 ms) and
+  taken off (on the instrument it is the very string being played); it comes
+  back when the notch is free. With one note sounding, the bridge carries
+  four strings, as before polyphony, so the single-note sound is unchanged
+  (sympathetic levels within ~1 dB, `instrument_lab sympathy`).
+- **The bridge solve** sums the strings at each notch: their incoming waves
+  and their impedances (`Bridge::setSlotImpedances`; the cello's 4×4 solve is
+  re-inverted when a notch's load changes, the violin's scalar one takes the
+  total each sample). Every string at a notch sees that notch's velocity.
+- **Per voice, outside the loop:** the brightness tilt (from its own bow's
+  force), the harmonics low-pass, the cello's recorded onsets and held-tone
+  bow noise (following that voice's own share of the bridge force) — what
+  the one-voice instrument applied to its whole output.
+- **Legato (Mono)** (`bow.legato`, off by default) is the old instrument on
+  these voices: one player, the newest key sounding, slurs, shifts and
+  portamento (§Gesture layer). One voice per string: a slur onto another
+  string moves the bow to that string's voice (the stroke goes on: no new
+  attack, no onset clip) and the old string rings on, its finger lifting
+  after 0.25 s; going back to a string still ringing plays it again. Notes
+  held from polyphonic playing when Legato comes on keep their voices until
+  their keys go up (the player takes over a key it returns to).
+- **Level.** A chord is as loud as its notes together: the output has 3 dB
+  of headroom (`kHeadroom` in `src/Synth.cpp`), so single notes sit 3 dB
+  under the monophonic instrument's level and ordinary chords stay clear of
+  the kit's safety limiter.
+- **Cost.** A bowed string is ~0.7% of a core natively (all its neighbours
+  awake on a moving bridge); 16 held notes run at 4× realtime native, 2.8×
+  in the browser (`bench-web.cjs`).
 
 The strings run at 2× the host rate below 70 kHz (96 kHz at 48 kHz). A
 49-tap Blackman–Harris FIR decimates them back to the host rate.
@@ -73,28 +129,26 @@ wait on a queue and apply at their own sample in `processGlobal`; if the
 queue (512 per host block) ever fills, a note-off takes the place of the
 latest event that isn't one, so no key is left down.
 
-Inside the performer (the gesture layer, below) the keys are a list,
-newest last, of up to 16: one more forgets the oldest. Letting go of the
-key of the note sounding hands over to the newest key down; letting go of
-any other key changes nothing; the last key up ends the note. (Until the
-key check below, the hand-over followed "the newest key", which isn't
-always the note sounding: a chord drops the keys that don't fit, the newest
-among them, and a chord let go down to one note plays that note. Its key
-going up while the newest was down left the note bowed with no key: in
-fast tremolo, sautillé and overlapping chords.) A note-off for a key it
-doesn't hold is ignored.
+Inside the performer the keys are a list, newest last, of up to 16: one
+more forgets the oldest (polyphonic, its note lets go). Polyphonic, a key
+going up ends its own note. In legato, letting go of the key of the note
+sounding hands over to the newest key down; letting go of any other key
+changes nothing; the last key up ends the note. (Until the key check below,
+the hand-over followed "the newest key", which isn't always the note
+sounding: with chords, a chord dropped the keys that didn't fit, and its key
+going up while the newest was down left the note bowed with no key.) A
+note-off for a key it doesn't hold is ignored.
 
 **The key check.** The notes sounding needn't match the keys down: a slur
-(two keys, one note), a rolled chord (four keys, two strings bowed), a chord
-too wide for the hand (its top note), a keyswitch (a key, no note), a
-ringing string (no key) all differ, so counting them would cry wolf. These
-rules hold however the keys are played, and are checked:
+(two keys, one note), a keyswitch (a key, no note), a released note ringing
+(no key) all differ, so counting them would cry wolf. These rules hold
+however the keys are played, and are checked:
 
 | Rule | Checked by |
 |---|---|
-| The bow is on at most two strings, and on as many as the note or chord being bowed | `Performer::audit` |
-| The bow is never on with no key down (a "stop" release rests on the string up to ~0.2 s, never more than 2 s) | `Performer::audit` |
-| The note, or every chord note, being bowed is a key down; no key is held twice | `Performer::audit` |
+| No more bows on strings than keys down (legato: one, but notes held from polyphonic playing keep theirs when Legato comes on) | `Performer::audit` |
+| No bow is ever on with no key down (a "stop" release rests on the string up to ~0.2 s, never more than 2 s) | `Performer::audit` |
+| Every note being bowed is a key down; no key is held twice, nor by two voices | `Performer::audit` |
 | Every key the instrument holds is really down (once the queue has caught up: Keys hears an event at the start of a host block, the performer at its sample) | `Keys::strayHeld` |
 | The page shows no more voices than presses routed to it (for longer than 0.25 s) | `checkKeys` (`ctx.activeVoices()`) |
 | A key isn't pressed while it's down: if it is, its release never arrived (reported; handled by the re-press above) | `Keys` (`Repress`), `checkKeys` |
@@ -120,9 +174,10 @@ Found with it at once: the hand-over above (stress seed 46; `performer_fuzz`
 tremolo seed 19, sautillé seed 24).
 
 Tested by `tests/key_tests.cpp` (every row above that the model owns, on
-both instruments, chords and their roll included; each bug found gets a
-case), `performer_fuzz` (random playing: all keys up must lift the bow,
-then one key bows one string), the
+both instruments, polyphonic and legato, voices freed and reused, Legato
+switched mid-phrase; each bug found gets a case), `performer_fuzz` (random
+playing in both modes: all keys up must lift every bow, then one key bows
+one voice), the
 scenarios `tests/keys-*.json` (the synth's routing, rendered) and
 `synthkit/tools/stress.py` (random playing through the whole synth: the
 output must go silent).
@@ -310,7 +365,7 @@ radiation; 8.6 attacks and the hand):
   are taken out (tracked and heterodyned as for the onsets, 0.4-1.4 s after the onset), re
   the harmonics, the synth's held tone was 10-25 dB too clean between 125 Hz and 2 kHz
   against the Iowa arco and bigcat (which agree within ~5 dB), and about right at 4-8 kHz,
-  where the friction's own noise (Rosin Noise) lies. Added to the bridge force with the
+  where the friction's own noise (rosin noise, below) lies. Added to the bridge force with the
   onsets: white noise in seven octave bands (0 dB-peak band-passes, Q √2), each band at the
   missing level per string and dynamic (`data/CelloBowNoise.h`: the recordings' ratio less
   the synth's, times the band's share of the bridge force's harmonics from the Pickup
@@ -532,7 +587,10 @@ moves; that's how open strings ring in sympathy.
 Above those is a dense band from 1.3 to 7 kHz: random modes (deterministic
 seed) about 150 Hz apart, Q falling from ~40 to 8. Their levels are shaped
 by the bridge hill: 2.6 kHz, Q 3, peak 0.15 s/kg (KB §5.3). That's 45 modes
-in all. `Body Coupling` scales Y (0 = rigid bridge).
+in all. Y can be scaled (`InstrumentControls::coupling`, 0 = a rigid bridge;
+the labs' `LAB_COUPLING`); the synth keeps it at 1 (the `Body Coupling`
+control went in the polyphony PR: the bridge it scales is what makes the
+sympathetic ringing and the wolf, and away from 1 it uncalibrates them).
 
 **How the levels were set.** My first guesses were the upper half of the
 KB's ranges (B1± 0.25–0.30, hill 0.35), and they were too strong:
@@ -644,7 +702,11 @@ slightly different moments (differential slipping), which adds 3–5 dB of
 noise between the harmonics at 5–10 kHz (A4 mf). Where the bow is within a
 few samples of the bridge (very high notes), it's one point.
 
-**Rosin noise (KB §6.4):** during slip, μ × (1 − A·u) with u uniform in [0, 1).
+**Rosin noise (KB §6.4):** during slip, μ × (1 − A·u) with u uniform in [0, 1),
+A = 0.12 (`InstrumentControls::noise`; the `Rosin Noise` control went in the
+polyphony PR, kept at its default: it is measurably part of the attacks,
+2.5 dB on the violin's per third-octave band, and the cello's Bow Noise was
+fitted on top of it).
 
 ### Measured with `string_lab` (open D, v_b = 0.13 m/s, 96 kHz)
 
@@ -703,7 +765,11 @@ What this shows:
 
 ## Gesture layer (KB §7.3, §11.5)
 
-**Keys.** Last-note priority, plus double stops and chords:
+Each voice is one player on one string (`Player`); the performer gives the
+keys to the voices (§Voices: polyphony above). Polyphonic (the default),
+every key is a note of its own, a stroke from the air (or a pluck), and the
+rest of this section applies to each voice. With **`Legato (Mono)`** on it is
+one player, last-note priority:
 - Overlapping keys **slur**: the same bow, and the left hand changes the note
   (below). Keys further apart than `Slur Range` (1–24 semitones, default
   12) take a new bow instead, so only close notes slur. Letting go of the
@@ -711,7 +777,6 @@ What this shows:
   same rule; in pizzicato it re-sounds nothing.
 - A key played after all keys are up starts a **new stroke** in the other
   bow direction.
-- With `Legato Slurs` off, every key is a bow change.
 - **A key arriving twice** (a note-on for a key already held, within 30 ms
   of its press) is ignored: a keyboard the browser sees as two MIDI inputs
   (with "All MIDI inputs"), or a doubled MIDI route, sends every key twice,
@@ -724,8 +789,8 @@ What this shows:
   shows one voice per key too; the performer's own check stays for the
   labs, which drive it directly.
 - The string is chosen per note: the highest string whose open note is at or
-  below it. Through a slur, the current string is kept if the note is within
-  a fifth above its open note.
+  below it. Through a slur (legato), the current string is kept if the note
+  is within a fifth above its open note.
   - **Open strings can't take vibrato** (`Avoid Open Strings`, default on;
     the left-hand PR). With vibrato on, arco or martelé, and the keys at
     least 0.25 s apart, a note that would be an open string (D4, A4, E5) is
@@ -737,26 +802,20 @@ What this shows:
     weaker than the open A's (−10.9 vs −3.4 dB re partials 2–4; −4.3 with
     the bridge decoupled), level with G4 and G#4 on the same string (−8,
     −10). The labs and `open_strings.py` turn the habit off.
-  - **A slide keeps the string:** with `Portamento` above 0, a slow (≥ 0.3 s)
+  - **A slide keeps the string** (legato): with `Portamento` above 0, a slow (≥ 0.3 s)
     slurred leap of a third or more from a stopped note stays on the string,
     up to an octave above its open note, and shifts (below).
-- Leaving a string lifts the bow from it and lets it ring. After 0.25 s
-  [T] the finger lifts too, so the string rings open, and in sympathy.
-- **Double stops and chords.** Keys pressed within `Chord Window` (35 ms) of
-  each other are one chord.
-  - The notes go on adjacent strings, lowest note on the lowest string, at
-    the lowest positions, with the hand spanning at most a fifth.
-  - If the whole chord doesn't fit (C4–E4–G4: G4 is below the open A), its
-    top notes are played instead (E4 on G, G4 on D).
-  - Two notes share the bow.
-  - Three or four are **rolled** (KB §11.2): the bow takes the lower pair,
-    then moves up a pair every `Chord Roll` (60 ms) and sustains the top
-    pair, while the lower strings ring.
-  - Releasing a chord note leaves the bow on the rest.
-  - A key outside the window slurs out of the chord.
-  - Measured with `instrument_lab chord`: every pair tried (G–D, D–A, A–E;
-    open and stopped; 3–4 note chords) gives one slip per period on both
-    strings, at their own pitches.
+- Leaving a string (legato) lifts the bow from it and lets it ring. After
+  0.25 s [T] the finger lifts too, so the string rings open, and in sympathy.
+- **Chords** are notes of their own (polyphony): each on its string, with
+  its own bow. Until the polyphony PR, keys pressed within a `Chord Window`
+  (35 ms) were one chord on adjacent strings: two shared the bow (a double
+  stop, the lower string weighted ×1.12, the upper ×0.9, tuned pure against
+  one reference), three or four were rolled a pair at a time (`Chord Roll`,
+  60 ms), and a chord too wide for the hand played its top notes. All of that
+  went with the move to normal polyphony (the owner's choice). Measured with
+  `instrument_lab chord` now: D4, A4 and E5 held together each slip once per
+  period at their own pitch.
 
 **Playability assistant.** `Dynamics` (mod wheel, CC 11, plus velocity ×
 `Velocity → Dynamics`) gives d ∈ [0, 1]. Then:
@@ -794,20 +853,23 @@ What this shows:
   2^(1.5 p).
 
 **Attacks.** The bow lands with force rising over 8 ms and accelerates at
-a = k F (the Guettler plane, KB §7.2), with k = (6 + 8 vel)(1 + 1.5 bite)
-m/s² per N. The acceleration is at least 2.5 m/s² [T]: below about
+a = k F (the Guettler plane, KB §7.2), with k = 1.45 (6 + 8 vel) m/s² per N
+(the 1.45 was the old `Attack Bite` control at its default, 0.3: its whole
+range made no difference larger than playing the same passage twice, so it
+went in the polyphony PR). The acceleration is at least 2.5 m/s² [T]: below about
 2 m/s², soft notes (pp force ≈ 0.07 N) took 0.25 s to speak; from 2 m/s²
 they settle within ~50 ms. Loud notes also get an accent, a force boost
-decaying over 70 ms.
+decaying over 70 ms (0.96 (vel − 0.55), from the same default).
 
 **Long notes save bow** (KB §7.3 step 2; Demoucron measured 12 cm/s on whole
 notes, 22 on halves, 54 on quarters, with the bow 25–40 mm from the bridge
-throughout). From 0.25 s into a stroke, over 0.6 s, the bow slows to
-`Long-Note Bow Speed` (default 1) × the attack speed, and to no more than
-0.22 m/s (Demoucron's half notes). β stays where the attack put it, as Demoucron's players kept
-theirs, so the slowed note settles softer (7.7 ln of the slowdown, dB).
-With the default, p–mf notes (0.12–0.2 m/s) keep their attack speed and
-f–ff long notes slow to 0.22 m/s (ff ~−4.5 dB).
+throughout). From 0.25 s into a stroke, over 0.6 s, the bow slows to no
+more than 0.22 m/s (Demoucron's half notes). β stays where the attack put
+it, as Demoucron's players kept theirs, so the slowed note settles softer
+(7.7 ln of the slowdown, dB). p–mf notes (0.12–0.2 m/s) keep their attack
+speed and f–ff long notes slow to 0.22 m/s (ff ~−4.5 dB). (A `Long-Note Bow
+Speed` control slowed every long note further; it went in the polyphony PR,
+at its default of 1, which is this.)
 - **Why (the bow-brightness PR):** until then the default was 0.6 and β
   moved toward the bridge to keep v_b/β, the loudness, the same, no closer
   than β 0.06. At p that moved the bow a lot (β 0.17 → 0.10) and
@@ -863,30 +925,20 @@ notes nearer. With the per-dynamic table (attack-rise PR) soft attacks
 (G3–G6, velocity 20) keep everything below the note 13–60 dB down from the
 first 20 ms, as on main.
 
-**Bow changes.** The bow position along the hair is tracked (62 cm). A long
-note changes bow at the tip or the frog when `Auto Bow Change` is on; off
-(the default since the slurs PR, the owner's choice) gives an endless bow.
-The labs keep it on (`LAB_AUTO=0` turns it off in `instrument_lab`). A key-driven bow change (détaché) reverses in `Bow Change`
-(default 20 ms) at constant acceleration. An automatic change (the bow ran
-out) takes the same time but follows a half cosine through zero, like a
-tremolo reversal, so less of it is spent near zero speed. Each automatic
-change varies (KB §11.2): its time ±20%, the new stroke's force ±6%, and
-where the bow turns next, 3–8% from the end. Force dips towards 20% at zero speed (0.2 + 0.8 (v/v_t)²):
-players lighten the bow here, and the KB reports that a deeper dip shortens
-the gap.
+**Bow changes.** The bow never runs out: long notes are an endless bow (the
+bow's place along the 62 cm hair is tracked only for its weight, +6% at the
+frog, −6% at the tip, and to start a stroke from near an end in the other
+direction). A bow change happens only in legato, on a new note that doesn't
+slur: the bow reverses in 20 ms at constant acceleration, its force dipping
+towards 20% at zero speed (0.2 + 0.8 (v/v_t)²): players lighten the bow
+here, and the KB reports that a deeper dip shortens the gap. (Until the
+polyphony PR an `Auto Bow Change` control changed bow at the tip and frog of
+long notes, rounded and varied, and `Bow Change` set the reversal time; both
+went, the automatic change being off by default since the slurs PR.)
 
-Measured above 1 kHz (where the body boosts) at each change, over 35 held
-notes (D4–A5, five velocities): mean dip 12.5 dB, more than 6 dB down for
-15 ms on average (30 ms at most), with changes about every 4–5 s at mf.
-
-Rounded automatic changes (instrument_lab hold, `LAB_HF=1`, G3–E6 at three
-velocities): the gap more than 6 dB down fell from a median of ~25 ms
-(constant acceleration) to ~15 ms, with a shallower dip. Keeping the force
-on through the turn, as tremolo does, made no measurable difference (floors
-0.2–1.0 all gave the same gap at 20 ms), and slower round turns (40–100 ms)
-lengthened the gap to 25–60 ms.
-
-What made the difference:
+What made the difference to the gap at a change, when there were automatic
+changes (measured above 1 kHz, 35 held notes D4–A5: mean dip 12.5 dB, more
+than 6 dB down for ~15 ms):
 - The first version (60 ms reversals, no bow saving) changed every 2.5 s
   with 27–31 dB, 50–70 ms cuts.
 - Faster reversals hardly help, and the force dip's shape barely matters.
@@ -1067,14 +1119,12 @@ player doc §3.2). It sets the target that the intonation loop above aims for:
   comes from a decaying count of recent pitch classes (~7 notes) against the
   Krumhansl–Kessler major profile. Each note is spelled within 5 fifths flat
   to 6 sharp of the key's centre, so minor-key leading tones are sharps.
-- **Double stops and chords pure** against one reference note: an open
-  string if the chord has one, else the lowest note at its melodic tuning.
-  Major thirds come out 13.7 cents narrow, minor sixths 13.7 wide, fifths
-  2 wide.
+- **Chords** take each note's melodic tuning (polyphony; until then double
+  stops and chords were tuned pure against one reference: thirds 13.7 cents
+  narrow, sixths 13.7 wide).
 - **Measured** with Intonation Style 1, vibrato off, against Intonation
-  Style 0:
-  - D-major scale: E +3, F# +6, G −4, B +4, C# +8 cents.
-  - D–F# third: −13; E–C and F#–D sixths: +14.
+  Style 0 (`tools/intonation_check.py`):
+  - D-major scale: E +2, F# +6, G −4, B +4, C# +8 cents.
   - Open strings: at Intonation Style 1, the open D lands at −2 cents (its
     pure-fifth target) since the open-string allowance fix (before: −10).
 - **Measured behaviour, not lore:** the player doc's rule that a crescendo
@@ -1094,62 +1144,14 @@ player doc §3.1, KB ref 65 / P15):
   - B4 at 0.5–1 s: 15 vs 13 cents; later: 15 vs 15.
   - B6: 15 vs 18.
   - B4 straight after a run, at 0.2–0.5 s: 7 vs 5; at 0.7–1.3 s: 17 vs 15.
-- **Rate:** faster on metrically weak notes, ±4% (below).
 
-**Double stops** put more weight on the lower string: ×1.12 lower, ×0.9
-upper (player doc §2.6) [T]. In `instrument_lab chord`, both strings of
-D–A, G–D, A–E and E–C slip once per period.
+### Tempo
 
-### Meter and tempo
-
-Each note's position comes from the kit (beats are quarter notes; the
-transport gives the bar start and time signature). `model/Meter.h` turns it
-into a metric strength [T]:
-
-| Position | Strength |
-|---|---|
-| downbeat | 1 |
-| mid-bar strong beat (4/4 beat 3, 12/8) | 0.7 |
-| beat (dotted quarter in 6/8, 9/8, 12/8) | 0.5 |
-| subdivision (half a beat; a third in compound meters) | 0.25 |
-| finer | 0.1 |
-
-Played timing isn't quantised: a note within a tenth of a beat (at most a
-third of the grid step), early or late, counts. The meter applies only while a
-transport plays (a DAW, or the page's Play), since the kit's clock always
-runs. Otherwise these rules are off, and tempo-dependent ones use the time
-between keys.
-
-**`Metric Emphasis`** (default 0.5; player doc §4, KTH metric rules) [T]:
-- **Velocity:** ×(1 + 0.5 · amount · (strength − 0.4)), so +15% on the
-  downbeat and −4% on subdivisions at the default. On repeated eighths in
-  4/4: downbeat +1.3 dB, beat 3 +0.6, subdivisions −0.5 dB.
-- **Bowing to the meter** (player doc §2), for strokes from the air:
-  - a down-bow (frog to tip) on a strong beat (≥ 0.7), or on any beat that
-    starts a phrase after a rest of 0.25 s or more;
-  - an up-bow on a pickup that starts a phrase (off the beat, after a rest);
-  - only if 40% of the bow is left that way. With less, a long note runs
-    out of bow and changes mid-note, which sounds like an extra note. The
-    first version allowed 20% and re-took pickups to the tip, so each
-    downbeat after a pickup rebowed;
-  - with 80 ms or more in the air, the bow is re-taken first: to the frog
-    for a down-bow, to the middle for a pickup up-bow, so the downbeat after
-    it has most of the bow.
-
-  Otherwise notes alternate, unless the bow is nearly at one end. Checked
-  with a C++ harness on the performer, replaying 3/4 phrases with pickups:
-  - pickups are up-bow from mid-bow;
-  - every downbeat is down-bow, with ~60% of the bow;
-  - mid-phrase notes alternate;
-  - no bow changes mid-note, except in a 3.4 s slurred passage, which
-    rebows with Metric Emphasis at 0 too.
-  - limit: separate quarters through a 3/4 bar can land the next downbeat on
-    an up-bow (the bow is just past the 40% rule). Players hook two up-bows
-    or re-take there (`bowing_lab`; docs/PLAN.md "Ideas").
-- **Leading tones** rise up to +3 cents more on weak notes (player doc §3.2),
-  scaled by `Intonation Style`.
-- **Vibrato rate** goes ×(1 + 0.12 · Shaping · (0.5 − strength)): faster on
-  weak notes (Timmers & Desain, KB ref 65).
+A meter (`Metric Emphasis`: accents, down-bows on strong beats, up-bows on
+pickups, leading tones and vibrato by metric strength, from the transport)
+was taken out with polyphony: one bow following the bar doesn't fit
+separate bows per note, and the owner couldn't hear it. The tempo-dependent
+habits use the time between keys.
 
 **Bow weight** (player doc §1.4): the hand balances the bow's weight
 imperfectly. Force is +6% at the frog and −6% at the tip, plus ±3% per
@@ -1158,7 +1160,7 @@ stroke, so down-bows from the frog start a little heavier [T].
 **Spiccato length** follows the note rate (the time between keys): contact
 and stroke ×0.7 at 9 notes/s, up to ×1.5 at 3/s [T].
 
-**`Portamento`** (default 0.3; player doc §3.3) [T]:
+**`Portamento`** (default 0.3; player doc §3.3; legato) [T]:
 - Applies to slurred shifts of a third or more, after a slow key gap
   (0.3–0.8 s); notes within the hand's reach never slide.
 - Until the left-hand PR it almost never sounded: string choice moved most
@@ -1457,7 +1459,7 @@ HF loss in Phase 4). For the Library Mic (Smooth):
   same hill move plus a −5 dB shelf above ~1.5 kHz [T]. Measured: −12 to
   −13 dB above 2.5 kHz, −1.7 dB at 1.6 kHz, lows unchanged. It goes on
   over ~80 ms. With the mute on, notes still sustain: G6, A6 and C7 slip
-  once per period (`LAB_MUTE=1 instrument_lab chord`).
+  once per period (`LAB_MUTE=1 instrument_lab chord`, before polyphony).
 - **`Body Resonance`** (0–1): blends the low band (below 1.2 kHz) between
   the measured peaks and dips and the smoothed fit. At 0, the 700 Hz dip
   fills by +8 dB and the 550 Hz region is trimmed: an even instrument.
@@ -1525,9 +1527,9 @@ decorrelate (r ≈ 0.5), many don't. Wider vibrato decorrelates more.
 ./build/string_lab tone <string 0-3> <note> <vb> <F> <beta> [classic] [out.wav]
 ./build/string_lab sweep <string 0-3> <note> <vb> [classic]          # Schelleng map
 LAB_FS=192000 LAB_HEAT=2 ./build/string_lab ...                      # rate, heat calibration
-./build/instrument_lab detache [legato]                               # gesture-layer trace
-./build/instrument_lab hold <note> <seconds> [vel] [out.wav]         # bow changes, dips, attack time
-./build/instrument_lab chord <n1> <n2> [n3 n4]                       # per bowed string: force, slip rate
+./build/instrument_lab detache [legato 0/1]                           # gesture-layer trace (polyphonic or legato)
+./build/instrument_lab hold <note> <seconds> [vel] [out.wav]         # the regime, dips, attack time
+./build/instrument_lab chord <n1> <n2> [n3 ...]                      # notes held together: per voice, force and slip rate
 ./build/instrument_lab sympathy <note>                               # each string's level, bowing and after
 ./build/instrument_lab bridge                                        # |Y| of the bridge
 python3 tools/calibrate_force.py                                     # Helmholtz window vs the assistant
@@ -1536,8 +1538,8 @@ python3 tools/force_tilt.py                                          # bridge fo
 python3 tools/radiation_target.py <VSCO Arco Vib dir> [render] [csv|-] [mode]   # real vs synth per band
 python3 tools/combine_target.py <library csv> <measured csv|-> <out csv> [--from=HZ]  # the radiation target ("-": the library curve alone)
 ./build/instrument_lab release <note> <1 lift|2 stop|3 finger off> [relVel]   # decay and the pitch left ringing
-  env: LAB_HF=1 (measure above 1 kHz), LAB_DYN, LAB_PRESSURE, LAB_COUPLING, LAB_MUTE, LAB_STRING, LAB_CHANGE, LAB_FLOOR,
-       LAB_WIDTH, LAB_SUSTAIN, LAB_MINACC, LAB_AVOIDOPEN=1 (the open-string habit; off in the labs), LAB_TRACE=from,to
+  env: LAB_HF=1 (measure above 1 kHz), LAB_DYN, LAB_PRESSURE, LAB_COUPLING (0: a rigid bridge), LAB_MUTE, LAB_STRING, LAB_FLOOR,
+       LAB_WIDTH, LAB_MINACC, LAB_AVOIDOPEN=1 (the open-string habit; off in the labs), LAB_TRACE=from,to
 python3 tools/analyze.py render.wav [out.png] [--fmin 58]            # spectrogram, level, pitch per note (--fmin: the cello)
 SM_INSTRUMENT=cello ./build/<any lab> ...                            # the labs on the cello (default: violin)
 ./build/string_lab guettler <string> <note> <beta> [classic|enhanced]  # attacks from rest (Guettler plane)
@@ -1552,12 +1554,10 @@ python3 tools/wolf_check.py                                          # the wolf'
 python3 tools/wolf_check.py --simple [--string 1] [--notes 52-56] [--param body.wolf=0.5]   # the wolf as played: beat, rate, regime
 python3 tools/partial_q.py --instrument cello --iowa <Iowa pizz wav dir> [--dyn pp,mf,ff]   # the cello's losses
 python3 tools/iowa.py <Iowa wav> ...                                 # the notes found in Iowa MIS files
-./build/bowing_lab <metric> [bpm num den] < events                   # bow direction per note, mid-note rebows
-  instrument_lab env also: LAB_FRICTION=0|1|2, LAB_BOWWIDTH=<m>, LAB_AVARY
+  instrument_lab env also: LAB_FRICTION=0|1|2, LAB_BOWWIDTH=<m>
 python3 tools/open_strings.py | harmonics_tuning.py | intonation_check.py | vibrato_extent.py
 python3 tools/pizz_decay.py <VSCO Pizz dir>                          # two-stage decay vs recordings
 python3 tools/note_pitch.py <scenario> [wav]                         # pitch per note, peak below
-LAB_HF=1 tools/bow_change_gap.sh [note]                              # automatic bow change gap
 python3 tools/partial_q.py --data <phil wav>                          # each partial's decay (Q) after a pluck
 python3 tools/harmonic_timbre.py --data <phil wav> [render]           # harmonics vs arco, real vs synth
 python3 tools/portamento_glide.py [render]                            # glide times at Portamento 0 / 0.3 / 1
@@ -1565,7 +1565,7 @@ python3 tools/brightness_spread.py --vsco <Arco Vib> [render ...]     # f - p co
 python3 tools/force_brightness.py [enhanced classic thermal]          # the string alone: brightness vs force
 python3 tools/fundamental_strength.py --data <phil wav> [render]      # 1st partial re 2-4, recordings vs synth
 ./build/key_tests                                                     # every way a note starts and stops (Keys, Performer)
-./build/performer_fuzz [n] [doubled]                                  # key handling: keys up -> bow lifts; one key -> one note (SM_INSTRUMENT=cello)
+./build/performer_fuzz [n] [doubled]                                  # key handling, polyphonic and legato: keys up -> every bow lifts; one key -> one note (SM_INSTRUMENT=cello)
 ```
 
 What each check should show, and the latest numbers: [EVALUATION.md](EVALUATION.md).
@@ -1582,16 +1582,21 @@ What each check should show, and the latest numbers: [EVALUATION.md](EVALUATION.
   is a separate string on a rigid bridge, straight to the output.
 - Body controls change the radiated sound only, not how the body loads the
   strings (KB §5.8 "character vs ease": docs/PLAN.md "Ideas").
-- Bowing to the meter can land a downbeat on an up-bow after separate notes
-  in odd meters (above). Rules that need the next note (crossing lead,
-  phrase timing) aren't possible from a live keyboard without latency.
+- Rules that need the next note (crossing lead, phrase timing) aren't
+  possible from a live keyboard without latency.
+- Polyphonic notes don't know about each other: no double-stop weighting or
+  pure tuning of chords (both went with the chord code), and a crossing in
+  legato starts the new string from rest where the old instrument's string
+  was already ringing in sympathy (a crossing's pitch arrives ~6 ms later).
 - Browser and native renders diverge on chaotic passages (last-digit maths
   differences grow); CI compares a well-behaved one (docs/EVALUATION.md).
 - The highest notes have few samples per slip even at 96 kHz (KB §6.4); they
   slip longer and flatten more (A6: ~30 cents uncorrected).
-- Cost: all four strings run while the bridge moves (two bow points on a
-  bowed string; plucked strings add a vertical copy), plus 45 bridge modes
-  at 96 kHz and 120 radiation modes at the host rate. The browser renders
+- Cost: every string on the bridge runs while it moves (each sounding
+  voice's and the open sympathetic strings; two bow points on a bowed
+  string; plucked strings add a vertical copy), plus 45 bridge modes at
+  96 kHz and 120 radiation modes at the host rate. 16 held notes: 2.8×
+  realtime in the browser (`bench-web.cjs`), 4× native. The browser renders
   ~7× faster than realtime with the room (~12× without), measured with the
   kit's `bench-web.cjs` on a Release build. Earlier figures here came from an
   unoptimised local build. The radiation's modes are plain arrays and the

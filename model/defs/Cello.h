@@ -196,14 +196,12 @@ inline const InstrumentDef& cello() {
     // The hand (in the neck positions): the four fingers span a minor third
     // (first to fourth finger), a forward extension a major third; a shift
     // lands on the third finger (two above the hand's place) going up, the
-    // second going down; chords across adjacent strings span less than on
-    // the violin [T]. Vibrato widens above the open A, as the violin's above
+    // second going down [T]. Vibrato widens above the open A, as the violin's above
     // its open A.
     c.hand.reachBelow = 1.f;
     c.hand.reachAbove = 4.f;
     c.hand.upFinger = 2.f;
     c.hand.downFinger = 1.f;
-    c.hand.chordSpan = 5;
     c.hand.vibRefNote = 57;
     // Thumb position from the octave up (the thumb across two strings at the
     // octave harmonic): thumb to third finger a fourth [T].

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Intonation Style: a D-major scale and four double stops at style 0 and 1
-(vibrato off). Expected at 1 vs 0: leading tone C# about +8, F# +6, B +4,
-G -4 cents; double-stop intervals pure (major third -14, minor sixth +14).
+"""Intonation Style: a D-major scale at style 0 and 1 (vibrato off). Expected
+at 1 vs 0: leading tone C# about +8, F# +6, B +4, G -4 cents. (Double stops
+were tuned pure until chords became polyphonic notes: each note of a chord
+now takes its melodic tuning.)
 python3 tools/intonation_check.py"""
 from evalkit import render, pitch, cents, mtof
 
@@ -27,8 +28,3 @@ names = ["D", "E", "F#", "G", "A", "B", "C#", "D"]
 for st in (0, 1):
     r = run(scale, st, 1.2)
     print(f"scale, style {st}: " + "  ".join(f"{nm} {c[0]:+.0f}" for nm, c in zip(names, r)))
-pairs = [(62, 66), (62, 69), (64, 72), (66, 74)]
-for st in (0, 1):
-    r = run(pairs, st, 1.5)
-    print(f"double stops, style {st} (upper minus lower, cents vs ET): " +
-          "  ".join(f"{a}-{b} {c[1] - c[0]:+.0f}" for (a, b), c in zip(pairs, r)))

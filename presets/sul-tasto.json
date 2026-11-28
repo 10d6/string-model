@@ -6,7 +6,6 @@
   "params": {
     "bow.contact": -0.8,
     "bow.pressure": -0.35,
-    "vib.depth": 12,
-    "bow.noise": 0.18
+    "vib.depth": 12
   }
 }
