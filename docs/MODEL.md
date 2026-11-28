@@ -763,7 +763,24 @@ What this shows:
 - v_b/β = 0.6 e^{3d}: the level law L ≈ 7.7 ln(v_b/β), about 23 dB from
   pp to ff.
 - v_b = 0.1 e^{1.4d} m/s, so 0.1–0.4 m/s and β 0.17–0.03.
-- `Contact Point` (CC 74) multiplies β by 2^(−1.5 c).
+- `Contact Point` (CC 74) multiplies β by 2^(−1.5 c). Toward the
+  fingerboard (c < 0) the force follows the players' line below. Toward the
+  bridge it leaves it (`Performer::contactForceOct`): the force, in octaves
+  re the ordinary contact point's, is 2.09 c (1 − c / 0.58), at least −1. It
+  rises with the line at first (+0.3 octave at most, near c = 0.3: a brighter
+  Helmholtz tone), is back to the ordinary force at c = 0.58, and below it
+  beyond (−0.97 at the preset's 0.85). **Sul ponticello** (KB §1.2, §11.2):
+  the Helmholtz window's floor rises as ~β⁻², so the string falls below it
+  into multiple slipping: two to five slips per period, the 1st partial
+  10–40 dB down and the 2nd–5th strongest, periodic (Guettler, "The Sound
+  Sculpturing bow" §2.3: β = 1/24, seven slips, −11 dB, "glassy").
+  Along the players' line it had stayed in Helmholtz at up to 5 N, 7–10 dB
+  louder than ordinario, and raucous at mf–f on the E string's high notes
+  and the G at f (the "crunchy" sound): `tools/ponticello.py`,
+  docs/EVALUATION.md "Sul ponticello". More Pressure brings back the pressed,
+  gritty kind. The brightness tilt follows the same force law, and the open
+  strings' bow allowance falls to nothing by c = 0.9 (the light bow hardly
+  flattens them).
 - The force follows the players' line through the Schelleng diagram:
   F = F_ref (v_b / 0.13) (β / 0.07)^−1.39 (Z / 0.22)^1.39. F_ref = 0.35 N
   [T], trimmed from Demoucron's 0.47 N to sit mid-window in this model.

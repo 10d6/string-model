@@ -477,7 +477,11 @@ class Performer {
       // Above mf the faster bow, its force capped (forceMax), flattens the
       // string less: the allowance falls to 70% at ff (tools/open_strings.py) [T].
       const float dt = std::clamp((dyn_ - 0.5f) / 0.35f, 0.f, 1.f);
-      const float allow = (touchQ_[s] > 0.f ? 0.55f : 1.f) * (1.f - 0.3f * dt * dt * (3.f - 2.f * dt));
+      // Toward the bridge the light bow (contactForceOct) hardly flattens it:
+      // the allowance falls to nothing by contact 0.9 (open strings within
+      // ~4 cents at p and mf, sul ponticello included) [T].
+      const float allow = (touchQ_[s] > 0.f ? 0.55f : 1.f) * (1.f - 0.3f * dt * dt * (3.f - 2.f * dt))
+                          * std::clamp(1.f - contactIn_ / 0.9f, 0.f, 1.f);
       float tune = stopped ? 0.f : def_->openTuneCents[s] * 0.01f * openAllow_[s] * allow;
       // Open strings in pure fifths around A (G -3.9, D -2.0, E +2.0 cents).
       if (!stopped) tune += 0.01f * c.intonStyle * openPureCents(s);
@@ -584,12 +588,13 @@ class Performer {
     contactIn_ += (c.contact - contactIn_) * k;
     // Brightness drive: the bow force on the players' line, in octaves re mf
     // (dynamics 0.557, the middle of the p/f pair the radiation was fitted on).
-    // f ~ e^(3.62 d) x 2^(1.5 pressure) x 2^(2.09 contact) (computeTargets:
+    // f ~ e^(3.62 d) x 2^(1.5 pressure) x 2^contactForceOct(contact)
+    // (computeTargets:
     // vb ~ e^(1.4 d), vb/beta ~ e^(3 d), f ~ vb^-0.39 (vb/beta)^1.39; the
     // contact moves beta by 2^(-1.5 c)). Not bowing: neutral. ~20 ms glide.
     {
       const bool bowed = bowing_ && art_ != kPizzicato;
-      const float want = bowed ? std::clamp(5.23f * (dyn_ - 0.557f) + 1.5f * pressureIn_ + 2.09f * contactIn_, -3.f, 3.f) : 0.f;
+      const float want = bowed ? std::clamp(5.23f * (dyn_ - 0.557f) + 1.5f * pressureIn_ + contactForceOct(contactIn_), -3.f, 3.f) : 0.f;
       bright_ += (want - bright_) * (1.f - std::exp(-dtControl / 0.02f));
     }
     // Open-string bow allowance: eases in and out with the bow (~30 ms).
@@ -1421,6 +1426,17 @@ class Performer {
     // harmonic kept a stopped note's spectrum), with less force
     // (updateForceFactors) [T: Philharmonia harmonics].
     if (art_ == kHarmonics && touchQ_[str_] > 0.f) beta /= std::sqrt(std::round(1.f / touchQ_[str_]));
+    // Sul ponticello (KB §11.2): close to the bridge the bow leaves the
+    // players' line (f ~ beta^-1.39, x3.4 at c = 0.85) and comes back down
+    // below the ordinary force (contactForceOct: -0.97 octaves at c = 0.85,
+    // -1 from there to the bridge, +0.3 at most, near c = 0.3). The Helmholtz window's floor rises as
+    // ~beta^-2, so the string falls below it into multiple slipping, the
+    // n-th partial strongest and the level down (Guettler, "The Sound
+    // Sculpturing bow": beta 1/24, 7 slips, -11 dB, "glassy"). Along the
+    // players' line it stayed in Helmholtz at up to 5 N, louder and
+    // raucous at f. More Pressure brings back the pressed, gritty kind.
+    // Toward the fingerboard (c < 0) the force follows the line down.
+    const float betaOrd = std::clamp(beta, 0.015f, 0.3f);
     beta *= std::pow(2.f, -1.5f * contactIn_);
     beta = std::clamp(beta, 0.015f, 0.3f);
     const bool pinned = noteAge_ >= labPinAfter;
@@ -1428,7 +1444,9 @@ class Performer {
     if (labVb > 0.f && pinned) vb = labVb;
     // Base force on the players' line at the reference impedance; per-string
     // factors (impedance, position, double stops) are in fFactor_.
-    float f = def_->forceRef * (vb / def_->vbRef) * std::pow(beta / def_->betaRef, -1.39f);
+    const bool pont = contactIn_ > 0.f && !(labBeta > 0.f && pinned);  // a lab's pinned beta takes the players' line
+    float f = def_->forceRef * (vb / def_->vbRef) * std::pow((pont ? betaOrd : beta) / def_->betaRef, -1.39f);
+    if (pont) f *= std::pow(2.f, contactForceOct(contactIn_));
     // Soft playing sits near the bottom of the Helmholtz window in this model
     // (calibrate_force.py): lift it, most at pp; ff close to the bridge on
     // the lower strings is near the bottom too: lift it a little (ffLift) [T].
@@ -1497,6 +1515,14 @@ class Performer {
   static constexpr float kSlideDipDb = 3.f, kSlideDipTail = 0.06f;  // dB, s
   static constexpr float kVibStopT = 0.04f, kVibAfterShift = 0.1f, kVibRampShift = 0.3f;  // s
   static constexpr float kLongVb = 0.22f;  // m/s: the fastest long-note bow (Demoucron: half notes) [T]
+  // Contact Point toward the bridge (c > 0): the bow's force, in octaves re
+  // the ordinary contact point's, is 2.09 c (1 - c / kPontZero): up the
+  // players' line at first (2.09 c, as toward the fingerboard), back to the
+  // ordinary force at kPontZero, below it beyond, an octave below at most
+  // (c ~ 0.86: lighter, the bow can't hold the string and it turns to noise)
+  // (computeTargets) [T].
+  static constexpr float kPontZero = 0.58f;
+  static float contactForceOct(float c) { return c < 0.f ? 2.09f * c : std::max(-1.f, 2.09f * c * (1.f - c / kPontZero)); }
   float kSwellSpeed = 0.4f;             // share of the swell taken by bow speed (the rest by distance)
   float landRate_ = 0.01f, liftRate_ = 0.01f, accentDecay_ = 0.999f;
   float startLift_ = 0.f, startLiftDecay_ = 0.999f;
